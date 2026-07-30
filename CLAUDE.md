@@ -135,6 +135,27 @@ Everything else — TDD discipline, `/simplify`, review depth — is agent disci
 - **Chat, reports, and status updates are Thai** (the developer's language). Code, commit
   messages, and inline comments stay English.
 
+## Mechanisms over judgment
+
+**An agent's diagnosis is not reliable enough to be the safety net — including its diagnosis of
+which safety net works.** This repo leans on things the machine decides: types, tests, mutation
+checks, the ground-truth fixture, CI gates. Prefer those over anything that depends on an agent
+reading code carefully.
+
+Three consequences that are not obvious:
+
+- **More tests written from the same design add no safety.** #20 was live while twelve tests
+  passed, because every one of them was written from the design that contained the flaw. It was
+  found by an agent that ran an experiment nobody had thought to run.
+- **A safety mechanism is unproven until it is run against a bug that actually happened.**
+  "This would have caught X" is a hypothesis. Reverting X, running the mechanism, and restoring X
+  is the evidence. A partition invariant was predicted to catch #20 and measurably does not
+  (0/400 either way); a metamorphic check does (32/400 → 135/400). The prediction was wrong and
+  only measurement showed it.
+- **Say whether a check is a pass/fail assertion or a baseline metric.** That metamorphic check is
+  a metric — correct code still loses matches in 32/400 cases, legitimately. Reporting a metric as
+  an assertion manufactures false confidence in both directions.
+
 ## No verdict before evidence
 
 *Fixed · works · passes · safe · done · the root cause is* are claims about the world. Each needs
