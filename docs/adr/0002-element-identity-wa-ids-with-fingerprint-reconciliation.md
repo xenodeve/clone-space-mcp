@@ -30,7 +30,11 @@ replay pass** — not an equivalent script, the same one, or the two runs drift 
 - **`sequence`** is a per-frame counter: deterministic preorder at document start, `MutationObserver`
   afterwards. `attachShadow` is patched so open shadow roots are walked.
 - **`frame-key`** derives from the parent frame key, the normalized URL, and the occurrence index
-  among same-URL siblings. Top frame is `0`.
+  among same-URL siblings. Top frame is `0`. **This carries the same brittleness Decision 2
+  describes** — an occurrence index is positional, so reordered `about:blank`, `srcdoc`, ad or
+  repeated-widget frames swap namespaces silently. There is no code to fix yet: the frame key is
+  produced by the injector, which is still unwritten, so the requirement is recorded against #9
+  rather than repaired here. Frames will need their own reconciliation and unresolved state.
 
 ### 2. A `wa:` id is a handle, not a key
 
@@ -41,7 +45,24 @@ failure on an archive that is fine.
 Recognition across runs comes from a **fingerprint** — tag, a small stable **attribute** subset,
 sibling ordinal, text hash, **โหนดแม่** (`src/identity/fingerprint.ts:9`).
 
-**`parentId` is deliberately excluded from the fingerprint key** (`src/identity/fingerprint.ts:33`).
+**The fingerprint is split in two, and the split is the point** (#20). Only what survives an
+unrelated edit elsewhere in the page forms the bucket key — frame key, tag, and the stable
+attribute subset (`src/identity/fingerprint.ts:45`). Sibling ordinal and text hash **rank**
+candidates that already share a key (`src/identity/fingerprint.ts:65`); they do not gate the
+lookup.
+
+The first version put both in the key, and it did not merely make matching harder: one unrelated
+node inserted above a target shifted its ordinal, so an element carrying a unique stable attribute
+was reported `missing` with zero candidates **while the node it should have matched appeared in
+`replayOnly`** — a result contradicting itself. Evidence generates candidates; it does not qualify
+them.
+
+**Ranking scores exact agreement only — there is deliberately no "closest ordinal wins."** When a
+whole run of identical siblings shifts, proximity scoring pairs every one of them off confidently
+and gets the entire run wrong. Exact-only scoring makes such a run come back `identity-unresolved`,
+which is the outcome this ADR exists to produce.
+
+**`parentId` is deliberately excluded from the fingerprint key** (`src/identity/fingerprint.ts:40`).
 It is itself a `wa:` id, so it differs between runs by construction; including it would make every
 child of a re-numbered parent unmatchable — the exact failure it appears to prevent.
 
@@ -53,7 +74,7 @@ two same-shaped elements under different parents without depending on emission o
 ### 3. An unidentifiable element is reported, never guessed
 
 `identity-unresolved` is a first-class result with two reasons — `missing`
-(`src/identity/reconcile.ts:118`) and `ambiguous` (`src/identity/reconcile.ts:122`) — and it
+(`src/identity/reconcile.ts:114`) and `ambiguous` (`src/identity/reconcile.ts:130`) — and it
 carries its candidate list so a later pass can adjudicate instead of hitting a dead end.
 
 An **unresolved parent does not narrow its child's candidates** (`src/identity/reconcile.ts:107`),
@@ -89,7 +110,7 @@ does not invalidate archives for the other.
 
 - **Positive:** ids are stable enough to key everything downstream, and the one case that cannot be
   resolved is visible rather than silently wrong. The pure half needs no browser, so most of the
-  risk is covered by 12 fast tests (`test/identity/reconcile.test.ts`).
+  risk is covered by 16 fast tests (`test/identity/reconcile.test.ts`).
 - **Negative / limits:**
   - **Closed shadow roots are out of reach.** `attachShadow` can be patched for open roots only.
   - **Out-of-process iframes are a separate CDP target** and will need their own injection and

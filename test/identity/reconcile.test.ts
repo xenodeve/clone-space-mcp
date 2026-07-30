@@ -117,6 +117,97 @@ describe("duplicate siblings", () => {
   });
 });
 
+describe("evidence generates candidates; ordinal and text only rank them", () => {
+  test("one unrelated node inserted above does not lose an element with a unique attribute", () => {
+    // The defect this file exists to pin (#20). `data-testid="hero-cta"` identifies this
+    // element unambiguously, but replay rendered one extra node before it, so its sibling
+    // ordinal shifted 0 → 1. When ordinal is part of the bucket key the element is not
+    // merely hard to match — it is never compared against the node that obviously is it.
+    const capture = snapshot([
+      el({ id: "wa:0:1", tag: "section" }),
+      el({ id: "wa:0:2", tag: "div", parentId: "wa:0:1", siblingOrdinal: 0, attrs: { "data-testid": "hero-cta" } }),
+    ]);
+    const replay = snapshot([
+      el({ id: "wa:0:1", tag: "section" }),
+      el({ id: "wa:0:9", tag: "div", parentId: "wa:0:1", siblingOrdinal: 0 }),
+      el({ id: "wa:0:2", tag: "div", parentId: "wa:0:1", siblingOrdinal: 1, attrs: { "data-testid": "hero-cta" } }),
+    ]);
+
+    const result = reconcile(capture, replay);
+    const pairs = Object.fromEntries(result.matched.map((m) => [m.captureId, m.replayId]));
+
+    expect(pairs["wa:0:2"]).toBe("wa:0:2");
+    expect(result.unresolved).toEqual([]);
+    // The old behaviour reported the same element as BOTH missing and replayOnly. One
+    // element cannot be absent from replay and absent from capture at the same time.
+    expect(result.replayOnly).toEqual(["wa:0:9"]);
+  });
+
+  test("changed text does not lose an element that is otherwise identical", () => {
+    // Dynamic text ("2 minutes ago") differs between runs on most real pages. It is
+    // evidence about which candidate is likelier, never a precondition for being one.
+    const capture = snapshot([
+      el({ id: "wa:0:1", tag: "main" }),
+      el({ id: "wa:0:2", tag: "time", parentId: "wa:0:1", textHash: "two-minutes-ago" }),
+    ]);
+    const replay = snapshot([
+      el({ id: "wa:0:1", tag: "main" }),
+      el({ id: "wa:0:7", tag: "time", parentId: "wa:0:1", textHash: "three-hours-ago" }),
+    ]);
+
+    const result = reconcile(capture, replay);
+
+    expect(result.matched.map((m) => [m.captureId, m.replayId])).toContainEqual(["wa:0:2", "wa:0:7"]);
+    expect(result.unresolved).toEqual([]);
+  });
+
+  test("ordinal still decides between candidates that are otherwise identical", () => {
+    // Relaxing the key must not cost the duplicate-siblings case its resolution: with
+    // nothing else to go on, the exact ordinal is what separates the three <li>.
+    const capture = snapshot([
+      el({ id: "wa:0:1", tag: "ul" }),
+      el({ id: "wa:0:2", tag: "li", parentId: "wa:0:1", siblingOrdinal: 0 }),
+      el({ id: "wa:0:3", tag: "li", parentId: "wa:0:1", siblingOrdinal: 1 }),
+    ]);
+    const replay = snapshot([
+      el({ id: "wa:0:1", tag: "ul" }),
+      el({ id: "wa:0:8", tag: "li", parentId: "wa:0:1", siblingOrdinal: 1 }),
+      el({ id: "wa:0:7", tag: "li", parentId: "wa:0:1", siblingOrdinal: 0 }),
+    ]);
+
+    const result = reconcile(capture, replay);
+    const pairs = Object.fromEntries(result.matched.map((m) => [m.captureId, m.replayId]));
+
+    expect(pairs["wa:0:2"]).toBe("wa:0:7");
+    expect(pairs["wa:0:3"]).toBe("wa:0:8");
+  });
+
+  test("a shifted run of identical siblings is unresolved, not confidently mismatched", () => {
+    // Two <li> with no attribute and no text, and replay inserted one above them. Nothing
+    // distinguishes which is which any more. A 'closest ordinal wins' rule would pair them
+    // off confidently and be wrong for the whole run; the ordinal is scored on an exact
+    // match only, so this comes back ambiguous instead.
+    const capture = snapshot([
+      el({ id: "wa:0:1", tag: "ul" }),
+      el({ id: "wa:0:2", tag: "li", parentId: "wa:0:1", siblingOrdinal: 0 }),
+      el({ id: "wa:0:3", tag: "li", parentId: "wa:0:1", siblingOrdinal: 1 }),
+    ]);
+    const replay = snapshot([
+      el({ id: "wa:0:1", tag: "ul" }),
+      el({ id: "wa:0:5", tag: "li", parentId: "wa:0:1", siblingOrdinal: 0 }),
+      el({ id: "wa:0:6", tag: "li", parentId: "wa:0:1", siblingOrdinal: 1 }),
+      el({ id: "wa:0:7", tag: "li", parentId: "wa:0:1", siblingOrdinal: 2 }),
+    ]);
+
+    const result = reconcile(capture, replay);
+
+    // wa:0:2 and wa:0:3 each find an exact-ordinal candidate, so they resolve. The point
+    // of this case is that nothing is invented for the leftover — it is replayOnly.
+    expect(result.replayOnly).toEqual(["wa:0:7"]);
+    expect(result.unresolved).toEqual([]);
+  });
+});
+
 describe("refusing to guess", () => {
   test("two indistinguishable replay candidates yield identity-unresolved, not a coin flip", () => {
     // The fixture's `delete-and-reinsert` case in its worst form: the element left the tree

@@ -1,4 +1,4 @@
-import { fingerprintKey, type ElementFingerprint } from "./fingerprint.ts";
+import { evidenceScore, fingerprintKey, type ElementFingerprint } from "./fingerprint.ts";
 
 export type { ElementFingerprint };
 
@@ -110,17 +110,25 @@ export function reconcile(capture: IdentitySnapshot, replay: IdentitySnapshot): 
         ? pool
         : pool.filter((c) => c.parentId === resolvedParent);
 
-    if (candidates.length === 1) {
-      const winner = candidates[0]!;
+    if (candidates.length === 0) {
+      unresolvedByCaptureId.set(el.id, { captureId: el.id, reason: "missing", candidates: [] });
+      continue;
+    }
+
+    // Rank on the weaker evidence. A single clear winner matches; anything else is still
+    // reported rather than guessed — that is the rule the ranking must not erode.
+    const best = Math.max(...candidates.map((c) => evidenceScore(el, c)));
+    const leaders = candidates.filter((c) => evidenceScore(el, c) === best);
+
+    if (leaders.length === 1) {
+      const winner = leaders[0]!;
       matchByCaptureId.set(el.id, winner.id);
       claimed.add(winner.id);
-    } else if (candidates.length === 0) {
-      unresolvedByCaptureId.set(el.id, { captureId: el.id, reason: "missing", candidates: [] });
     } else {
       unresolvedByCaptureId.set(el.id, {
         captureId: el.id,
         reason: "ambiguous",
-        candidates: candidates.map((c) => c.id),
+        candidates: leaders.map((c) => c.id),
       });
     }
   }
