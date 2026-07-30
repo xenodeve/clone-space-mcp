@@ -30,6 +30,19 @@ the first feature already lands on the rails rather than being retrofitted onto 
 workflow that runs a script which doesn't exist is a permanently-red check — which trains everyone
 to ignore red. Tracked 🔴 in the ledger; install it with the replay phase.
 
-**Next:** P0 — build `test/fixtures/motion-site` and answer the three blocking spike questions.
+**Enforcement actually in place — stated precisely, because the T4 standard is stronger than this:**
+
+- Ruleset `20028550` on `main`: PRs required (no direct pushes), review threads must resolve,
+  no force-push, no deletion, squash-only.
+- `PreToolUse` gate + `.githooks/pre-push` — both bind local commands only.
+- **CI required checks are NOT in place.** GitHub Actions is locked on this account for billing;
+  all four jobs failed in 2s before running a step. Adding them as required checks would leave
+  every PR on *"Expected — waiting for status"* forever, so they were left out on purpose.
+  Tracked as #2. **A human merging on the web is currently ungated** — that is the honest gap.
+- Secret scanning and push protection verified enabled; Dependabot alerts and security PRs
+  enabled. `secret_scanning_validity_checks` and `non_provider_patterns` could not be turned on
+  (the API returns 200 and leaves them `disabled`).
+
+**Next:** #3 — build `test/fixtures/motion-site` and answer the three blocking spike questions.
 
 ---

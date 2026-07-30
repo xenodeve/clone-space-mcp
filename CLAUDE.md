@@ -81,8 +81,15 @@ Full pipeline in `docs/agents/workflow.md`. The short form:
 - `pre-push` guards (`.githooks/`) — re-check the issue reference and block a large dirty tree or
   committed build artifacts, for every agent and human on the clone, not just Claude.
   Opt in once per clone: `git config core.hooksPath .githooks`.
-- **CI required checks** — `lint`, `typecheck`, `test`, `build` are required on `main` and direct
-  pushes to `main` are blocked. This is the layer that also binds a human merging on the web.
+- **Branch ruleset `20028550`** on `main` — direct pushes blocked (everything arrives through a
+  PR), unresolved review threads block merge, no force-push, no deletion, squash-only.
+- **CI required checks — NOT in place.** `.github/workflows/t4-verify.yml` is installed and
+  correct, but **GitHub Actions is locked on this account for billing**, so the jobs never run.
+  They were deliberately left out of the ruleset: a required check that never reports leaves every
+  PR stuck on *"Expected — waiting for status"*. Tracked as **#2**.
+
+  **The honest consequence: a human merging on the web is currently ungated.** The two bullets
+  above only bind commands run locally. Do not describe this repo's gate as complete until #2 closes.
 
 Everything else — TDD discipline, `/simplify`, review depth — is agent discipline.
 

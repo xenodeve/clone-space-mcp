@@ -19,9 +19,10 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 
 | Item | Status | Gate | Next action |
 |---|---|---|---|
-| Repo operating layer (CLAUDE.md, hooks, guards, CI, memory) | ✅ | — | Bootstrap commit; ruleset applied |
-| P0 — `test/fixtures/motion-site` + spike Q1–Q3 | 🟢 | — | See the issue; nothing blocks it |
-| P1 — element identity + archive schema | 🟡 | P0 spike results | Exit: 100% ID reconciliation capture→replay on the fixture |
+| Repo operating layer (CLAUDE.md, hooks, guards, memory) | ✅ | — | Bootstrap commit; ruleset `20028550` active on `main` |
+| #2 CI required checks (`lint`/`typecheck`/`test`/`build`) | 🟡 | **GitHub Actions is locked on this account for billing** | Human task — resolve billing, then add the four to the ruleset. Until then a web merge is ungated |
+| #3 P0 — `test/fixtures/motion-site` + spike Q1–Q3 | 🟢 | — | Nothing blocks it |
+| P1 — element identity + archive schema | 🟡 | #3 spike results | Exit: 100% ID reconciliation capture→replay on the fixture |
 
 ## Track 2 — Pipeline
 
@@ -37,6 +38,7 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | Item | Status | Gate | Next action |
 |---|---|---|---|
 | Spike Q6 — sourcemap availability census across real sites | 🔴 | — | Parallel corpus job; gates nothing. File an issue when someone picks it up |
+| `secret_scanning_validity_checks` + `non_provider_patterns` | 🔴 | GitHub Advanced Security | The `PATCH` returns 200 and the values stay `disabled`; not available on this repo. Secret scanning and push protection **are** on |
 | `t4-e2e.yml` CI workflow | 🔴 | P3 | Deliberately **not** installed at bootstrap — there is no `bun run e2e` yet and a permanently-red check trains everyone to ignore red. Install it with P3 |
 | `CONTEXT.md` / `UBIQUITOUS_LANGUAGE.md` / `PRODUCT.md` | 🔴 | — | Created lazily when a term or decision actually resolves (proceed-silently rule) |
 | License | 🔴 | — | Not chosen. `README.md` says so |
