@@ -1,0 +1,21 @@
+# Normalise to LF in the repo and check out LF everywhere.
+#
+# This is not cosmetic: the hook scripts (.githooks/*, .claude/hooks/*) and
+# scripts/verify.sh are POSIX shell with no file extension, and the CI gate runs
+# them on ubuntu. A CRLF line ending there fails with a confusing
+# `\r: command not found` rather than an honest error, so the ending is pinned
+# rather than left to each clone's core.autocrlf.
+* text=auto eol=lf
+
+# The Windows launcher is the one file that genuinely wants CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Never let git rewrite bytes inside a captured archive.
+*.har binary
+*.mhtml binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.woff binary
+*.woff2 binary
