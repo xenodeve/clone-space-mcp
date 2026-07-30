@@ -23,7 +23,9 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | #2 CI required checks (`lint`/`typecheck`/`test`/`build`) | 🟡 | **GitHub Actions is locked on this account for billing** | Human task — resolve billing, then add the four to the ruleset. Until then a web merge is ungated |
 | #3 P0 — `test/fixtures/motion-site` + spike Q1–Q3 | ✅ | — | Fixture green (10/10), Q1–Q3 answered in `docs/reports/2026-07-30-cdp-spike.md` |
 | #5 Runtime split — Playwright's client does not work under Bun | ✅ | — | Decided: Node drives the browser, Bun runs the rest. ADR [0001](adr/0001-node-drives-the-browser-bun-runs-everything-else.md) |
-| P1 — element identity + archive schema | 🟢 | — | Unblocked: Q1–Q3 answered and the runtime is settled. Exit: 100% ID reconciliation capture→replay on the fixture |
+| #9 P1 — element identity | 🔄 | — | Pure half merged (PR #10). Injector still to write |
+| #20 Fingerprint brittleness — one inserted sibling makes a uniquely-attributed element `missing` | 🟢 | — | **Defect in merged code**, reproduced. Blocks P1's exit criterion; frame key has the same flaw |
+| #21 Plan hardening — archive contracts from the review round | 🔄 | — | Plan amended; the contracts it names must land in P2's capture output |
 
 ## Track 2 — Pipeline
 
