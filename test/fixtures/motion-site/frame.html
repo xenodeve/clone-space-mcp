@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>nested document</title>
+    <style>
+      body {
+        margin: 0;
+        font: 13px/1.4 system-ui, sans-serif;
+        display: grid;
+        place-items: center;
+        height: 100vh;
+      }
+      @keyframes drift {
+        to {
+          transform: translateX(40px);
+        }
+      }
+      .dot {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #3d5afe;
+        animation: drift 1.2s ease-in-out infinite alternate;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Its own animation, in its own document. Frame keys have to be derived from the
+         parent frame plus this URL, not assumed to be a single flat namespace. -->
+    <div class="dot"></div>
+    <script>
+      // A listener that exists only inside this frame's document. Spike Q1 asks whether
+      // a single getEventListeners call on the top document reaches across the frame
+      // boundary; without this there is nothing to reach.
+      document.querySelector(".dot").addEventListener("click", () => {
+        document.querySelector(".dot").style.opacity = "0.4";
+      });
+    </script>
+  </body>
+</html>

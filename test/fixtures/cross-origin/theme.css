@@ -1,0 +1,17 @@
+/*
+ * Served from a second origin with no Access-Control-Allow-Origin header.
+ *
+ * That makes document.styleSheets[n].cssRules throw a SecurityError in the page, which
+ * is the entire point: spike Q3 asks whether CSS.getStyleSheetText returns this text
+ * anyway. Add a CORS header here and the question becomes unanswerable while the test
+ * still appears to pass.
+ */
+.hero__title {
+  text-decoration: underline wavy color-mix(in oklab, #3d5afe 60%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.hero__sub::after {
+  content: " (styled from a cross-origin sheet)";
+  opacity: 0.55;
+}
