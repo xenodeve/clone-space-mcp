@@ -38,6 +38,20 @@ The `pre-push` guard reads the issue number from the **slug position** of the br
 `feat/12-identity-scheme` references issue 12 and `chore/bump-bun-2` references nothing. A `#12`
 in a commit message on the branch, or in the PR body, also counts.
 
+## Never write a closing keyword beside an issue you don't mean to close
+
+GitHub's parser matches `close`, `closes`, `fixes`, `resolves` and their variants next to an issue
+number **without reading the words in front of them**. All of these close the issue:
+
+```
+does not close #20      won't fix #20      not fixes #20
+```
+
+This is not hypothetical — PR #22 said *"Closes #21 · does not close #20"* and closed both. An
+issue marked "closed as completed" while its defect is live is worse than no record at all.
+
+To mention an issue without closing it, write the bare reference — `#20`, or `see #20`.
+
 ## Skill phrase mapping
 
 - "publish to the issue tracker" → create a GitHub issue.
@@ -82,6 +96,20 @@ Issue และ PRD ของ repo นี้อยู่ในรูป GitHub i
 `pre-push` guard อ่านเลข issue จาก **ตำแหน่ง slug** ของชื่อ branch ดังนั้น `feat/12-identity-scheme` จึงอ้างถึง
 issue 12 ส่วน `chore/bump-bun-2` ไม่ได้อ้างถึงอะไรเลย การใส่ `#12` ใน commit message บน branch นั้น
 หรือใน PR body ก็นับเช่นกัน
+
+## ห้ามเขียนคำที่ใช้ปิด issue ไว้ข้างเลข issue ที่ไม่ได้ตั้งใจจะปิด
+
+parser ของ GitHub จับคำว่า `close`, `closes`, `fixes`, `resolves` และรูปแบบต่างๆ ของมันที่อยู่ข้างเลข issue
+**โดยไม่อ่านคำที่อยู่ข้างหน้าเลย** ทั้งหมดนี้ปิด issue:
+
+```
+does not close #20      won't fix #20      not fixes #20
+```
+
+นี่ไม่ใช่เรื่องสมมติ — PR #22 เขียนว่า *"Closes #21 · does not close #20"* แล้วปิดทั้งคู่ issue ที่ขึ้นว่า
+"closed as completed" ทั้งที่ข้อบกพร่องยังทำงานอยู่ แย่กว่าการไม่มีบันทึกเลย
+
+ถ้าจะอ้างถึง issue โดยไม่ปิดมัน ให้เขียนเลขเปล่าๆ — `#20` หรือ `see #20`
 
 ## การแปลงคำที่ skill ใช้
 
