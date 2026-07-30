@@ -109,6 +109,22 @@ Everything else — TDD discipline, `/simplify`, review depth — is agent disci
   "สรุป" does not mean "shorter". Code identifiers, filenames, and log excerpts stay English.
 - **Governed agent docs** (`docs/agents/*`, and `CONTEXT.md` / `PRODUCT.md` / `DESIGN.md` once they
   exist) use `<!-- lang:en -->` / `<!-- lang:th -->` markers with a full mirror.
+- **Never invent a Thai word for a term of art.** This is the rule agents get wrong: "identifiers
+  stay English" is not enough, because a *concept* like `pure function` gets calqued into
+  something no one says and the sentence stops meaning anything. The glossary below is the
+  developer's own choice — a mixed list, not a preference for English:
+
+  | Concept | Call it | | Concept | Call it |
+  |---|---|---|---|---|
+  | pure function | **pure function** | | source of truth | **source of truth** |
+  | reconciler | **ตัวจับคู่** | | constraint | **ข้อบังคับ** |
+  | parent node | **โหนดแม่** | | layering | **layering** |
+  | handle | **handle** | | failure mode | **รูปแบบความผิดพลาด** |
+  | transitive | **transitive** | | attribute | **attribute** |
+
+  For anything not listed, the test is: **would a Thai developer say it out loud in a stand-up?**
+  If not, keep the English term. And prefer plain description to metaphor — say which part is
+  riskiest and why, rather than that something "แบกความเสี่ยง".
 - **Chat, reports, and status updates are Thai** (the developer's language). Code, commit
   messages, and inline comments stay English.
 
