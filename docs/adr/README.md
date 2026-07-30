@@ -18,6 +18,7 @@ implements it, grounded in the code as it is then — not written speculatively 
 | Decision | Phase |
 |---|---|
 | Replay navigates the **original URL** through `routeFromHAR(..., { notFound: 'abort' })` so real JS re-executes — rather than serializing the hydrated DOM as the bootstrap | replay |
+| The **archive contracts** found in the 2026-07-31 review (#21) — redaction, `environment.json`, checkpoint epochs, capability flags, request normalization, `TargetRef`, bounded traces, transactional integrity, target inventory, capture budget | capture |
 | Archive schema and behavior-graph schema are versioned **separately**, and raw evidence is retained so a better extractor never forces a re-capture | capture |
 | Sourcemaps are fetched during live capture — the page never requests `.map` itself, so they are unobtainable at replay if missed | capture |
 | `serviceWorkers: 'block'` at both capture and replay, because HAR routing does not cover SW-intercepted requests | capture |
