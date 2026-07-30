@@ -8,6 +8,7 @@ re-deriving it. A decision that overturns an earlier one marks the old ADR **Sup
 | # | Title | Area | Status |
 |---|-------|------|--------|
 | [0001](0001-node-drives-the-browser-bun-runs-everything-else.md) | Node drives the browser; Bun runs everything else | Infra | Accepted |
+| [0002](0002-element-identity-wa-ids-with-fingerprint-reconciliation.md) | `wa:` element identity, with fingerprint reconciliation and an explicit unresolved state | Identity | Accepted — **injection impl pending** (#9) |
 
 ## Decisions that will need an ADR before the code lands
 
@@ -17,8 +18,7 @@ implements it, grounded in the code as it is then — not written speculatively 
 | Decision | Phase |
 |---|---|
 | Replay navigates the **original URL** through `routeFromHAR(..., { notFound: 'abort' })` so real JS re-executes — rather than serializing the hydrated DOM as the bootstrap | replay |
-| `wa:<frame-key>:<sequence>` element identity, injected via `addInitScript` on **both** capture and replay, with fingerprint reconciliation and an explicit `identity-unresolved` state | identity |
-| Archive schema and behavior-graph schema are versioned **separately**, and raw evidence is retained so a better extractor never forces a re-capture | identity |
+| Archive schema and behavior-graph schema are versioned **separately**, and raw evidence is retained so a better extractor never forces a re-capture | capture |
 | Sourcemaps are fetched during live capture — the page never requests `.map` itself, so they are unobtainable at replay if missed | capture |
 | `serviceWorkers: 'block'` at both capture and replay, because HAR routing does not cover SW-intercepted requests | capture |
 
