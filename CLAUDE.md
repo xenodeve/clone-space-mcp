@@ -34,6 +34,7 @@ src/            pipeline stages: capture · replay · extract · serve (see src/
 test/           bun test suite; test/fixtures/ holds the controlled fixture site
 docs/agents/    how agents work here — workflow, tracker, labels, domain
 docs/adr/       architecture decision records
+docs/superpowers/plans/    the pipeline design and its reasoning — read before proposing a change to it
 docs/OPEN-WORK-LEDGER.md   every open item, tracked AND untracked — read at session start
 DONE.md         ship log, newest on top
 Obsidian-CloneSpaceMcp/       team memory vault; Home.md is the index
