@@ -6,6 +6,45 @@
 
 ---
 
+## P1 — element identity, end to end (2026-07-31, `/tdd` + `/scrutinize` + `/security-review` + `/code-review`, #9 #20 #21 #24)
+
+**Goal:** the contract every later stage references — name an element, and recognise it again in a
+different construction of the same page.
+
+**Shipped:** `src/identity/{fingerprint,reconcile,inject}.ts`, `test/identity/reconcile.test.ts`
+(16 cases), `test/browser/identity.browser.ts` (8 cases), `scripts/fixture-client.ts`, ADR 0002,
+and two core rules in `CLAUDE.md`.
+
+**Exit criterion, measured:** 63 elements · 63 matched · 0 unresolved · 0 replay-only · all five
+identity hard cases matched. **That number compares two runs of the same page under the same
+conditions — the easiest form of capture→replay. It is a floor, not a ceiling.**
+
+**Three defects found and fixed, none by reasoning about the code:**
+- **#20** — `siblingOrdinal` and `textHash` were equality components of the bucket key, so one
+  inserted sibling made a uniquely-attributed element `missing` with zero candidates while the
+  node it should have matched appeared in `replayOnly`. Found by `codex` running a probe during a
+  `/clink-brainstorm` round; reproduced here before being accepted. Twelve tests were passing.
+- **`addInitScript` accumulates** — measured: four registrations, four executions on the next
+  navigation. Every capture installed another `MutationObserver`. The output stayed correct,
+  which is why it would not have been noticed.
+- **`textHash` stored raw text** — the full source of every `<style>` element was landing in
+  `identity.json`, colliding with the archive's redaction contract. 9177 → 8098 bytes.
+
+**Two documented claims were wrong and the documents were corrected, not the code bent to match:**
+`attachShadow` needs no patch for the walk (an open root is readable), and the frame key's
+occurrence index was the same positional flaw as #20 one level up.
+
+**Validation:** `sh scripts/verify.sh` exit 0 · `bun test` 26 pass · `node --test` 8 pass ·
+determinism measured over 12 runs · `bun run spike` re-run unchanged after the dedup.
+
+**Said plainly rather than smoothed over:** the branch mixed #9 and #24, so neither can be
+reverted alone. `settleMs` is a fixed delay, not a settle signal. The observer re-walks each added
+subtree, so a page appending N nodes one at a time costs O(N²).
+
+**Next:** P2 capture — unblocked. Its exit criterion now includes the eleven archive contracts.
+
+---
+
 ## Renamed to clone-space-mcp (2026-07-31, branch `chore/16-rename-to-clone-space-mcp`, #16)
 
 **Goal:** follow the repository rename through the project, so no doc states a path that no longer
