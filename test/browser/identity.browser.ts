@@ -109,7 +109,7 @@ test("an element removed before the snapshot is still known", async () => {
 
 test("the same page loaded twice produces the same ids", async () => {
   // Everything downstream assumes two runs are comparable. If the walk is not deterministic
-  // there is nothing for the ตัวจับคู่ to reconcile, and every later slice is meaningless.
+  // there is nothing for the reconciler to reconcile, and every later slice is meaningless.
   const first = await captureIdentity(page, servers.primary.url, { settleMs: 1500 });
   const second = await captureIdentity(page, servers.primary.url, { settleMs: 1500 });
 
