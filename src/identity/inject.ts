@@ -23,9 +23,51 @@ export const IDENTITY_GLOBAL = "__waIdentity";
  */
 export const IDENTITY_INIT_SCRIPT = `
 (() => {
-  const FRAME_KEY = "0";
   let sequence = 0;
   const ids = new WeakMap();
+
+  /** Attributes stable across runs. Anything a framework rewrites on hydration stays out. */
+  const STABLE_ATTRS = ["data-fixture-id", "data-identity-case", "data-testid", "role", "name", "type", "part"];
+
+  function stableAttrs(el) {
+    const attrs = {};
+    for (const a of STABLE_ATTRS) {
+      const v = el.getAttribute(a);
+      if (v !== null) attrs[a] = v;
+    }
+    return attrs;
+  }
+
+  /**
+   * The frame's namespace, derived from the fingerprint of the element that owns it —
+   * never from its position among siblings.
+   *
+   * ADR 0002 originally specified an occurrence index among same-URL siblings. That is the
+   * same positional flaw as #20 one level up: reorder two <iframe> and their namespaces swap
+   * silently, taking every id inside them with it. Deriving from the owning element's own
+   * stable evidence means the frame is exactly as identifiable as that element is.
+   *
+   * window.frameElement is null for a cross-origin frame, which is the stated limit: an
+   * out-of-process iframe is a separate CDP target and needs its own handling.
+   *
+   * (No backticks anywhere in this string — it is a template literal, so one closes it
+   * early and the rest of the file is then parsed as TypeScript.)
+   */
+  function frameKey() {
+    const owner = (() => { try { return window.frameElement; } catch { return null; } })();
+    if (!owner) return "0";
+
+    let parentKey = "0";
+    try {
+      parentKey = window.parent.${IDENTITY_GLOBAL} ? window.parent.${IDENTITY_GLOBAL}.frameKey : "0";
+    } catch { parentKey = "?"; }
+
+    const evidence = owner.tagName.toLowerCase() + "|" +
+      Object.entries(stableAttrs(owner)).sort().map(([k, v]) => k + "=" + v).join(",");
+    return parentKey + "/" + evidence;
+  }
+
+  const FRAME_KEY = frameKey();
 
   function assign(el) {
     if (ids.has(el)) return ids.get(el);
@@ -34,15 +76,24 @@ export const IDENTITY_INIT_SCRIPT = `
     return id;
   }
 
-  /** Deterministic preorder: the same DOM produces the same sequence twice. */
-  function walk(root) {
+  /**
+   * Deterministic preorder: the same DOM produces the same sequence twice.
+   *
+   * Open shadow roots are entered through el.shadowRoot. Patching attachShadow is not
+   * needed for that — an open root stays readable — so it is not done. A closed root is
+   * unreachable either way, which is the stated limit.
+   */
+  function walk(root, rootParentId) {
     const out = [];
     const visit = (el, parentId) => {
       const id = assign(el);
       out.push({ el, id, parentId });
       for (const child of el.children) visit(child, id);
+      if (el.shadowRoot) {
+        for (const child of el.shadowRoot.children) visit(child, id);
+      }
     };
-    visit(root, null);
+    visit(root, rootParentId ?? null);
     return out;
   }
 
@@ -56,16 +107,9 @@ export const IDENTITY_INIT_SCRIPT = `
     return n;
   }
 
-  /** Attributes stable across runs. Anything a framework rewrites on hydration stays out. */
-  const STABLE_ATTRS = ["data-fixture-id", "data-identity-case", "data-testid", "role", "name", "type"];
-
   function fingerprint(entry) {
     const el = entry.el;
-    const attrs = {};
-    for (const a of STABLE_ATTRS) {
-      const v = el.getAttribute(a);
-      if (v !== null) attrs[a] = v;
-    }
+    const attrs = stableAttrs(el);
     let text = "";
     for (const node of el.childNodes) {
       if (node.nodeType === 3) text += node.nodeValue;
@@ -82,21 +126,67 @@ export const IDENTITY_INIT_SCRIPT = `
     };
   }
 
+  /**
+   * Everything ever seen, by id. An element removed from the tree keeps its last known
+   * fingerprint rather than disappearing: capture saw it, so replay has to be able to
+   * account for it. Without this the archive's contents depend on which side of a timer
+   * the snapshot lands on.
+   */
+  const seen = new Map();
+
+  function record(el, parentId) {
+    for (const entry of walk(el, parentId)) seen.set(entry.id, fingerprint(entry));
+  }
+
+  /**
+   * A MutationObserver on document sees nodes added during parsing, which is why the
+   * script has to be injected before any page script runs. It does NOT see inside a shadow
+   * root, so attachShadow is patched to observe each new root — this is where that patch
+   * earns its place, not in the walk, which reads an open root directly.
+   */
+  const observer = new MutationObserver((records) => {
+    for (const r of records) {
+      for (const node of r.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        record(node, r.target && ids.has(r.target) ? ids.get(r.target) : null);
+      }
+    }
+  });
+  observer.observe(document, { childList: true, subtree: true });
+
+  const nativeAttachShadow = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function (init) {
+    const root = nativeAttachShadow.call(this, init);
+    if (init && init.mode === "open") {
+      observer.observe(root, { childList: true, subtree: true });
+    }
+    return root;
+  };
+
   window.${IDENTITY_GLOBAL} = {
+    frameKey: FRAME_KEY,
     snapshot() {
-      return { elements: walk(document.documentElement).map(fingerprint) };
+      // Re-walk so anything still attached carries a current fingerprint, then return the
+      // union with everything previously seen.
+      if (document.documentElement) record(document.documentElement, null);
+      return { elements: [...seen.values()] };
     },
   };
 })();
 `;
 
 /** Structural, so `src/` never imports playwright — the build targets Bun (ADR 0001). */
-export interface InjectablePage {
+export interface EvaluableFrame {
+  evaluate<T>(expression: string): Promise<T>;
+}
+
+export interface InjectablePage extends EvaluableFrame {
   // Return types are `unknown` on purpose: Playwright's `addInitScript` resolves to a
   // Disposable, and narrowing to void here made a real Page fail to satisfy this.
   addInitScript(script: string): Promise<unknown>;
   goto(url: string, options?: { waitUntil?: "load" }): Promise<unknown>;
-  evaluate<T>(expression: string): Promise<T>;
+  /** Every frame, including the main one — the injected script runs in all of them. */
+  frames(): EvaluableFrame[];
 }
 
 export interface CaptureOptions {
@@ -112,6 +202,12 @@ export interface CaptureOptions {
    * (`docs/superpowers/plans/…#6.3`); a fixed delay is not a settle signal.
    */
   settleMs?: number;
+  /**
+   * Read the snapshot from the page as it stands, without navigating.
+   *
+   * Only for observing a state the caller has just produced — navigating would discard it.
+   */
+  reuse?: boolean;
 }
 
 /**
@@ -124,16 +220,29 @@ export async function captureIdentity(
   url: string,
   options: CaptureOptions = {},
 ): Promise<IdentitySnapshot> {
-  await page.addInitScript(IDENTITY_INIT_SCRIPT);
-  await page.goto(url, { waitUntil: "load" });
+  if (!options.reuse) {
+    await page.addInitScript(IDENTITY_INIT_SCRIPT);
+    await page.goto(url, { waitUntil: "load" });
+  }
 
   if (options.settleMs) {
     await page.evaluate<void>(`new Promise((r) => setTimeout(r, ${options.settleMs}))`);
   }
 
-  const { elements } = await page.evaluate<{ elements: ElementFingerprint[] }>(
-    `window.${IDENTITY_GLOBAL}.snapshot()`,
-  );
+  // Every frame carries its own namespace, so the snapshot is the union across frames. A
+  // frame the script never reached (cross-origin, or detached mid-read) contributes nothing
+  // rather than failing the whole capture — its absence is what capability reporting is for.
+  const elements: ElementFingerprint[] = [];
+  for (const frame of page.frames()) {
+    try {
+      const part = await frame.evaluate<{ elements: ElementFingerprint[] } | null>(
+        `window.${IDENTITY_GLOBAL} ? window.${IDENTITY_GLOBAL}.snapshot() : null`,
+      );
+      if (part) elements.push(...part.elements);
+    } catch {
+      // Frame went away between listing and reading. Nothing to record.
+    }
+  }
 
   return { schemaVersion: IDENTITY_SCHEMA_VERSION, elements };
 }

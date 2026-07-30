@@ -1,6 +1,6 @@
 # ADR 0002 — `wa:` element identity, with fingerprint reconciliation and an explicit unresolved state
 
-- **Status:** Accepted (2026-07-31) — reconciliation implemented; **injection impl pending (#9)**
+- **Status:** Accepted (2026-07-31) — reconciliation **and** injection implemented (#9)
 - **Area:** Identity
 - **Related:** #9 (the work), #3 (`test/fixtures/motion-site`, which supplies the hard cases), `UBIQUITOUS_LANGUAGE.md` (the terms used here)
 
@@ -27,14 +27,27 @@ one comes back. No amount of recorded structure distinguishes them.
 `wa:<frame-key>:<sequence>`, assigned by **the same injected module on capture and on every
 replay pass** — not an equivalent script, the same one, or the two runs drift by construction.
 
-- **`sequence`** is a per-frame counter: deterministic preorder at document start, `MutationObserver`
-  afterwards. `attachShadow` is patched so open shadow roots are walked.
-- **`frame-key`** derives from the parent frame key, the normalized URL, and the occurrence index
-  among same-URL siblings. Top frame is `0`. **This carries the same brittleness Decision 2
-  describes** — an occurrence index is positional, so reordered `about:blank`, `srcdoc`, ad or
-  repeated-widget frames swap namespaces silently. There is no code to fix yet: the frame key is
-  produced by the injector, which is still unwritten, so the requirement is recorded against #9
-  rather than repaired here. Frames will need their own reconciliation and unresolved state.
+- **`sequence`** is a per-frame counter assigned in deterministic preorder, driven by a
+  `MutationObserver` on `document` from init time so nodes added during parsing are seen. The
+  snapshot returns **everything ever seen**, not everything currently attached: an element removed
+  before the snapshot keeps its last known fingerprint, because otherwise the archive's contents
+  depend on which side of a timer the snapshot landed on (`src/identity/inject.ts` — `seen`).
+- **`attachShadow` is patched, but not for the walk.** An open root is readable through
+  `el.shadowRoot`, so the walk enters it without any patch. What needs the patch is the
+  **observer**: a `MutationObserver` on `document` does not see inside a shadow root, so each new
+  open root has to be observed as it is created. Closed roots remain unreachable either way.
+- **`frame-key`** is `<parent key>/<owning element's stable evidence>` — tag plus its stable
+  attribute subset. Top frame is `0`; the fixture's iframe yields
+  `0/iframe|data-identity-case=iframe`.
+
+  An earlier draft used the occurrence index among same-URL siblings. That was the same
+  positional flaw as #20 one level up: reorder two `<iframe>` and their namespaces swap silently,
+  taking every id inside them with it. Deriving from the owning element's own evidence makes a
+  frame exactly as identifiable as that element is — and the frame key is part of the fingerprint
+  bucket key, so it has to be stable across runs, which a `wa:` id would not be.
+
+  **Limit:** `window.frameElement` is null for a cross-origin frame, so an out-of-process iframe
+  gets no key from this mechanism. It is a separate CDP target and needs its own handling.
 
 ### 2. A `wa:` id is a handle, not a key
 
@@ -120,6 +133,9 @@ does not invalidate archives for the other.
   - The fingerprint's attribute subset must exclude anything a framework rewrites on hydration
     (generated ids, scoped-style hashes, `style`). Getting that subset wrong turns a recognisable
     element into an unrecognisable one, and it is not yet pinned by a test.
-- **Follow-ups:** the injected module itself is not written (#9). Its exit criterion is 100%
-  reconciliation across capture→replay on the fixture, covering all five identity hard cases.
+- **Follow-ups:** the exit criterion is met against the fixture — 63 elements, 63 matched, 0
+  unresolved, 0 replay-only, all five hard cases matched. **Read that number for what it is:** it
+  compares two runs of the same page under the same conditions, which is the easiest form of the
+  problem. Real capture→replay differs in timing and serves its resources from a HAR, so this is
+  a floor, not a ceiling. The number to watch is how it moves once the replay stage exists.
   Until that lands, this ADR's Decision 1 is a design, not an observation.
