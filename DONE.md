@@ -6,6 +6,50 @@
 
 ---
 
+## P0 — motion fixture + CDP spike Q1–Q3 (2026-07-30, `/t4-dev-workflow` + `/tdd`, branch `feat/3-motion-site-fixture`, #3)
+
+**Goal:** produce the ground truth every later phase is judged against, and replace three
+load-bearing CDP assumptions with measurements.
+
+**Shipped:**
+- `test/fixtures/motion-site/` — a page declaring every motion mechanism the plan depends on,
+  plus the five identity hard cases. `fixture-manifest.json` is the **single** source of truth
+  for its contents; the copy of that list previously in `Obsidian-CloneSpace/` is now a pointer.
+- `test/fixtures/serve.ts` — two `Bun.serve` origins on OS-allocated ports, so the cross-origin
+  stylesheet is genuinely cross-origin rather than a same-origin file with a different path.
+  The sourcemapped module is built in memory, so nothing generated ever lands on disk.
+- `test/fixtures/motion-site.test.ts` — bidirectional conformance: the manifest cannot claim a
+  case the page doesn't mark, and the page cannot carry one the manifest doesn't declare.
+- `scripts/spike-cdp.ts`, `scripts/fixture-serve.ts` — the measurement harness, re-runnable.
+- `docs/reports/2026-07-30-cdp-spike.md` + `docs/reports/README.md`.
+
+**Answers (all measured against the fixture, not inferred):**
+- **Q1 YES** — one `getEventListeners({depth:-1, pierce:true})` call returned 4/4 declared click
+  listeners across light DOM, an open shadow root, and a same-origin iframe.
+- **Q2 1.381 MB at 6160 nodes**, 237 B/node marginal → ~0.7 MB at 3000. No allowlist in v1.
+- **Q3 YES** — `SecurityError` in-page, 593 bytes via CDP, containing the fixture marker.
+
+**Validation:** `sh scripts/verify.sh` → exit 0; oxlint clean, `tsc --noEmit` clean, `bun test`
+10 pass / 0 fail, `bun build` bundled 1 module. Spike re-run after the type fixes returned the
+same three verdicts.
+
+**A wrong answer caught before it was recorded:** Q3 first reported NO with
+`No style sheet with given id found`. That was a harness bug — `styleSheetId`s are invalidated
+by navigation and the harness reloaded after collecting them. Removing the reload changed the
+answer to YES. Written up in the report, because a measurement bug that produces a plausible
+negative is exactly the failure that would have shaped a v1 interface around a capability that
+in fact exists.
+
+**Unplanned finding → #5:** Playwright's client does not complete its handshake under Bun, on
+either transport, while raw CDP from Bun works in 99 ms and `chromium.launch` under Node works
+in 68 ms. The replay architecture rests on `routeFromHAR`, so the runtime split is now a
+developer decision. Worked around for this script only: the spike runs under Node with the
+fixture server as a Bun child process.
+
+**Next:** #5 (runtime decision — blocks phase 2), then P1 element identity, which is unblocked.
+
+---
+
 ## Repo bootstrap — T4 operating layer (2026-07-30, `/t4-project-bootstrap`, branch `main`)
 
 **Goal:** stand up `clone-space` as an agent-primary T4 repo before any pipeline code exists, so

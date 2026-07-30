@@ -21,8 +21,9 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 |---|---|---|---|
 | Repo operating layer (CLAUDE.md, hooks, guards, memory) | ✅ | — | Bootstrap commit; ruleset `20028550` active on `main` |
 | #2 CI required checks (`lint`/`typecheck`/`test`/`build`) | 🟡 | **GitHub Actions is locked on this account for billing** | Human task — resolve billing, then add the four to the ruleset. Until then a web merge is ungated |
-| #3 P0 — `test/fixtures/motion-site` + spike Q1–Q3 | 🟢 | — | Nothing blocks it |
-| P1 — element identity + archive schema | 🟡 | #3 spike results | Exit: 100% ID reconciliation capture→replay on the fixture |
+| #3 P0 — `test/fixtures/motion-site` + spike Q1–Q3 | ✅ | — | Fixture green (10/10), Q1–Q3 answered in `docs/reports/2026-07-30-cdp-spike.md` |
+| #5 Runtime split — Playwright's client does not work under Bun | 🟡 | **developer decision** | Measured three layers; the fault is Playwright's client, not Bun's networking. Recommendation: Node for browser-driving code, Bun for the rest |
+| P1 — element identity + archive schema | 🟢 | — | Unblocked: Q1–Q3 answered. Exit: 100% ID reconciliation capture→replay on the fixture |
 
 ## Track 2 — Pipeline
 
@@ -47,16 +48,24 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 
 ## Management Plan — phased execution order
 
-**Phase 0 — Unblock.** Build `test/fixtures/motion-site` and answer the three blocking spike
-questions. They are blocking because each one changes a v1 interface:
+**Phase 0 — Unblock. DONE** (#3). The fixture exists and the three blocking questions are
+answered, measured against it — full detail in `docs/reports/2026-07-30-cdp-spike.md`:
 
-1. Does `DOMDebugger.getEventListeners({ depth: -1, pierce: true })` really return the whole
-   subtree in one call?
-2. `DOMSnapshot.captureSnapshot` on ~3000 nodes × ~40 properties — how many MB actually?
-3. Does `CSS.getStyleSheetText` really bypass CORS for cross-origin stylesheets?
+1. `getEventListeners({ depth: -1, pierce: true })` — **YES**, one call reaches the light DOM,
+   an open shadow root and a same-origin iframe (4/4 declared click listeners). Budget one
+   session per out-of-process iframe.
+2. `DOMSnapshot.captureSnapshot` × 40 properties — **1.381 MB at 6160 nodes**, 237 B/node
+   marginal, so ~0.7 MB at 3000. **No property allowlist needed in v1.**
+3. `CSS.getStyleSheetText` — **YES**, it returns a cross-origin sheet the page cannot read
+   (`SecurityError` in-page, 593 bytes via CDP).
 
 Q4 (HAR concurrency), Q5 (sweep comparison) and Q6 (sourcemap census) are **not** blocking —
 Q4 and Q5 cannot be measured until their implementations exist, and Q6 gates nothing.
+
+**Phase 0.5 — an unplanned decision (#5).** Playwright's client does not complete its handshake
+under Bun, on either transport, while raw CDP from Bun works in 99 ms. Since the replay
+architecture rests on Playwright's `routeFromHAR`, the runtime split is now a decision that has
+to be made before phase 2 writes any browser-driving code.
 
 **Phase 1 — Contracts.** Element identity and the archive schema. This is the phase whose
 mistakes are most expensive: everything downstream references these IDs.

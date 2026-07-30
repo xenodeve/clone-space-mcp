@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "note": "The single source of truth for what this fixture declares. test/fixtures/motion-site.test.ts reads it, so a case removed from the page fails a test instead of silently shrinking the ground truth. Do not maintain a second copy of this list anywhere — link here instead.",
+
+  "declares": [
+    {
+      "id": "css-keyframes-pulse",
+      "mechanism": "css-keyframes",
+      "selector": "[data-fixture-id='css-keyframes-pulse']",
+      "expect": "An infinite CSS @keyframes animation named 'pulse' on this element, declared in style.css."
+    },
+    {
+      "id": "waapi-slide",
+      "mechanism": "waapi",
+      "selector": "[data-fixture-id='waapi-slide']",
+      "expect": "An Element.animate() animation started from motion.js, discoverable via document.getAnimations()."
+    },
+    {
+      "id": "gsap-hero",
+      "mechanism": "gsap-timeline",
+      "selector": "[data-fixture-id='gsap-hero']",
+      "expect": "A gsap.timeline() with three tweens, reachable from gsap.globalTimeline.getChildren()."
+    },
+    {
+      "id": "gsap-scroll-panel",
+      "mechanism": "gsap-scrolltrigger",
+      "selector": "[data-fixture-id='gsap-scroll-panel']",
+      "expect": "A ScrollTrigger-driven tween that only runs on scroll, reachable from ScrollTrigger.getAll()."
+    },
+    {
+      "id": "carousel-main",
+      "mechanism": "carousel",
+      "selector": "[data-fixture-id='carousel-main']",
+      "expect": "A hand-written carousel with next/prev controls and autoplay. This is the canonical 'did replay actually work' case."
+    },
+    {
+      "id": "lazy-hero-panel",
+      "mechanism": "lazy-asset",
+      "selector": "[data-fixture-id='lazy-hero-panel']",
+      "expect": "An IntersectionObserver-gated image below the fold. Its URL appears only in data-lazy-src, so a parse-time fetch cannot happen and the capture sweep has to trigger it."
+    },
+    {
+      "id": "cross-origin-theme",
+      "mechanism": "cross-origin-stylesheet",
+      "selector": "[data-fixture-id='cross-origin-theme']",
+      "expect": "A <link> to a stylesheet on a second origin with no CORS header, so document.styleSheets[n].cssRules throws. Spike Q3 asks whether CSS.getStyleSheetText reads it anyway."
+    },
+    {
+      "id": "dynamic-late-block",
+      "mechanism": "dynamic-insertion",
+      "selector": "[data-fixture-id='dynamic-late-block']",
+      "expect": "An empty host present in the served HTML; motion.js inserts real content into it after load."
+    },
+    {
+      "id": "sourcemap-module",
+      "mechanism": "sourcemap",
+      "selector": "[data-fixture-id='sourcemap-module']",
+      "expect": "A <script> for /build/instrumented.js — minified, with a published //# sourceMappingURL. computeHeroParallaxOffset survives only in the map."
+    }
+  ],
+
+  "identityCases": [
+    {
+      "kind": "duplicate-siblings",
+      "selector": "[data-identity-case='duplicate-siblings'] > li",
+      "expect": "Several identical siblings with no distinguishing attribute or text — a structural path cannot tell them apart."
+    },
+    {
+      "kind": "shadow-dom",
+      "selector": "[data-identity-case='shadow-dom']",
+      "expect": "An open shadow root containing an animated element, so identity injection has to patch attachShadow."
+    },
+    {
+      "kind": "iframe",
+      "selector": "[data-identity-case='iframe']",
+      "expect": "A same-origin iframe with its own animation, so frame keys have to be derived rather than assumed."
+    },
+    {
+      "kind": "delayed-insertion",
+      "selector": "[data-identity-case='delayed-insertion']",
+      "expect": "A host that receives a child well after load, so identity has to come from a MutationObserver rather than the initial preorder walk."
+    },
+    {
+      "kind": "delete-and-reinsert",
+      "selector": "[data-identity-case='delete-and-reinsert']",
+      "expect": "An element removed and re-added on a timer. Reconciliation must not silently rebind it to a new id, and must emit identity-unresolved when it cannot decide."
+    }
+  ],
+
+  "assets": {
+    "lazyImage": "/assets/lazy-panel.svg",
+    "crossOriginStylesheet": "/theme.css",
+    "sourcemap": "/build/instrumented.js.map",
+    "iframeDocument": "/frame.html"
+  }
+}

@@ -18,5 +18,8 @@
     "noUnusedParameters": true,
     "skipLibCheck": true
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "scripts"],
+  // The fixture's browser JS is plain .js served as a third-party-shaped subresource.
+  // It is deliberately not part of the build, so it is not part of the typecheck either.
+  "exclude": ["node_modules", "dist"]
 }

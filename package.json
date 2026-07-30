@@ -6,15 +6,19 @@
   "description": "Archive a live web page so it replays offline with real motion, and an AI agent can read how it is built.",
   "module": "src/index.ts",
   "scripts": {
-    "lint": "oxlint src test",
+    "lint": "oxlint src test scripts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "build": "bun build src/index.ts --outdir dist --target bun",
-    "verify": "bun run lint && bun run typecheck && bun test && bun run build"
+    "verify": "bun run lint && bun run typecheck && bun test && bun run build",
+    "fixture:serve": "bun run scripts/fixture-serve.ts",
+    "spike": "node scripts/spike-cdp.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "gsap": "^3.15.0",
     "oxlint": "latest",
+    "playwright": "^1.62.0",
     "typescript": "latest"
   }
 }

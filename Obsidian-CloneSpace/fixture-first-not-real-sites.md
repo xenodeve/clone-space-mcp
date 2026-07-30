@@ -13,9 +13,12 @@ contains, so a miss is visible. It is also the only way to test capture and repl
 duplicate siblings, shadow DOM, iframes, delayed insertion, and delete/reinsert on demand rather
 than by hunting for a site that happens to have them.
 
-`test/fixtures/motion-site` must contain: a carousel, a CSS animation, a WAAPI animation, a GSAP
-timeline, a ScrollTrigger section, a lazy-loaded asset, a cross-origin stylesheet, dynamic DOM
-insertion, and a valid sourcemap.
+**What the fixture contains is declared in `test/fixtures/motion-site/fixture-manifest.json`, and
+nowhere else.** That list used to be written out here as well, which is how it would have drifted:
+the manifest is the copy a test can read, so it is the only copy allowed to exist.
+`test/fixtures/motion-site.test.ts` compares it against the served page in both directions — the
+manifest cannot claim a case the page doesn't mark, and the page cannot carry one the manifest
+doesn't declare.
 
 **How to apply:** a real page is for confidence, never for a pass/fail gate. When an exit criterion
 cannot be checked against the fixture, the fixture is missing a case — add it, rather than
