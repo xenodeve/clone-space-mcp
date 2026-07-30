@@ -1,4 +1,4 @@
-# clone-space
+# Clone Space MCP
 
 Archive a live web page so it **replays offline with the motion intact**, and so an AI agent can
 read how the page is actually built.
