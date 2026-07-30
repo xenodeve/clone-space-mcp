@@ -1,4 +1,4 @@
-# clone-space — Team Memory (Map of Content)
+# clone-space-mcp — Team Memory (Map of Content)
 
 > Read this index first each session; open only the linked notes the current task touches.
 > One note = one memory. Unresolved `[[links]]` = memories worth writing.

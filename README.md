@@ -4,7 +4,7 @@ Archive a live web page so it **replays offline with the motion intact**, and so
 read how the page is actually built.
 
 Saving a page from a browser gives you a dead skeleton: the markup survives, the behaviour does
-not. `clone-space` targets the other end — a carousel that still slides, a GSAP timeline that
+not. `clone-space-mcp` targets the other end — a carousel that still slides, a GSAP timeline that
 still runs, a ScrollTrigger that still fires, with the network unplugged.
 
 ## How it works

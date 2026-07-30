@@ -3,12 +3,10 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "clone-space",
-      "dependencies": {
-        "gsap": "^3.15.0",
-      },
+      "name": "clone-space-mcp",
       "devDependencies": {
         "@types/bun": "latest",
+        "gsap": "^3.15.0",
         "oxlint": "latest",
         "playwright": "^1.62.0",
         "typescript": "latest",

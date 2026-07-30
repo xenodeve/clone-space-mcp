@@ -6,6 +6,36 @@
 
 ---
 
+## Renamed to clone-space-mcp (2026-07-31, branch `chore/16-rename-to-clone-space-mcp`, #16)
+
+**Goal:** follow the repository rename through the project, so no doc states a path that no longer
+resolves.
+
+**How it surfaced:** a push reported `This repository moved` — the rename had happened on GitHub
+while work was in flight. Pushes still worked through the redirect, which is exactly why it could
+have gone unnoticed; a redirect stops the moment anything else claims the old name.
+
+**Shipped:** `package.json` + `bun.lock` name, `CLAUDE.md`, `README.md`, `UBIQUITOUS_LANGUAGE.md`,
+`src/index.ts`, `.github/workflows/t4-verify.yml`, the fixture's title and heading, the GitHub path
+in `docs/agents/{issue-tracker,workflow}.md` (both language mirrors), and
+`Obsidian-CloneSpace/` → `Obsidian-CloneSpaceMcp/` with every referencing path updated.
+
+**Left alone deliberately:** the narrative in the bootstrap entry below still says `clone-space`.
+It is a dated record of what the repo was called then; rewriting a ship log to match the present
+makes it a worse record. Only the *paths* in it were updated, because a path that resolves to
+nothing helps nobody.
+
+**Validation:** `sh scripts/verify.sh` exit 0 · `bun test` 22 pass / 0 fail ·
+`rg 'xenodeve/clone-space[^-]'` and `rg 'Obsidian-CloneSpace[^M]'` both return nothing.
+
+**One acceptance criterion was written on a wrong assumption.** #16 said `bun.lock` would be
+"regenerated, not hand-edited" — but `bun install` does not rewrite the root `name` when no
+dependency changed, and deleting the lockfile to force it would have re-resolved three
+`"latest"` dependencies. The field was edited by hand and `bun install --frozen-lockfile`
+re-run to prove the lockfile is still accepted.
+
+---
+
 ## P0 — motion fixture + CDP spike Q1–Q3 (2026-07-30, `/t4-dev-workflow` + `/tdd`, branch `feat/3-motion-site-fixture`, #3)
 
 **Goal:** produce the ground truth every later phase is judged against, and replace three
@@ -14,7 +44,7 @@ load-bearing CDP assumptions with measurements.
 **Shipped:**
 - `test/fixtures/motion-site/` — a page declaring every motion mechanism the plan depends on,
   plus the five identity hard cases. `fixture-manifest.json` is the **single** source of truth
-  for its contents; the copy of that list previously in `Obsidian-CloneSpace/` is now a pointer.
+  for its contents; the copy of that list previously in `Obsidian-CloneSpaceMcp/` is now a pointer.
 - `test/fixtures/serve.ts` — two `Bun.serve` origins on OS-allocated ports, so the cross-origin
   stylesheet is genuinely cross-origin rather than a same-origin file with a different path.
   The sourcemapped module is built in memory, so nothing generated ever lands on disk.
@@ -63,7 +93,7 @@ the first feature already lands on the rails rather than being retrofitted onto 
 - `docs/agents/{workflow,issue-tracker,triage-labels,domain}.md` — bilingual, per the T4 governed-doc convention.
 - `docs/adr/README.md` — index plus the five hard-to-reverse decisions already settled in planning,
   each deferred to the phase that implements it rather than written speculatively.
-- `docs/OPEN-WORK-LEDGER.md`, `DONE.md`, `Obsidian-CloneSpace/` — the memory layer.
+- `docs/OPEN-WORK-LEDGER.md`, `DONE.md`, `Obsidian-CloneSpaceMcp/` — the memory layer.
 - `.claude/` hooks + `t4.json` marker · `.githooks/` pre-push guards · `.github/workflows/t4-verify.yml`
   + `.github/dependabot.yml`.
 

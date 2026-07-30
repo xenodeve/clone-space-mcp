@@ -1,4 +1,4 @@
-# clone-space — Agent Operating Manual
+# clone-space-mcp — Agent Operating Manual
 
 > **This repo is agent-primary.** The coding agent is the main developer; these docs are its
 > operating manual, not team paperwork. Read this file, then follow the session-start protocol below.
@@ -36,7 +36,7 @@ docs/agents/    how agents work here — workflow, tracker, labels, domain
 docs/adr/       architecture decision records
 docs/OPEN-WORK-LEDGER.md   every open item, tracked AND untracked — read at session start
 DONE.md         ship log, newest on top
-Obsidian-CloneSpace/       team memory vault; Home.md is the index
+Obsidian-CloneSpaceMcp/       team memory vault; Home.md is the index
 .claude/        T4 hooks + the t4.json marker
 .githooks/      agent-agnostic pre-push guards (opt in: git config core.hooksPath .githooks)
 ```
@@ -68,7 +68,7 @@ That is the sanctioned way to cross the boundary; capture and replay will use th
 
 ## Session-start read protocol
 
-1. `Obsidian-CloneSpace/Home.md` — skim the index; open only the notes this task touches.
+1. `Obsidian-CloneSpaceMcp/Home.md` — skim the index; open only the notes this task touches.
 2. `docs/OPEN-WORK-LEDGER.md` — current open work. 🔴 UNTRACKED rows are the highest miss-risk.
 3. The GitHub issue you are picking up — `gh issue view <n> --comments`.
 4. `DONE.md` / `docs/adr/` — only if the task needs history or a prior decision.

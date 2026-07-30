@@ -1,7 +1,7 @@
 <!-- lang:en -->
 # Ubiquitous Language
 
-Canonical term glossary for clone-space. When a term appears in **bold**, use it exactly as
+Canonical term glossary for clone-space-mcp. When a term appears in **bold**, use it exactly as
 written — in code identifiers, PR descriptions, issue titles, and conversation. A concept
 missing here is a signal: either you are inventing language the project does not use, or there
 is a real gap worth modelling.
@@ -104,7 +104,7 @@ The subdomain where a wrong word produces wrong code.
 <!-- lang:th -->
 # Ubiquitous Language — คำศัพท์มาตรฐาน
 
-อภิธานศัพท์หลักของ clone-space เมื่อคำใดปรากฏเป็น **ตัวหนา** ให้ใช้ตรงตามนั้นเป๊ะ — ทั้งใน identifier ของโค้ด
+อภิธานศัพท์หลักของ clone-space-mcp เมื่อคำใดปรากฏเป็น **ตัวหนา** ให้ใช้ตรงตามนั้นเป๊ะ — ทั้งใน identifier ของโค้ด
 คำอธิบาย PR หัวข้อ issue และบทสนทนา แนวคิดที่หายไปจากที่นี่คือสัญญาณ: ไม่คุณกำลังประดิษฐ์คำที่โปรเจกต์ไม่ได้ใช้
 ก็มีช่องว่างจริงที่ควรเอามาสร้างแบบจำลอง
 
