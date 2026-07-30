@@ -29,6 +29,7 @@ is the whole point. See `docs/adr/`.
 ## Repo layout
 
 ```
+UBIQUITOUS_LANGUAGE.md     canonical term glossary — it wins on any naming conflict
 src/            pipeline stages: capture · replay · extract · serve (see src/index.ts)
 test/           bun test suite; test/fixtures/ holds the controlled fixture site
 docs/agents/    how agents work here — workflow, tracker, labels, domain
@@ -109,6 +110,11 @@ Everything else — TDD discipline, `/simplify`, review depth — is agent disci
   "สรุป" does not mean "shorter". Code identifiers, filenames, and log excerpts stay English.
 - **Governed agent docs** (`docs/agents/*`, and `CONTEXT.md` / `PRODUCT.md` / `DESIGN.md` once they
   exist) use `<!-- lang:en -->` / `<!-- lang:th -->` markers with a full mirror.
+- **Domain terms come from `UBIQUITOUS_LANGUAGE.md`**, which wins on any conflict. Three words are
+  ambiguous in this project and must never appear unqualified: **snapshot** (CDP call vs identity
+  snapshot vs doc status), **manifest** (fixture vs tool), and **id** — a `wa:` id is a **handle**
+  within one run, never a key across runs. Reading it as a key is how you write a ตัวจับคู่ that
+  compares strings and reports total failure on a good archive.
 - **Never invent a Thai word for a term of art.** This is the rule agents get wrong: "identifiers
   stay English" is not enough, because a *concept* like `pure function` gets calqued into
   something no one says and the sentence stops meaning anything. The glossary below is the
