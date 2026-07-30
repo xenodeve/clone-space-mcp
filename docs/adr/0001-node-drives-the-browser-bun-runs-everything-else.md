@@ -10,7 +10,7 @@ The repo was set up Bun-only, deliberately, at bootstrap. The pipeline's archite
 Playwright — specifically `recordHar({ mode: 'full', content: 'attach' })` at capture and
 `routeFromHAR(har, { notFound: 'abort' })` at replay, which is what lets replay navigate the
 **original URL** so the page's real JavaScript re-executes (see
-`Obsidian-CloneSpace/replay-reexecutes-original-js.md`).
+`Obsidian-CloneSpaceMcp/replay-reexecutes-original-js.md`).
 
 While building the spike harness for #3, Playwright turned out not to work under Bun. Measured
 on this machine — same script, same Playwright `1.62.0`, same Chromium `151.0.7922.34`:

@@ -1,7 +1,7 @@
 <!-- lang:en -->
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo live as GitHub issues on `xenodeve/clone-space`. Use the `gh` CLI
+Issues and PRDs for this repo live as GitHub issues on `xenodeve/clone-space-mcp`. Use the `gh` CLI
 for all operations.
 
 > **`gh` path/auth:** `gh` is installed at `C:\Program Files\GitHub CLI\gh.exe` but is **not** on
@@ -47,7 +47,7 @@ in a commit message on the branch, or in the PR body, also counts.
 <!-- lang:th -->
 # Issue tracker: GitHub — ภาษาไทย
 
-Issue และ PRD ของ repo นี้อยู่ในรูป GitHub issue บน `xenodeve/clone-space` ใช้ `gh` CLI สำหรับทุกการทำงาน
+Issue และ PRD ของ repo นี้อยู่ในรูป GitHub issue บน `xenodeve/clone-space-mcp` ใช้ `gh` CLI สำหรับทุกการทำงาน
 
 > **path/auth ของ `gh`:** `gh` ติดตั้งอยู่ที่ `C:\Program Files\GitHub CLI\gh.exe` แต่ **ไม่ได้** อยู่ใน
 > process PATH ของเครื่องนี้ — ต้องเรียกด้วย absolute path ล็อกอินเป็น `xenodeve` โดย token มี scope

@@ -11,7 +11,7 @@ When planning or implementing a feature, follow this order:
 2. **`/grill-with-docs`** — challenge the plan against existing ADRs in `docs/adr/`
 3. **Survey the change sites** — enumerate every place the change touches, before the plan exists
 4. **`/to-prd`** — create a PRD from the grilled plan (one PRD per epic), carrying the survey as its change inventory
-5. **`/to-issues`** — break the PRD into GitHub issues on `xenodeve/clone-space` with triage labels (one issue per deliverable)
+5. **`/to-issues`** — break the PRD into GitHub issues on `xenodeve/clone-space-mcp` with triage labels (one issue per deliverable)
 6. **`/tdd`** — implement test-first, then make the tests pass
 
 Hard ordering: **PRD → issues → PR**. Never open a PR without a referenced issue.
@@ -60,7 +60,7 @@ MCP server never hands raw captured script to a caller as if it were repo code.
 2. **`/grill-with-docs`** — ท้าทายแผนกับ ADR ที่มีอยู่แล้วใน `docs/adr/`
 3. **สำรวจจุดที่ต้องแก้ทั้งหมด** — ไล่ให้ครบทุกที่ที่การเปลี่ยนแปลงนี้แตะ ก่อนที่แผนจะถูกเขียน
 4. **`/to-prd`** — แปลงแผนที่ผ่านการซักค้านเป็น PRD (หนึ่ง PRD ต่อหนึ่ง epic) โดยยกผลสำรวจมาเป็น change inventory ของมัน
-5. **`/to-issues`** — แตก PRD ออกเป็น GitHub issue บน `xenodeve/clone-space` พร้อม triage label (หนึ่ง issue ต่อหนึ่ง deliverable)
+5. **`/to-issues`** — แตก PRD ออกเป็น GitHub issue บน `xenodeve/clone-space-mcp` พร้อม triage label (หนึ่ง issue ต่อหนึ่ง deliverable)
 6. **`/tdd`** — ลงมือแบบ test-first แล้วค่อยทำให้ test ผ่าน
 
 ลำดับที่ห้ามข้าม: **PRD → issues → PR** ห้ามเปิด PR โดยไม่มี issue อ้างอิงเด็ดขาด
