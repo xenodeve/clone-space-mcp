@@ -19,65 +19,7 @@
  */
 
 import { chromium, type CDPSession, type Page } from "playwright";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createInterface } from "node:readline";
-
-const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-interface FixtureServers {
-  primary: { url: string };
-  crossOrigin: { url: string };
-}
-
-/** Same resolution order as scripts/verify.sh: PATH first, then bun's default install. */
-function resolveBun(): string {
-  for (const candidate of [
-    join(homedir(), ".bun/bin/bun.exe"),
-    join(homedir(), ".bun/bin/bun"),
-  ]) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return "bun";
-}
-
-/** Starts the fixture as a Bun child process and waits for it to announce its origins. */
-async function startFixtureServers(): Promise<FixtureServers & { stop(): Promise<void> }> {
-  // stderr is inherited so a fixture crash is visible in this process's output rather
-  // than swallowed; that makes stdio typed as [Writable, Readable, null].
-  const child = spawn(resolveBun(), ["run", join(REPO, "scripts/fixture-serve.ts")], {
-    cwd: REPO,
-    stdio: ["pipe", "pipe", "inherit"],
-  });
-
-  const origins = await new Promise<FixtureServers>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("fixture server did not announce its origins within 30s")),
-      30_000,
-    );
-    createInterface({ input: child.stdout }).once("line", (line) => {
-      clearTimeout(timer);
-      try {
-        resolve(JSON.parse(line) as FixtureServers);
-      } catch {
-        reject(new Error(`fixture server printed something that is not JSON: ${line}`));
-      }
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => reject(new Error(`fixture server exited early (code ${code})`)));
-  });
-
-  return {
-    ...origins,
-    async stop() {
-      child.stdin.end();
-      child.kill();
-    },
-  };
-}
+import { startFixtureServers, type FixtureServers } from "./fixture-client.ts";
 
 /** The computed properties a v1 snapshot would plausibly want. Q2 prices this list. */
 const COMPUTED_STYLES = [

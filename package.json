@@ -9,8 +9,9 @@
     "lint": "oxlint src test scripts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "test:browser": "node --test \"test/browser/**/*.browser.ts\"",
     "build": "bun build src/index.ts --outdir dist --target bun",
-    "verify": "bun run lint && bun run typecheck && bun test && bun run build",
+    "verify": "bun run lint && bun run typecheck && bun test && bun run test:browser && bun run build",
     "fixture:serve": "bun run scripts/fixture-serve.ts",
     "spike": "node scripts/spike-cdp.ts"
   },

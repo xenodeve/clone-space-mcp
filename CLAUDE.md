@@ -135,6 +135,49 @@ Everything else — TDD discipline, `/simplify`, review depth — is agent disci
 - **Chat, reports, and status updates are Thai** (the developer's language). Code, commit
   messages, and inline comments stay English.
 
+## Mechanisms over judgment
+
+**An agent's diagnosis is not reliable enough to be the safety net — including its diagnosis of
+which safety net works.** This repo leans on things the machine decides: types, tests, mutation
+checks, the ground-truth fixture, CI gates. Prefer those over anything that depends on an agent
+reading code carefully.
+
+Three consequences that are not obvious:
+
+- **More tests written from the same design add no safety.** #20 was live while twelve tests
+  passed, because every one of them was written from the design that contained the flaw. It was
+  found by an agent that ran an experiment nobody had thought to run.
+- **A safety mechanism is unproven until it is run against a bug that actually happened.**
+  "This would have caught X" is a hypothesis. Reverting X, running the mechanism, and restoring X
+  is the evidence. A partition invariant was predicted to catch #20 and measurably does not
+  (0/400 either way); a metamorphic check does (32/400 → 135/400). The prediction was wrong and
+  only measurement showed it.
+- **Say whether a check is a pass/fail assertion or a baseline metric.** That metamorphic check is
+  a metric — correct code still loses matches in 32/400 cases, legitimately. Reporting a metric as
+  an assertion manufactures false confidence in both directions.
+
+## A red check is fixed, not merged past
+
+If a PR's checks are not green, **fix them**. Merging anyway requires a **checkable fact** about
+why the check cannot pass — one a reviewer can verify without redoing your reasoning. "It's
+unrelated", "it's flaky", "it's slow", and "I'm confident" are not facts.
+
+**There is exactly one standing exemption today, and it has an expiry.**
+
+GitHub Actions is locked account-wide for billing (#2). Verified by reading the job annotation
+rather than inferred: `The job was not started because your account is locked due to a billing
+issue.` Every job of every run fails in seconds without executing a step. Conditions on using it:
+
+- It is **restated in the body of every PR that merges under it**, so the exemption is visible
+  rather than assumed.
+- It **expires the moment a workflow run actually completes.** At that point
+  `.claude/t4.json` gets `"requireGreenCI": true` and this stops being a rule anyone has to
+  remember — `t4-gate` denies the merge itself.
+
+**Why the expiry is the important half:** a perpetually-red gate that everyone merges past is
+worse than no gate, because it teaches that red means nothing. This exemption is only tolerable
+because it names one externally-caused, verifiable condition and says when it ends.
+
 ## No verdict before evidence
 
 *Fixed · works · passes · safe · done · the root cause is* are claims about the world. Each needs
