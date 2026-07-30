@@ -40,18 +40,27 @@ Obsidian-CloneSpace/       team memory vault; Home.md is the index
 .githooks/      agent-agnostic pre-push guards (opt in: git config core.hooksPath .githooks)
 ```
 
-## Commands
+## Commands and the runtime split
 
-Bun is the package manager **and** the runtime here.
+**Node runs anything that drives a browser. Bun runs everything else.** This is not a preference
+— Playwright's client does not complete its handshake under Bun, measured on both transports
+(ADR [0001](docs/adr/0001-node-drives-the-browser-bun-runs-everything-else.md)). Don't "fix" a
+browser script by moving it to Bun.
 
-| Task | Command |
-|---|---|
-| install | `bun install` |
-| lint | `bun run lint` |
-| typecheck | `bun run typecheck` |
-| unit tests | `bun test` |
-| build | `bun run build` |
-| **ship gate** | `bun run verify` (lint → typecheck → test → build) |
+| Task | Command | Runtime |
+|---|---|---|
+| install | `bun install` | Bun |
+| lint | `bun run lint` | Bun |
+| typecheck | `bun run typecheck` | Bun |
+| unit tests | `bun test` | Bun |
+| build | `bun run build` | Bun |
+| **ship gate** | `bun run verify` (lint → typecheck → test → build) | Bun |
+| fixture server | `bun run fixture:serve` | Bun (`Bun.serve` + `Bun.build`) |
+| CDP spike | `bun run spike` | **Node** |
+
+A Node process that needs the fixture starts it as a **Bun child process** and reads its origins
+from stdout — `scripts/fixture-serve.ts` plus `startFixtureServers` in `scripts/spike-cdp.ts`.
+That is the sanctioned way to cross the boundary; capture and replay will use the same shape.
 
 `bun` and `gh` are installed but **not on this machine's process PATH**. Use the absolute paths:
 `%USERPROFILE%\.bun\bin\bun.exe` and `C:\Program Files\GitHub CLI\gh.exe`.

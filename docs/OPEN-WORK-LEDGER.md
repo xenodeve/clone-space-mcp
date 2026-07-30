@@ -22,8 +22,8 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | Repo operating layer (CLAUDE.md, hooks, guards, memory) | ✅ | — | Bootstrap commit; ruleset `20028550` active on `main` |
 | #2 CI required checks (`lint`/`typecheck`/`test`/`build`) | 🟡 | **GitHub Actions is locked on this account for billing** | Human task — resolve billing, then add the four to the ruleset. Until then a web merge is ungated |
 | #3 P0 — `test/fixtures/motion-site` + spike Q1–Q3 | ✅ | — | Fixture green (10/10), Q1–Q3 answered in `docs/reports/2026-07-30-cdp-spike.md` |
-| #5 Runtime split — Playwright's client does not work under Bun | 🟡 | **developer decision** | Measured three layers; the fault is Playwright's client, not Bun's networking. Recommendation: Node for browser-driving code, Bun for the rest |
-| P1 — element identity + archive schema | 🟢 | — | Unblocked: Q1–Q3 answered. Exit: 100% ID reconciliation capture→replay on the fixture |
+| #5 Runtime split — Playwright's client does not work under Bun | ✅ | — | Decided: Node drives the browser, Bun runs the rest. ADR [0001](adr/0001-node-drives-the-browser-bun-runs-everything-else.md) |
+| P1 — element identity + archive schema | 🟢 | — | Unblocked: Q1–Q3 answered and the runtime is settled. Exit: 100% ID reconciliation capture→replay on the fixture |
 
 ## Track 2 — Pipeline
 
@@ -62,10 +62,11 @@ answered, measured against it — full detail in `docs/reports/2026-07-30-cdp-sp
 Q4 (HAR concurrency), Q5 (sweep comparison) and Q6 (sourcemap census) are **not** blocking —
 Q4 and Q5 cannot be measured until their implementations exist, and Q6 gates nothing.
 
-**Phase 0.5 — an unplanned decision (#5).** Playwright's client does not complete its handshake
-under Bun, on either transport, while raw CDP from Bun works in 99 ms. Since the replay
-architecture rests on Playwright's `routeFromHAR`, the runtime split is now a decision that has
-to be made before phase 2 writes any browser-driving code.
+**Phase 0.5 — an unplanned decision (#5). DONE.** Playwright's client does not complete its
+handshake under Bun, on either transport, while raw CDP from Bun works in 99 ms. Since the replay
+architecture rests on `routeFromHAR`, the runtime had to move: **Node drives the browser, Bun runs
+everything else** (ADR [0001](adr/0001-node-drives-the-browser-bun-runs-everything-else.md)).
+Crossing the boundary means a Bun child process, not an import.
 
 **Phase 1 — Contracts.** Element identity and the archive schema. This is the phase whose
 mistakes are most expensive: everything downstream references these IDs.

@@ -28,11 +28,15 @@ repo's GitHub issues.
 
 ## Development
 
-Bun is the package manager and the runtime.
+Bun is the package manager and the runtime — except for code that drives a browser, which runs
+under Node. Playwright's client does not complete its handshake under Bun; see
+[ADR 0001](docs/adr/0001-node-drives-the-browser-bun-runs-everything-else.md) for the
+measurements and what was rejected.
 
 ```bash
 bun install
-bun run verify      # lint → typecheck → test → build — the ship gate
+bun run verify        # lint → typecheck → test → build — the ship gate (Bun)
+bun run spike         # the CDP measurement harness (Node, with the fixture served by Bun)
 ```
 
 Agents: start with [`CLAUDE.md`](CLAUDE.md).

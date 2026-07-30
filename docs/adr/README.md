@@ -7,7 +7,7 @@ re-deriving it. A decision that overturns an earlier one marks the old ADR **Sup
 
 | # | Title | Area | Status |
 |---|-------|------|--------|
-| — | _none yet_ | — | — |
+| [0001](0001-node-drives-the-browser-bun-runs-everything-else.md) | Node drives the browser; Bun runs everything else | Infra | Accepted |
 
 ## Decisions that will need an ADR before the code lands
 
