@@ -99,61 +99,68 @@ interface Answer {
   notCovered: string[];
 }
 
-/** Q1 — does one getEventListeners call really reach the whole subtree? */
+/**
+ * Q1 — does one getEventListeners call really reach the whole subtree?
+ *
+ * Measured as a **differential**: the same call with `pierce: false` and with
+ * `pierce: true`. Counting only the pierced call would answer "are there at least 4
+ * click listeners", which the light DOM alone could satisfy — a pierce that silently
+ * did nothing would still read as success. The delta is what actually attributes the
+ * extra listeners to piercing.
+ */
 async function q1(cdp: CDPSession): Promise<Answer> {
   const { result } = await cdp.send("Runtime.evaluate", {
     expression: "document.documentElement",
   });
   if (!result.objectId) throw new Error("Q1 harness: no objectId for document.documentElement");
 
-  const { listeners } = await cdp.send("DOMDebugger.getEventListeners", {
-    objectId: result.objectId,
-    depth: -1,
-    pierce: true,
-  });
-
-  const byUrl: Record<string, number> = {};
-  for (const l of listeners) {
-    const key = l.scriptId ? (l.handler?.description ? "inline-or-module" : "unknown") : "unknown";
-    byUrl[key] = (byUrl[key] ?? 0) + 1;
-  }
+  const count = async (pierce: boolean) => {
+    const { listeners } = await cdp.send("DOMDebugger.getEventListeners", {
+      objectId: result.objectId!,
+      depth: -1,
+      pierce,
+    });
+    const byType: Record<string, number> = {};
+    for (const l of listeners) byType[l.type] = (byType[l.type] ?? 0) + 1;
+    return { total: listeners.length, byType, click: byType["click"] ?? 0 };
+  };
 
   // The fixture's ground truth, by file:
-  //   motion.js       — 2 carousel buttons (click), 1 shadow-root .mark (click)
-  //   frame.html      — 1 .dot (click), inside the iframe document
-  //   instrumented.ts — 1 window scroll  (bound on window, not in this subtree)
-  //   GSAP/ScrollTrigger — its own scroll/resize/visibilitychange handlers
-  const types = listeners.map((l) => l.type).sort();
-  const counts: Record<string, number> = {};
-  for (const t of types) counts[t] = (counts[t] ?? 0) + 1;
+  //   motion.js       — 2 carousel buttons (click) in the light DOM
+  //                   — 1 shadow-root .mark (click), reachable only by piercing
+  //   frame.html      — 1 .dot (click) inside the iframe document
+  //   instrumented.ts — 1 window scroll (bound on window, outside this subtree)
+  //   GSAP/ScrollTrigger — its own scroll/resize handlers
+  const GROUND_TRUTH = { lightDom: 2, behindPierce: 2, total: 4 };
 
-  const clickCount = counts["click"] ?? 0;
+  const flat = await count(false);
+  const pierced = await count(true);
+  const delta = pierced.click - flat.click;
+
+  const verdict =
+    pierced.click === GROUND_TRUTH.total && delta === GROUND_TRUTH.behindPierce
+      ? "YES — one call reached all 4 declared click listeners, and the 2 extra over pierce:false confirm the shadow root and the iframe were genuinely pierced."
+      : pierced.click === GROUND_TRUTH.total && delta === 0
+        ? "INCONCLUSIVE — all 4 were returned without piercing, so this fixture does not actually test pierce. The shadow/iframe listeners are not where they are assumed to be."
+        : delta > 0
+          ? `PARTIAL — piercing added ${delta} listener(s), but ${pierced.click}/${GROUND_TRUTH.total} declared click listeners were returned. Something is out of reach.`
+          : `NO — piercing added nothing (${pierced.click}/${GROUND_TRUTH.total} returned).`;
 
   return {
     question:
       "Does DOMDebugger.getEventListeners({depth:-1, pierce:true}) return the whole subtree in one call?",
-    verdict:
-      clickCount >= 4
-        ? "YES — one call returned listeners from the light DOM, the shadow root and the iframe document."
-        : clickCount >= 3
-          ? "PARTIAL — the shadow root is reached, the iframe document is not. Frames need their own call."
-          : "NO — the call did not reach beyond the light DOM.",
+    verdict,
     measured: {
-      totalListeners: listeners.length,
-      byType: counts,
-      clickListeners: clickCount,
-      groundTruthClickListeners: {
-        lightDom: 2,
-        shadowRoot: 1,
-        iframeDocument: 1,
-        total: 4,
-      },
-      handlerSample: byUrl,
+      withoutPierce: flat,
+      withPierce: pierced,
+      clickListenersGainedByPiercing: delta,
+      groundTruthClickListeners: GROUND_TRUTH,
     },
     notCovered: [
       "Closed shadow roots — the fixture only has an open one.",
-      "Out-of-process iframes (cross-origin). This fixture's iframe is same-origin, so a same-target result here does not predict an OOPIF.",
+      "Out-of-process iframes (cross-origin). This fixture's iframe is same-origin, so a same-target result here does not predict an OOPIF; that is a separate CDP target needing its own session.",
       "Listeners added after this call; the snapshot is a point in time.",
+      "Which listener came from which source — the delta attributes them as a group, not individually.",
     ],
   };
 }
