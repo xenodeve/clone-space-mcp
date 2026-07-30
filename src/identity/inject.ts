@@ -99,6 +99,21 @@ export interface InjectablePage {
   evaluate<T>(expression: string): Promise<T>;
 }
 
+export interface CaptureOptions {
+  /**
+   * How long to wait after `load` before taking the snapshot.
+   *
+   * `load` fires before deferred work runs, so a snapshot taken there sees only the served
+   * HTML — the dynamic half of the page is simply absent. That is not a stable snapshot, it
+   * is an early one, and the difference matters: a determinism test can pass on it while
+   * observing nothing that could have varied.
+   *
+   * This is the crude version of the snapshot epoch the archive contracts require
+   * (`docs/superpowers/plans/…#6.3`); a fixed delay is not a settle signal.
+   */
+  settleMs?: number;
+}
+
 /**
  * Injects, navigates, and reads the snapshot back — the shape capture and replay will both
  * call. Injection happens before navigation because `addInitScript` only applies to
@@ -107,9 +122,14 @@ export interface InjectablePage {
 export async function captureIdentity(
   page: InjectablePage,
   url: string,
+  options: CaptureOptions = {},
 ): Promise<IdentitySnapshot> {
   await page.addInitScript(IDENTITY_INIT_SCRIPT);
   await page.goto(url, { waitUntil: "load" });
+
+  if (options.settleMs) {
+    await page.evaluate<void>(`new Promise((r) => setTimeout(r, ${options.settleMs}))`);
+  }
 
   const { elements } = await page.evaluate<{ elements: ElementFingerprint[] }>(
     `window.${IDENTITY_GLOBAL}.snapshot()`,
