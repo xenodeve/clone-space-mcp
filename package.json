@@ -1,0 +1,20 @@
+{
+  "name": "clone-space",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Archive a live web page so it replays offline with real motion, and an AI agent can read how it is built.",
+  "module": "src/index.ts",
+  "scripts": {
+    "lint": "oxlint src test",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "verify": "bun run lint && bun run typecheck && bun test && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "oxlint": "latest",
+    "typescript": "latest"
+  }
+}

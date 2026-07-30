@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# capture output — archives are large binary artifacts, never committed
+archives/
+playwright-report/
+test-results/
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+Thumbs.db
