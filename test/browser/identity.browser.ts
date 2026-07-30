@@ -33,7 +33,13 @@ test("an element inserted after load still gets an id", async () => {
   // partly from never observing the dynamic half of the page.
   const snapshot = await captureIdentity(page, servers.primary.url, { settleMs: 1500 });
 
-  const late = snapshot.elements.find((e) => e.tag === "p" && e.textHash?.includes("600ms"));
+  // Found through the host's declared id rather than the inserted element's text: the text
+  // is hashed, and an assertion on page content would be reading an implementation detail
+  // of the fingerprint rather than the behaviour under test.
+  const host = snapshot.elements.find((e) => e.attrs["data-fixture-id"] === "dynamic-late-block");
+  assert.ok(host, "the dynamic-late-block host is missing");
+
+  const late = snapshot.elements.find((e) => e.parentId === host.id && e.tag === "p");
 
   assert.ok(late, "the element inserted 600ms after load is missing from the snapshot");
   assert.match(late.id, /^wa:0:\d+$/);

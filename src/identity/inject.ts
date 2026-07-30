@@ -23,8 +23,32 @@ export const IDENTITY_GLOBAL = "__waIdentity";
  */
 export const IDENTITY_INIT_SCRIPT = `
 (() => {
+  // Injecting twice must be harmless. Playwright's addInitScript ACCUMULATES — measured:
+  // four registrations make the script run four times on the next navigation — so a caller
+  // that captures twice from one page would otherwise install a second MutationObserver and
+  // wrap attachShadow a second time, without bound. The output stayed correct, which is why
+  // it would not have been noticed.
+  if (window.${IDENTITY_GLOBAL}) return;
+
   let sequence = 0;
   const ids = new WeakMap();
+
+  /**
+   * A stable 32-bit hash of an element's direct text.
+   *
+   * The raw text is deliberately NOT kept. It made the field name a lie, and it put page
+   * content — including the full source of any <style> element — into identity.json, an
+   * artifact that is supposed to carry identity and nothing else. That collides head-on
+   * with the redaction contract the archive owes.
+   */
+  function hashText(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
 
   /** Attributes stable across runs. Anything a framework rewrites on hydration stays out. */
   const STABLE_ATTRS = ["data-fixture-id", "data-identity-case", "data-testid", "role", "name", "type", "part"];
@@ -121,7 +145,7 @@ export const IDENTITY_INIT_SCRIPT = `
       tag: el.tagName.toLowerCase(),
       attrs,
       siblingOrdinal: siblingOrdinal(el),
-      textHash: text === "" ? null : text,
+      textHash: text === "" ? null : hashText(text),
       parentId: entry.parentId,
     };
   }
