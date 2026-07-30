@@ -23,15 +23,17 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | #2 CI required checks (`lint`/`typecheck`/`test`/`build`) | 🟡 | **GitHub Actions is locked on this account for billing** | Human task — resolve billing, then add the four to the ruleset. Until then a web merge is ungated |
 | #3 P0 — `test/fixtures/motion-site` + spike Q1–Q3 | ✅ | — | Fixture green (10/10), Q1–Q3 answered in `docs/reports/2026-07-30-cdp-spike.md` |
 | #5 Runtime split — Playwright's client does not work under Bun | ✅ | — | Decided: Node drives the browser, Bun runs the rest. ADR [0001](adr/0001-node-drives-the-browser-bun-runs-everything-else.md) |
-| #9 P1 — element identity | 🔄 | — | Pure half merged (PR #10). Injector still to write |
-| #20 Fingerprint brittleness — one inserted sibling makes a uniquely-attributed element `missing` | 🟢 | — | **Defect in merged code**, reproduced. Blocks P1's exit criterion; frame key has the same flaw |
-| #21 Plan hardening — archive contracts from the review round | 🔄 | — | Plan amended; the contracts it names must land in P2's capture output |
+| #9 P1 — element identity | ✅ | — | Injector + ตัวจับคู่ merged. Exit criterion met on the fixture: 63/63, 0 unresolved, all five hard cases |
+| #20 Fingerprint brittleness | ✅ | — | Key holds stable evidence only; ordinal and text rank. Frame key fixed with the injector |
+| #21 Plan hardening | ✅ | — | Plan amended. The eleven archive contracts it names must land in P2 |
+| #24 Safety mechanisms | 🟢 | — | Two core rules are in `CLAUDE.md`. The mechanisms they name are **not built**: `bun run mutate`, a regression corpus of past defects as re-appliable mutations, and the metamorphic check with its 32/400 baseline |
+| #8 MCP layering rule + inspector | 🟡 | P2 | Constraint recorded, no code. The inspector needs an archive to render |
 
 ## Track 2 — Pipeline
 
 | Item | Status | Gate | Next action |
 |---|---|---|---|
-| P2 — capture (and measure spike Q5, adaptive vs naive sweep) | 🟡 | P1 | Exit: all artifacts + interaction transcript + sourcemaps present |
+| P2 — capture (and measure spike Q5, adaptive vs naive sweep) | 🟢 | — | **Unblocked — P1 is done.** Exit: every artifact plus the eleven contracts in the plan's §6 |
 | P3 — replay (and measure spike Q4, `routeFromHAR` concurrency) | 🟡 | P2 | Exit: network off, zero unexpected requests, motion runs |
 | P4 — extract | 🟡 | P3 | Exit: finds every animation the fixture declares |
 | P5 — MCP server | 🟡 | P4 | Exit: manifest <50 KB + 4 drill-down tools answer correctly |
