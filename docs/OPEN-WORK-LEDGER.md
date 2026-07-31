@@ -33,7 +33,7 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 
 | Item | Status | Gate | Next action |
 |---|---|---|---|
-| #29 P2 — capture (and measure spike Q5, adaptive vs naive sweep) | 🟢 | — | **Slices 1–2 shipped** (#30, #32): HAR recording plus the adaptive sweep; `lazyImage` is now reached from `data-lazy-src`. **Next: slice 3, explicit sourcemap fetch.** Exit: every artifact plus the eleven contracts in the plan's §6 |
+| #29 P2 — capture (and measure spike Q5, adaptive vs naive sweep) | 🟢 | — | **Slices 1–3 shipped** (#30, #32, #34): HAR recording, adaptive sweep, and explicit sourcemap fetch. All four fixture resources are now present; maps are attached without duplicate script requests, including no-CORS cross-origin scripts. **Next: file the dedicated security issue for §6.1 redaction before implementation.** Exit: every artifact plus the eleven contracts in the plan's §6 |
 | P3 — replay (and measure spike Q4, `routeFromHAR` concurrency) | 🟡 | P2 | Exit: network off, zero unexpected requests, motion runs |
 | P4 — extract | 🟡 | P3 | Exit: finds every animation the fixture declares |
 | P5 — MCP server | 🟡 | P4 | Exit: manifest <50 KB + 4 drill-down tools answer correctly |
