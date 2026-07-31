@@ -28,11 +28,41 @@ const fixtureManifest = JSON.parse(
 let servers: FixtureServers;
 let browser: Browser;
 let tempDir: string;
+let captureCounter = 0;
+const TRANSPORT_SENTINELS = [
+  "FAKE_AUTH_SENTINEL",
+  "FAKE_COOKIE_SENTINEL",
+  "FAKE_QUERY_SENTINEL",
+  "FAKE_REQUEST_SENTINEL",
+  "FAKE_SET_COOKIE_SENTINEL",
+];
 
 type HarEntry = {
   request: { url: string };
   response?: { status?: number; content?: { _file?: string } };
 };
+
+function filesUnder(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(root, entry.name);
+    if (entry.isDirectory()) return filesUnder(path);
+    return entry.isFile() ? [path] : [];
+  });
+}
+
+function nextCaptureOutDir(): string {
+  captureCounter += 1;
+  return join(tempDir, `archive-${captureCounter}`);
+}
+
+function credentialLeaks(harPath: string): string[] {
+  return filesUnder(dirname(harPath)).flatMap((path) => {
+    const content = readFileSync(path, "utf8");
+    return TRANSPORT_SENTINELS.filter((sentinel) => content.includes(sentinel)).map(
+      (sentinel) => `${path}: ${sentinel}`,
+    );
+  });
+}
 
 before(async () => {
   servers = await startFixtureServers();
@@ -50,7 +80,7 @@ test("captures cross-origin stylesheet and iframe document requests in the HAR",
   const harPath = await captureHar({
     browser,
     url: servers.primary.url,
-    outDir: tempDir,
+    outDir: nextCaptureOutDir(),
   });
   const har = JSON.parse(readFileSync(harPath, "utf8"));
   const entries = har.log.entries as HarEntry[];
@@ -84,7 +114,7 @@ test("sweeps the page to capture the IntersectionObserver-gated lazy image", asy
   const harPath = await captureHar({
     browser,
     url: servers.primary.url,
-    outDir: tempDir,
+    outDir: nextCaptureOutDir(),
   });
   const har = JSON.parse(readFileSync(harPath, "utf8"));
   const entries = har.log.entries as HarEntry[];
@@ -100,7 +130,7 @@ test("captures the published sourcemap request in the HAR", async () => {
   const harPath = await captureHar({
     browser,
     url: servers.primary.url,
-    outDir: tempDir,
+    outDir: nextCaptureOutDir(),
   });
   const har = JSON.parse(readFileSync(harPath, "utf8"));
   const entries = har.log.entries as HarEntry[];
@@ -111,7 +141,10 @@ test("captures the published sourcemap request in the HAR", async () => {
   assert.equal(sourcemapEntry.response?.status, 200, "the published sourcemap request did not succeed");
   const attachedFile = sourcemapEntry.response?.content?._file;
   assert.ok(attachedFile, "the sourcemap entry is missing attached content");
-  const capturedMap = JSON.parse(readFileSync(resolve(dirname(harPath), attachedFile), "utf8")) as {
+  const capturedMapText = readFileSync(resolve(dirname(harPath), attachedFile), "utf8");
+  const publishedMapText = await fetch(sourcemap).then((response) => response.text());
+  assert.equal(capturedMapText, publishedMapText, "redaction changed the sourcemap response body");
+  const capturedMap = JSON.parse(capturedMapText) as {
     mappings?: string;
   };
   assert.ok(capturedMap.mappings, "the attached sourcemap has no mappings");
@@ -121,7 +154,7 @@ test("requests the instrumented script exactly once (no discovery re-fetch)", as
   const harPath = await captureHar({
     browser,
     url: servers.primary.url,
-    outDir: tempDir,
+    outDir: nextCaptureOutDir(),
   });
   const har = JSON.parse(readFileSync(harPath, "utf8"));
   const entries = har.log.entries as HarEntry[];
@@ -142,7 +175,7 @@ test("captures the sourcemap of a cross-origin script the page cannot read", asy
   const harPath = await captureHar({
     browser,
     url: page.href,
-    outDir: tempDir,
+    outDir: nextCaptureOutDir(),
   });
   const har = JSON.parse(readFileSync(harPath, "utf8"));
   const entries = har.log.entries as HarEntry[];
@@ -160,25 +193,32 @@ test("redacts transport credentials from the HAR and attached request bodies", a
   const harPath = await captureHar({
     browser,
     url: new URL("/credential-probe.html", servers.primary.url).href,
-    outDir: tempDir,
+    outDir: nextCaptureOutDir(),
   });
-  const sentinels = [
-    "FAKE_AUTH_SENTINEL",
-    "FAKE_COOKIE_SENTINEL",
-    "FAKE_QUERY_SENTINEL",
-    "FAKE_REQUEST_SENTINEL",
-    "FAKE_SET_COOKIE_SENTINEL",
-  ];
-  const leakedByFile = readdirSync(dirname(harPath), { withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .flatMap((entry) => {
-      const content = readFileSync(resolve(dirname(harPath), entry.name), "utf8");
-      return sentinels
-        .filter((sentinel) => content.includes(sentinel))
-        .map((sentinel) => `${entry.name}: ${sentinel}`);
-    });
+  const leakedByFile = credentialLeaks(harPath);
 
   assert.deepEqual(leakedByFile, [], `archive leaked credentials:\n${leakedByFile.join("\n")}`);
+});
+
+test("does not publish raw credentials when a failed capture is retried", async () => {
+  const outDir = nextCaptureOutDir();
+
+  await assert.rejects(
+    captureHar({
+      browser,
+      url: new URL("/credential-probe-fail.html", servers.primary.url).href,
+      outDir,
+    }),
+    /fixture sweep failure/,
+  );
+  assert.equal(existsSync(outDir), false, "failed capture published its staging directory");
+
+  const harPath = await captureHar({
+    browser,
+    url: new URL("/credential-probe.html", servers.primary.url).href,
+    outDir,
+  });
+  assert.deepEqual(credentialLeaks(harPath), []);
 });
 
 test("continues when an external script cannot be read for sourcemap discovery", async () => {
@@ -189,7 +229,7 @@ test("continues when an external script cannot be read for sourcemap discovery",
     captureHar({
       browser,
       url: `data:text/html,${page}`,
-      outDir: tempDir,
+      outDir: nextCaptureOutDir(),
     }),
   );
 });
@@ -205,7 +245,7 @@ test("stops after three empty checkpoints when scrolling cannot advance", async 
     captureHar({
       browser,
       url: `data:text/html,${lockedPage}`,
-      outDir: tempDir,
+      outDir: nextCaptureOutDir(),
     }),
     new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("the capture sweep did not terminate")), 1_500);

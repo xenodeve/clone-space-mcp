@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { redactHarArchive } from "../../src/capture/redact.ts";
@@ -24,7 +24,8 @@ type Har = {
       response: {
         headers: Array<{ name: string; value: string }>;
         cookies: Array<{ name: string; value: string }>;
-        content: { _file: string };
+        content: { _file?: string };
+        redirectURL?: string;
       };
     }>;
   };
@@ -45,10 +46,12 @@ test("redacts case-insensitive headers/cookies and synchronizes credential-like 
       entries: [
         {
           request: {
-            url: "https://example.test/page?AcCeSs_ToKeN=URL_QUERY_SENTINEL&cLiEnT_SeCrEt=URL_SECRET_SENTINEL&page=2",
+            url: "https://USER_SENTINEL:PASSWORD_SENTINEL@example.test/page?AcCeSs_ToKeN=URL_QUERY_SENTINEL&cLiEnT_SeCrEt=URL_SECRET_SENTINEL&accessKey=ACCESS_KEY_SENTINEL&page=2",
             headers: [
               { name: "aUtHoRiZaTiOn", value: "Bearer AUTH_SENTINEL" },
               { name: "cOoKiE", value: "session=HEADER_COOKIE_SENTINEL" },
+              { name: "X-Api-Key", value: "API_KEY_SENTINEL" },
+              { name: "Referer", value: "https://example.test/from?token=REFERER_SENTINEL" },
               { name: "Content-Length", value: "99" },
               { name: "X-Trace", value: "keep-me" },
             ],
@@ -59,6 +62,7 @@ test("redacts case-insensitive headers/cookies and synchronizes credential-like 
             queryString: [
               { name: "aCcEsS_ToKeN", value: "QUERY_SENTINEL" },
               { name: "cLiEnT_SeCrEt", value: "CLIENT_SECRET_SENTINEL" },
+              { name: "accessKey", value: "ACCESS_KEY_SENTINEL" },
               { name: "page", value: "2" },
             ],
             bodySize: 99,
@@ -71,10 +75,12 @@ test("redacts case-insensitive headers/cookies and synchronizes credential-like 
           response: {
             headers: [
               { name: "sEt-CoOkIe", value: "response=SET_COOKIE_SENTINEL" },
+              { name: "Location", value: "/next?refresh_token=LOCATION_SENTINEL" },
               { name: "Content-Type", value: "text/plain" },
             ],
             cookies: [{ name: "sId", value: "RESPONSE_COOKIE_SENTINEL" }],
             content: { _file: responseBodyPath },
+            redirectURL: "https://example.test/next?id_token=REDIRECT_SENTINEL",
           },
         },
       ],
@@ -97,6 +103,8 @@ test("redacts case-insensitive headers/cookies and synchronizes credential-like 
     expect(request.headers).toEqual([
       { name: "aUtHoRiZaTiOn", value: REDACTED },
       { name: "cOoKiE", value: REDACTED },
+      { name: "X-Api-Key", value: REDACTED },
+      { name: "Referer", value: "https://example.test/from?token=%5BREDACTED%5D" },
       { name: "Content-Length", value: String(Buffer.byteLength(`${REDACTED}\n`)) },
       { name: "X-Trace", value: "keep-me" },
     ]);
@@ -107,14 +115,18 @@ test("redacts case-insensitive headers/cookies and synchronizes credential-like 
     expect(request.queryString).toEqual([
       { name: "aCcEsS_ToKeN", value: REDACTED },
       { name: "cLiEnT_SeCrEt", value: REDACTED },
+      { name: "accessKey", value: REDACTED },
       { name: "page", value: "2" },
     ]);
+    expect(decodeURIComponent(new URL(request.url).username)).toBe(REDACTED);
+    expect(decodeURIComponent(new URL(request.url).password)).toBe(REDACTED);
     expect(new URL(request.url).searchParams.get("AcCeSs_ToKeN")).toBe(
       request.queryString[0]!.value,
     );
     expect(new URL(request.url).searchParams.get("cLiEnT_SeCrEt")).toBe(
       request.queryString[1]!.value,
     );
+    expect(new URL(request.url).searchParams.get("accessKey")).toBe(request.queryString[2]!.value);
     expect(request.postData).toMatchObject({
       _file: requestBodyPath,
       text: "",
@@ -124,13 +136,17 @@ test("redacts case-insensitive headers/cookies and synchronizes credential-like 
     expect(await readFile(join(root, requestBodyPath), "utf8")).toBe(`${REDACTED}\n`);
     expect(response.headers).toEqual([
       { name: "sEt-CoOkIe", value: REDACTED },
+      { name: "Location", value: "/next?refresh_token=%5BREDACTED%5D" },
       { name: "Content-Type", value: "text/plain" },
     ]);
     expect(response.cookies).toEqual([{ name: "sId", value: REDACTED }]);
+    expect(response.redirectURL).toBe("https://example.test/next?id_token=%5BREDACTED%5D");
     expect(response.content._file).toBe(responseBodyPath);
     expect(await readFile(join(root, responseBodyPath), "utf8")).toBe("SAFE_RESPONSE_BODY");
     if (process.platform !== "win32") {
       expect((await stat(root)).mode & 0o777).toBe(0o700);
+      expect((await stat(join(root, "requests"))).mode & 0o777).toBe(0o700);
+      expect((await stat(join(root, "responses"))).mode & 0o777).toBe(0o700);
       expect((await stat(harPath)).mode & 0o777).toBe(0o600);
       expect((await stat(join(root, requestBodyPath))).mode & 0o777).toBe(0o600);
       expect((await stat(join(root, responseBodyPath))).mode & 0o777).toBe(0o600);
@@ -204,6 +220,38 @@ test("refuses a symlinked attached body that escapes the archive when symlinks a
 
     await expect(redactHarArchive(harPath)).rejects.toThrow(/symbolic link|outside archive root/);
     expect(await readFile(outsidePath, "utf8")).toBe("SYMLINK_TARGET_SENTINEL");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outsideRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses a hard-linked attached body without changing its other name", async () => {
+  const { root, harPath } = await createArchive({
+    log: {
+      entries: [
+        {
+          request: {
+            url: "https://example.test",
+            headers: [],
+            cookies: [],
+            queryString: [],
+            bodySize: 1,
+            postData: { _file: "linked-body.txt", text: "", params: [] },
+          },
+          response: { headers: [], cookies: [], content: {} },
+        },
+      ],
+    },
+  });
+  const outsideRoot = await mkdtemp(join(tmpdir(), "clone-space-redact-hardlink-"));
+  const outsidePath = join(outsideRoot, "outside.txt");
+
+  try {
+    await writeFile(outsidePath, "HARD_LINK_TARGET_SENTINEL");
+    await link(outsidePath, join(root, "linked-body.txt"));
+    await expect(redactHarArchive(harPath)).rejects.toThrow(/multiple hard links/);
+    expect(await readFile(outsidePath, "utf8")).toBe("HARD_LINK_TARGET_SENTINEL");
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(outsideRoot, { recursive: true, force: true });

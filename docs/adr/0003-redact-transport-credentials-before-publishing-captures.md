@@ -21,35 +21,47 @@ useless. Conversely, retaining request credentials makes an archive unsafe to ha
 or person. The boundary therefore needs an explicit threat model rather than a claim that arbitrary
 captured page content is secret-free.
 
-Playwright provides `omit`, `embed`, and `attach` content policies but no field-level redaction. The
-redaction has to happen after `BrowserContext.close()` flushes the HAR and before `captureHar`
-returns its path (`src/capture/record.ts:105-110`).
+Playwright provides `omit`, `embed`, and `attach` content policies but no field-level redaction.
+Playwright must flush before redaction, but writing raw files directly into the published directory
+creates a second leak: an ordinary navigation failure or retry can leave an old sidecar there.
 
 ## Decision
 
-Every successfully returned capture has its **transport credentials** redacted in place:
+Each capture records into a new private sibling staging directory. An ordinary failure removes that
+directory. A successful run closes Playwright, redacts and validates the staged archive, then
+publishes the whole directory with a same-filesystem rename. The final output directory must be
+absent or empty; capture refuses to mix artifacts with pre-existing files. This is the minimum
+publication boundary for §6.1, not §6.8's future hashes, versions, validation manifest, and commit
+marker.
 
-- Header names are matched case-insensitively. Values of `Authorization`,
-  `Proxy-Authorization`, `Cookie`, and `Set-Cookie` become `[REDACTED]`.
+Every published capture has its **transport credentials** redacted:
+
+- Header names are matched case-insensitively. `Authorization`, `Proxy-Authorization`, `Cookie`,
+  and `Set-Cookie` are always sensitive. Custom header names containing `api-key`, or ending in
+  `token`, `secret`, or `credential` after separator normalization, are sensitive too. Their values
+  become `[REDACTED]`.
 - Every value in HAR request and response cookie arrays becomes `[REDACTED]`; cookie names and
   structure remain available for diagnosis.
-- Query keys are matched case-insensitively against this fixed policy:
-  `access_token`, `api_key`, `apikey`, `auth`, `authorization`, `client_secret`, `code`,
-  `credential`, `id_token`, `key`, `password`, `passwd`, `refresh_token`, `secret`, `session`,
-  `sig`, `signature`, and `token`. Their values become `[REDACTED]` in both `request.url` and
-  `request.queryString`.
+- Query keys are matched case-insensitively after removing `-`, `_`, and `.` separators against
+  this fixed policy: `access_token`, `accesskey`, `api_key`, `apikey`, `auth`, `authorization`,
+  `client_secret`, `code`, `credential`, `id_token`, `key`, `password`, `passwd`, `refresh_token`,
+  `secret`, `session`, `sig`, `signature`, and `token`. Their values become `[REDACTED]` in both
+  `request.url` and `request.queryString`.
+- URL userinfo is redacted. Credential-like query values are also redacted inside `Referer`,
+  `Location`, `Content-Location`, and HAR `redirectURL` values.
 - Every attached request body becomes the UTF-8 payload `[REDACTED]\n`. Its `_file` reference is
   retained, `bodySize` and `Content-Length` are updated, and inline text/params are emptied. This is
   deliberately content-type independent: trying to infer which arbitrary body fields are secrets
   would turn a guarantee into a heuristic.
 
 Every `_file` reference — including retained response content — is treated as untrusted archive
-data. Absolute paths, lexical traversal, final-component symlinks, and real paths outside the
-archive root are refused before any attachment is read or written (`src/capture/redact.ts:82-105`).
-The archive root is chmod `0o700` and the HAR plus referenced attachments are chmod `0o600` before
-return (`src/capture/redact.ts:116-156`). POSIX mode bits are enforceable on POSIX systems. On
-Windows, Node's `chmod` does not establish a private ACL, so this is hardening rather than an ACL
-guarantee.
+data. Absolute paths, lexical traversal, non-regular files, symlinks, multi-link files, and real
+paths outside the archive root are refused before any attachment is read or written
+(`src/capture/redact.ts:152-177`).
+The archive root and referenced attachment directories are chmod `0o700`; the HAR plus referenced
+attachments are chmod `0o600` before return (`src/capture/redact.ts:197-251`). POSIX mode bits are
+enforceable on POSIX systems. On Windows, Node's `chmod` does not establish a private ACL, so this
+is hardening rather than an ACL guarantee.
 
 This contract makes no claim that response bodies or source assets contain no application data,
 PII, or embedded token. A capture remains sensitive evidence and must be handled accordingly.
@@ -71,9 +83,11 @@ PII, or embedded token. A capture remains sensitive evidence and must be handled
   credentials through the known HAR fields or attached request bodies.
 - **Positive:** attachment paths cannot redirect redaction or permission changes outside the archive
   root.
-- **Negative:** strict HAR replay of POST requests cannot match the original body after redaction.
-  Contract §6.5 must define request normalization before such requests can replay.
+- **Negative:** strict HAR replay cannot match an original POST body or an original signed/query URL
+  after redaction. Contract §6.5 must define request normalization before such requests can replay.
 - **Negative / limit:** response evidence may itself be sensitive. Users must not interpret
   “credentials redacted” as “archive safe for public release.”
-- **Negative / limit:** a crash between Playwright's flush and redaction can leave raw files. Private
-  staging, hashes and a commit marker belong to transactional-integrity contract §6.8.
+- **Negative / limit:** a process or machine crash can leave the private staging directory behind.
+  POSIX parent permissions keep it private; Windows `chmod` is not an ACL guarantee. Recovery,
+  hashes, producer/schema versions, and a commit marker belong to transactional-integrity contract
+  §6.8.

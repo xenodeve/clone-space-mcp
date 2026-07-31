@@ -134,7 +134,7 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           headers: { "content-type": CONTENT_TYPES[".html"]! },
         });
       }
-      if (pathname === "/credential-probe.html") {
+      if (pathname === "/credential-probe.html" || pathname === "/credential-probe-fail.html") {
         // Build every sentinel from fragments so the response body itself does not
         // contain the value that the archive redactor is expected to remove.
         const html = `<script>
@@ -144,6 +144,7 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           request.setRequestHeader("Authorization", "Bearer " + value("AUTH"));
           request.setRequestHeader("Content-Type", "application/json");
           request.send(JSON.stringify({ token: value("REQUEST") }));
+          ${pathname === "/credential-probe-fail.html" ? 'window.requestAnimationFrame = () => { throw new Error("fixture sweep failure"); };' : ""}
         </script>`;
         return new Response(html, {
           headers: {
