@@ -6,6 +6,39 @@
 
 ---
 
+## P2 archive contract 6.1 — credential redaction (2026-08-01, `/tdd` + `/security-review` + `/code-review` + `/scrutinize`, #29 #36 #37)
+
+**Goal:** prevent a capture archive from publishing reusable transport credentials while retaining
+the HTTP response bodies that offline replay needs.
+
+**Shipped:** `captureHar` now records each run into a private sibling staging directory and refuses
+to mix a new run with a non-empty output root. After Playwright closes, the redactor removes
+credentials from HAR headers, cookie arrays, URL userinfo, credential-like query fields,
+URI-bearing headers and redirects. Attached request bodies and WebSocket frame streams become a
+deterministic `[REDACTED]` payload. Every attachment path is contained under the archive root;
+traversal, symlink, non-file, real-path escape and multi-link cases are rejected. Successful runs
+publish the sanitized directory by rename; ordinary failures remove staging. ADR 0003 records the
+threat model, Windows permission limit, and strict-replay consequences.
+
+**RED → GREEN and review repairs:** the initial browser RED passed 7/8 and named five fake
+sentinels in `network.har` and the attached request body. Independent security rounds then
+reproduced four additional classes: failed-capture→retry leakage, custom header/URL credential
+carriers, hard-link writes, and Playwright's WebSocket frame sidecar. Each became a controlled
+regression test before the final gate. The end-to-end archive scan is recursive and requires a real
+WebSocket sidecar; all ordinary HTTP response attachments are compared byte-for-byte with the
+fixture origin so redaction cannot silently destroy evidence.
+
+**Validation:** fresh `bun run verify` exited 0 — 33 Bun tests, 17 Node browser tests, lint,
+typecheck and build. Final Security and Spec reviews passed with no findings; Standards passed with
+no hard violation; Scrutinize returned `ship`. PR #37 had no review threads. Every GitHub job had
+zero steps and the exact account-billing-lock annotation covered by #2, so the documented exemption
+applied. PR #37 merged as `23dac8f`; security issue #36 closed and §6.1 is checked on #29.
+
+**Next:** split archive contract §6.2, `environment.json`, into its dedicated issue before
+implementation. P2 remains open for the remaining contracts and artifacts.
+
+---
+
 ## P2 slice 3 — fetch published sourcemaps (2026-07-31, `/tdd` + `/simplify` fallback + `/scrutinize` + `/code-review`, #29 #34)
 
 **Goal:** capture a published sourcemap while the live network is still available. Browsers do not
