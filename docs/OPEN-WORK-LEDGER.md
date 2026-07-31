@@ -33,7 +33,7 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 
 | Item | Status | Gate | Next action |
 |---|---|---|---|
-| #29 P2 — capture (and measure spike Q5, adaptive vs naive sweep) | 🟡 | #39 — §6.2 schema and security decisions | **Slices 1–4 shipped** (#30, #32, #34, #37): HAR recording, adaptive sweep, sourcemap fetch, and §6.1 credential redaction with private staging. §6.2 is split into #39 and deliberately parked: decide configured-vs-observed values, the versioned schema, font evidence, origin/storage scope, browser identity, replay order, and sensitive-data policy before implementation. Exit: every artifact plus the eleven contracts in the plan's §6 |
+| #29 P2 — capture (and measure spike Q5, adaptive vs naive sweep) | 🟢 | — | **Slices 1–4 shipped** (#30, #32, #34, #37): HAR recording, adaptive sweep, sourcemap fetch, and §6.1 credential redaction with private staging. §6.2's schema/security decisions are recorded in pending ADR 0004 (#39); next, split its implementation issue and land `environment.json` with the required security review. Exit: every artifact plus the eleven contracts in the plan's §6 |
 | P3 — replay (and measure spike Q4, `routeFromHAR` concurrency) | 🟡 | P2 | Exit: network off, zero unexpected requests, motion runs |
 | P4 — extract | 🟡 | P3 | Exit: finds every animation the fixture declares |
 | P5 — MCP server | 🟡 | P4 | Exit: manifest <50 KB + 4 drill-down tools answer correctly |
