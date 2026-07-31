@@ -33,7 +33,7 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 
 | Item | Status | Gate | Next action |
 |---|---|---|---|
-| P2 — capture (and measure spike Q5, adaptive vs naive sweep) | 🟢 | — | **Unblocked — P1 is done.** Exit: every artifact plus the eleven contracts in the plan's §6 |
+| #29 P2 — capture (and measure spike Q5, adaptive vs naive sweep) | 🟢 | — | **Unblocked — P1 is done.** Exit: every artifact plus the eleven contracts in the plan's §6 |
 | P3 — replay (and measure spike Q4, `routeFromHAR` concurrency) | 🟡 | P2 | Exit: network off, zero unexpected requests, motion runs |
 | P4 — extract | 🟡 | P3 | Exit: finds every animation the fixture declares |
 | P5 — MCP server | 🟡 | P4 | Exit: manifest <50 KB + 4 drill-down tools answer correctly |
@@ -45,7 +45,7 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | Spike Q6 — sourcemap availability census across real sites | 🔴 | — | Parallel corpus job; gates nothing. File an issue when someone picks it up |
 | `secret_scanning_validity_checks` + `non_provider_patterns` | 🔴 | GitHub Advanced Security | The `PATCH` returns 200 and the values stay `disabled`; not available on this repo. Secret scanning and push protection **are** on |
 | `t4-e2e.yml` CI workflow | 🔴 | P3 | Deliberately **not** installed at bootstrap — there is no `bun run e2e` yet and a permanently-red check trains everyone to ignore red. Install it with P3 |
-| `CONTEXT.md` / `UBIQUITOUS_LANGUAGE.md` / `PRODUCT.md` | 🔴 | — | Created lazily when a term or decision actually resolves (proceed-silently rule) |
+| `CONTEXT.md` / `PRODUCT.md` | 🔴 | — | Created lazily when a term or decision actually resolves (proceed-silently rule) |
 | License | 🔴 | — | Not chosen. `README.md` says so |
 
 ---

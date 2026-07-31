@@ -1,8 +1,8 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { startFixtureServers, type FixtureServers } from "../../scripts/fixture-client.ts";
 import { captureHar } from "../../src/capture/record.ts";
@@ -19,6 +19,11 @@ const fixtureManifest = JSON.parse(
 let servers: FixtureServers;
 let browser: Browser;
 let tempDir: string;
+
+type HarEntry = {
+  request: { url: string };
+  response?: { content?: { _file?: string } };
+};
 
 before(async () => {
   servers = await startFixtureServers();
@@ -39,23 +44,29 @@ test("captures cross-origin stylesheet and iframe document requests in the HAR",
     outDir: tempDir,
   });
   const har = JSON.parse(readFileSync(harPath, "utf8"));
-  const entries = har.log.entries;
+  const entries = har.log.entries as HarEntry[];
+  const normalizedEntries = entries.map((entry) => ({
+    entry,
+    url: new URL(entry.request.url),
+  }));
   const crossOrigin = new URL(servers.crossOrigin.url).origin;
-  const stylesheetEntry = entries.find((entry: { request: { url: string } }) => {
-    const url = new URL(entry.request.url);
+  const stylesheetEntry = normalizedEntries.find(({ url }) => {
     return url.origin === crossOrigin && url.pathname === fixtureManifest.assets.crossOriginStylesheet;
-  });
+  })?.entry;
 
   assert.ok(stylesheetEntry, "the HAR is missing the cross-origin stylesheet request");
-  assert.ok(
-    stylesheetEntry.response?.content?._file,
-    "the stylesheet entry is missing attached content",
+  const attachedFile = stylesheetEntry.response?.content?._file;
+  assert.ok(attachedFile, "the stylesheet entry is missing attached content");
+  const attachedPath = resolve(dirname(harPath), attachedFile);
+  assert.ok(existsSync(attachedPath), `attached stylesheet file does not exist: ${attachedPath}`);
+  assert.ok(statSync(attachedPath).size > 0, "attached stylesheet file is empty");
+  assert.equal(
+    readFileSync(attachedPath, "utf8"),
+    readFileSync(new URL("../fixtures/cross-origin/theme.css", import.meta.url), "utf8"),
+    "attached stylesheet content does not match the fixture",
   );
   assert.ok(
-    entries.some(
-      (entry: { request: { url: string } }) =>
-        new URL(entry.request.url).pathname === fixtureManifest.assets.iframeDocument,
-    ),
+    normalizedEntries.some(({ url }) => url.pathname === fixtureManifest.assets.iframeDocument),
     "the HAR is missing the iframe document request",
   );
 });
