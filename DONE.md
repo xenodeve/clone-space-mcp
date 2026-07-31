@@ -6,6 +6,41 @@
 
 ---
 
+## P2 archive contract 6.2 — `environment.json` (2026-08-01, `/tdd` + `/security-review` + `/code-review` + `/scrutinize`, #29 #39 #42 #43)
+
+**Goal:** record the browser environment that shaped capture as auditable archive evidence without
+publishing storage or font claims that replay cannot safely or faithfully restore.
+
+**Shipped:** `captureHar` now publishes `environment.json` v1 transactionally beside the redacted
+HAR. It keeps caller-requested values, browser/page observations, and normalized replay context
+distinct; pins the Chromium, Playwright, and optional channel tuple; and maps observed DPR to replay
+`deviceScaleFactor` only when the caller did not request one. Storage is default-deny and limited to
+exact allowlisted local/session keys from the primary origin. Non-allowlisted names and values,
+cookies, IndexedDB, Cache Storage, and cross-origin frame storage are absent. Declared font evidence
+is tuple-sorted, deduplicated, bounded to 256 entries, and marked when truncated. Invalid URLs,
+duplicate allowlist keys, and cross-origin redirects fail without publishing the archive. ADR 0004
+is now Accepted.
+
+**RED → GREEN and review repairs:** the first environment test failed because no artifact existed.
+The allowlist and duplicate-key tests were proven by temporary mutations that leaked all storage or
+silently deduplicated. Separate browser REDs proved that prefix-capping fonts missed a late
+lexicographically-small face and that a cross-origin redirect was accepted; both passed after the
+bounded full-set selector and origin guard. Review also added cross-origin iframe sentinels, missing
+allowlisted-key coverage, UA hints/channel evidence, invalid-URL preflight, and a private-staging
+cleanup assertion.
+
+**Validation:** fresh `bun run verify` exited 0 — 37 Bun tests, 19 Node browser tests, lint,
+typecheck and build. Independent Grok 4.5, GLM 5.2, and Composer 2.5 review plus an adversarial
+challenge found the origin and font-cap defects; post-fix scrutinize returned no actionable
+findings. PR #43 had no review threads. Every GitHub job had zero steps and the exact annotation
+*The job was not started because your account is locked due to a billing issue.*, so the documented
+#2 exemption applied. PR #43 merged as `cc5cb20`; #42 closed and §6.2 is checked on #29.
+
+**Next:** split archive contract §6.3, checkpoint coherence, into its dedicated issue before
+implementation. P2 remains open for the remaining contracts and artifacts.
+
+---
+
 ## P2 archive contract 6.1 — credential redaction (2026-08-01, `/tdd` + `/security-review` + `/code-review` + `/scrutinize`, #29 #36 #37)
 
 **Goal:** prevent a capture archive from publishing reusable transport credentials while retaining
