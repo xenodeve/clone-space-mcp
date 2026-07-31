@@ -1,11 +1,21 @@
 import { resolve } from "node:path";
 
+interface CaptureHarResponse {
+  url(): string;
+  request(): { resourceType(): string };
+  text(): Promise<string>;
+}
+
 interface CaptureHarPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
+  on(event: "response", handler: (response: CaptureHarResponse) => void): void;
   evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
 }
 
 interface CaptureHarContext {
+  request: {
+    get(url: string): Promise<unknown>;
+  };
   newPage(): Promise<CaptureHarPage>;
   close(): Promise<void>;
 }
@@ -34,23 +44,32 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
 
   try {
     const page = await context.newPage();
-    await page.goto(options.url, { waitUntil: "load" });
-    await page.evaluate(async () => {
-      await Promise.all(
-        Array.from(document.scripts)
-          .filter((script) => script.src)
-          .map(async (script) => {
-            try {
-              const source = await (await fetch(script.src)).text();
-              const sourceMappingURL = source.match(/\/\/[#@]\s*sourceMappingURL=(\S+)/)?.[1];
-              if (sourceMappingURL) {
-                await fetch(new URL(sourceMappingURL, script.src).href);
-              }
-            } catch {
+    // Response bodies come from the browser's network stack, not the page, so
+    // discovery is not subject to CORS and never issues a second script request.
+    const discoveredMapUrls = new Set<string>();
+    const pendingScriptReads: Promise<void>[] = [];
+    page.on("response", (response) => {
+      if (response.request().resourceType() !== "script") return;
+      pendingScriptReads.push(
+        response
+          .text()
+          .then((source) => {
+            const sourceMappingURL = source.match(/\/\/[#@]\s*sourceMappingURL=(\S+)/)?.[1];
+            if (sourceMappingURL) {
+              discoveredMapUrls.add(new URL(sourceMappingURL, response.url()).href);
             }
-          }),
+          })
+          .catch(() => {}),
       );
+    });
 
+    await page.goto(options.url, { waitUntil: "load" });
+    await Promise.all(pendingScriptReads);
+    await Promise.all(
+      [...discoveredMapUrls].map((url) => context.request.get(url).catch(() => undefined)),
+    );
+
+    await page.evaluate(async () => {
       const waitForCheckpoint = async () => {
         await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
         await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));

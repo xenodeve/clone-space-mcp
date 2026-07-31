@@ -110,6 +110,45 @@ test("captures the published sourcemap request in the HAR", async () => {
   assert.ok(capturedMap.mappings, "the attached sourcemap has no mappings");
 });
 
+test("requests the instrumented script exactly once (no discovery re-fetch)", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: tempDir,
+  });
+  const har = JSON.parse(readFileSync(harPath, "utf8"));
+  const entries = har.log.entries as HarEntry[];
+  const script = new URL("/build/instrumented.js", servers.primary.url);
+  const scriptEntries = entries.filter((entry) => entry.request.url === script.href);
+
+  assert.equal(
+    scriptEntries.length,
+    1,
+    `expected exactly one request for the instrumented script, got ${scriptEntries.length}`,
+  );
+});
+
+test("captures the sourcemap of a cross-origin script the page cannot read", async () => {
+  const page = new URL("/cross-origin-script.html", servers.primary.url);
+  const sourcemap = new URL("/instrumented.js.map", servers.crossOrigin.url);
+
+  const harPath = await captureHar({
+    browser,
+    url: page.href,
+    outDir: tempDir,
+  });
+  const har = JSON.parse(readFileSync(harPath, "utf8"));
+  const entries = har.log.entries as HarEntry[];
+  const sourcemapEntry = entries.find((entry) => entry.request.url === sourcemap.href);
+
+  assert.ok(sourcemapEntry, "the HAR is missing the sourcemap of the cross-origin script");
+  assert.equal(
+    sourcemapEntry.response?.status,
+    200,
+    "the cross-origin sourcemap request did not succeed",
+  );
+});
+
 test("continues when an external script cannot be read for sourcemap discovery", async () => {
   const scriptUrl = new URL("/motion.js", servers.primary.url);
   const page = encodeURIComponent(`<script src="${scriptUrl.href}"></script>`);
