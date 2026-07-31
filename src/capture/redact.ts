@@ -36,9 +36,10 @@ const SENSITIVE_QUERY_KEYS = new Set([
 const URI_HEADERS = new Set(["content-location", "location", "referer"]);
 
 type HarNamedValue = { name?: unknown; value?: unknown };
-type HarContent = { _file?: unknown };
+type HarContent = { _file?: unknown; size?: unknown };
 type HarPostData = HarContent & { text?: unknown; params?: unknown };
 type HarEntry = {
+  _resourceType?: unknown;
   request?: {
     url?: unknown;
     headers?: unknown;
@@ -48,6 +49,7 @@ type HarEntry = {
     postData?: HarPostData;
   };
   response?: {
+    bodySize?: unknown;
     headers?: unknown;
     cookies?: unknown;
     content?: HarContent;
@@ -240,6 +242,14 @@ export async function redactHarArchive(harPath: string): Promise<void> {
       if (redactedRedirect !== undefined) response.redirectURL = redactedRedirect;
       const responseBody = await resolveAttachedFile(archiveRoot, response.content?._file);
       if (responseBody) {
+        const isWebSocket =
+          entry._resourceType === "websocket" ||
+          (typeof request?.url === "string" && /^wss?:/i.test(request.url));
+        if (isWebSocket) {
+          await writeFile(responseBody, REDACTED_BODY, { mode: 0o600 });
+          response.bodySize = Buffer.byteLength(REDACTED_BODY);
+          if (response.content) response.content.size = Buffer.byteLength(REDACTED_BODY);
+        }
         publishedFiles.add(responseBody);
         collectParentDirectories(archiveRoot, responseBody, publishedDirectories);
       }

@@ -35,9 +35,11 @@ const TRANSPORT_SENTINELS = [
   "FAKE_QUERY_SENTINEL",
   "FAKE_REQUEST_SENTINEL",
   "FAKE_SET_COOKIE_SENTINEL",
+  "FAKE_WEBSOCKET_SENTINEL",
 ];
 
 type HarEntry = {
+  _resourceType?: string;
   request: { url: string };
   response?: { status?: number; content?: { _file?: string } };
 };
@@ -108,6 +110,16 @@ test("captures cross-origin stylesheet and iframe document requests in the HAR",
     normalizedEntries.some(({ url }) => url.pathname === fixtureManifest.assets.iframeDocument),
     "the HAR is missing the iframe document request",
   );
+
+  for (const { entry, url } of normalizedEntries) {
+    const responseFile = entry.response?.content?._file;
+    if (!responseFile || entry.response?.status !== 200) continue;
+    const expected = Buffer.from(
+      new Uint8Array((await fetch(url).then((response) => response.arrayBuffer())) as ArrayBuffer),
+    );
+    const attached = readFileSync(resolve(dirname(harPath), responseFile));
+    assert.deepEqual(attached, expected, `redaction changed response attachment for ${url.href}`);
+  }
 });
 
 test("sweeps the page to capture the IntersectionObserver-gated lazy image", async () => {
@@ -196,8 +208,13 @@ test("redacts transport credentials from the HAR and attached request bodies", a
     outDir: nextCaptureOutDir(),
   });
   const leakedByFile = credentialLeaks(harPath);
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as { log: { entries: HarEntry[] } };
+  const webSocketEntry = har.log.entries.find((entry) => entry._resourceType === "websocket");
+  const webSocketFrames = webSocketEntry?.response?.content?._file;
 
   assert.deepEqual(leakedByFile, [], `archive leaked credentials:\n${leakedByFile.join("\n")}`);
+  assert.ok(webSocketFrames, "fixture did not produce an attached WebSocket frame file");
+  assert.equal(readFileSync(resolve(dirname(harPath), webSocketFrames), "utf8"), "[REDACTED]\n");
 });
 
 test("does not publish raw credentials when a failed capture is retried", async () => {

@@ -53,13 +53,16 @@ Every published capture has its **transport credentials** redacted:
   retained, `bodySize` and `Content-Length` are updated, and inline text/params are emptied. This is
   deliberately content-type independent: trying to infer which arbitrary body fields are secrets
   would turn a guarantee into a heuristic.
+- Playwright's attached WebSocket frame stream contains both client-sent and server-received
+  messages, so a WebSocket entry's entire sidecar also becomes `[REDACTED]\n`. Ordinary HTTP
+  response bodies remain intact.
 
 Every `_file` reference — including retained response content — is treated as untrusted archive
 data. Absolute paths, lexical traversal, non-regular files, symlinks, multi-link files, and real
 paths outside the archive root are refused before any attachment is read or written
-(`src/capture/redact.ts:152-177`).
+(`src/capture/redact.ts:154-179`).
 The archive root and referenced attachment directories are chmod `0o700`; the HAR plus referenced
-attachments are chmod `0o600` before return (`src/capture/redact.ts:197-251`). POSIX mode bits are
+attachments are chmod `0o600` before return (`src/capture/redact.ts:199-261`). POSIX mode bits are
 enforceable on POSIX systems. On Windows, Node's `chmod` does not establish a private ACL, so this
 is hardening rather than an ACL guarantee.
 
@@ -85,6 +88,8 @@ PII, or embedded token. A capture remains sensitive evidence and must be handled
   root.
 - **Negative:** strict HAR replay cannot match an original POST body or an original signed/query URL
   after redaction. Contract §6.5 must define request normalization before such requests can replay.
+- **Negative:** WebSocket frames are intentionally unavailable for replay. Contract §6.4 must mark
+  the archive WebSocket-dependent instead of allowing an empty replay to look successful.
 - **Negative / limit:** response evidence may itself be sensitive. Users must not interpret
   “credentials redacted” as “archive safe for public release.”
 - **Negative / limit:** a process or machine crash can leave the private staging directory behind.

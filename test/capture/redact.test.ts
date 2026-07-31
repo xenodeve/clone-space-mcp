@@ -9,6 +9,7 @@ const REDACTED = "[REDACTED]";
 type Har = {
   log: {
     entries: Array<{
+      _resourceType?: string;
       request: {
         url: string;
         headers: Array<{ name: string; value: string }>;
@@ -22,9 +23,10 @@ type Har = {
         };
       };
       response: {
+        bodySize?: number;
         headers: Array<{ name: string; value: string }>;
         cookies: Array<{ name: string; value: string }>;
-        content: { _file?: string };
+        content: { _file?: string; size?: number };
         redirectURL?: string;
       };
     }>;
@@ -151,6 +153,50 @@ test("redacts case-insensitive headers/cookies and synchronizes credential-like 
       expect((await stat(join(root, requestBodyPath))).mode & 0o777).toBe(0o600);
       expect((await stat(join(root, responseBodyPath))).mode & 0o777).toBe(0o600);
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("redacts attached WebSocket frames in both directions", async () => {
+  const framePath = "websocket-frames.jsonl";
+  const { root, harPath } = await createArchive({
+    log: {
+      entries: [
+        {
+          _resourceType: "websocket",
+          request: {
+            url: "ws://example.test/socket",
+            headers: [],
+            cookies: [],
+            queryString: [],
+            bodySize: 0,
+            postData: { text: "", params: [], _file: "request.txt" },
+          },
+          response: {
+            headers: [],
+            cookies: [],
+            content: { _file: framePath, size: 200 },
+            bodySize: 200,
+          },
+        },
+      ],
+    },
+  });
+
+  try {
+    await writeFile(join(root, "request.txt"), "REQUEST_FRAME_HANDSHAKE");
+    await writeFile(
+      join(root, framePath),
+      '{"type":"send","data":"CLIENT_WEBSOCKET_SENTINEL"}\n{"type":"receive","data":"SERVER_WEBSOCKET_SENTINEL"}\n',
+    );
+    await redactHarArchive(harPath);
+
+    const redacted = JSON.parse(await readFile(harPath, "utf8")) as Har;
+    const response = redacted.log.entries[0]!.response;
+    expect(await readFile(join(root, framePath), "utf8")).toBe(`${REDACTED}\n`);
+    expect(response.bodySize).toBe(Buffer.byteLength(`${REDACTED}\n`));
+    expect(response.content.size).toBe(Buffer.byteLength(`${REDACTED}\n`));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
