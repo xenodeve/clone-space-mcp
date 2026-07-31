@@ -14,6 +14,7 @@ const fixtureManifest = JSON.parse(
     crossOriginStylesheet: string;
     iframeDocument: string;
     lazyImage: string;
+    sourcemap: string;
   };
 };
 
@@ -85,6 +86,22 @@ test("sweeps the page to capture the IntersectionObserver-gated lazy image", asy
   assert.ok(
     entries.some((entry) => entry.request.url === lazyImage.href),
     "the HAR is missing the lazy image request triggered by the capture sweep",
+  );
+});
+
+test("captures the published sourcemap request in the HAR", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: tempDir,
+  });
+  const har = JSON.parse(readFileSync(harPath, "utf8"));
+  const entries = har.log.entries as HarEntry[];
+  const sourcemap = new URL(fixtureManifest.assets.sourcemap, servers.primary.url);
+
+  assert.ok(
+    entries.some((entry) => entry.request.url === sourcemap.href),
+    "the HAR is missing the published sourcemap request",
   );
 });
 

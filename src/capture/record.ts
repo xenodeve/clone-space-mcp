@@ -36,6 +36,18 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     const page = await context.newPage();
     await page.goto(options.url, { waitUntil: "load" });
     await page.evaluate(async () => {
+      await Promise.all(
+        Array.from(document.scripts)
+          .filter((script) => script.src)
+          .map(async (script) => {
+            const source = await (await fetch(script.src)).text();
+            const sourceMappingURL = source.match(/\/\/[#@]\s*sourceMappingURL=(\S+)/)?.[1];
+            if (sourceMappingURL) {
+              await fetch(new URL(sourceMappingURL, script.src).href);
+            }
+          }),
+      );
+
       const waitForCheckpoint = async () => {
         await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
         await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
