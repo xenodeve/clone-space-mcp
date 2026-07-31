@@ -12,6 +12,9 @@ test("captureHar configures and drives a browser context", async () => {
         async goto(url: string, options: { waitUntil: "load" }) {
           gotoCall = { url, options };
         },
+        async evaluate<Result>() {
+          return undefined as Result;
+        },
       };
     },
     async close() {
