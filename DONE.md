@@ -6,6 +6,61 @@
 
 ---
 
+## P2 slice 1 — record a HAR of the fixture (2026-07-31, `/tdd` + `/simplify` + `/scrutinize` + `/security-review` + `/code-review`, #29 #30)
+
+**Goal:** the first artifact of the capture stage, and the phase's most expensive decision made on
+its first line — the HAR is what replay reads back through `routeFromHAR`.
+
+**Shipped:** `src/capture/record.ts`, `test/capture/record.test.ts`, `test/browser/capture.browser.ts`.
+`captureHar` imports no `playwright`; the browser arrives through a structural type, because
+`bun build` bundles `src` (ADR 0001). The context closes in a `finally` — Playwright only flushes
+the HAR on context close, so a navigation failure would otherwise leave nothing to diagnose with.
+
+**Scope, narrowed deliberately:** it asserts the two resources plain navigation must produce —
+the cross-origin stylesheet and the iframe document. `lazyImage` needs a sweep and `sourcemap`
+needs an explicit fetch. **#29 originally said slice 1 asserts all four**, which no implementation
+of this slice could have satisfied; the issue body was corrected rather than the criterion quietly
+ignored.
+
+**Written by delegated agents, so nothing here was ever observed RED.** The evidence is mutation
+instead, run by the orchestrator: `harResourceUrls` → `return []` failed 2/4 bun tests and the
+browser test; `content: "attach"` → `"embed"` failed the browser test with *the stylesheet entry is
+missing attached content*. Both restored to green. **A test never seen to fail is not yet known to
+test anything** — that is the whole reason these were run.
+
+**A seam was proposed, built, and deleted inside one PR.** `src/capture/har.ts` split pure from
+driver. Three independent lenses — test-quality, `/simplify`, `/scrutinize` — converged on it with
+no sight of each other, and `/scrutinize` stated it plainly: the claimed seam did not exist at HEAD.
+The cause was self-inflicted: accepting *"an integration test must not observe through the unit it
+also tests"* removed `harResourceUrls`'s only caller. The deeper fact is that slice 1 has **no
+consumer for a HAR reader at all** — that is P3's work — so the module was premature, not orphaned.
+
+**Two measurements that change later contracts:**
+- **`content: 'attach'` writes bodies to sidecar files**, referenced from `response.content._file`.
+  The HAR JSON carries the reference, not the bytes. **Contract 6.1's redactor must cover the
+  sidecar directory**, or every credential that travelled in a body sits in plaintext beside a
+  redacted HAR. Found by an assertion failing, not by reading docs.
+- **`recordHar` cannot see a request a service worker answers from its own cache.** `serviceWorkers:
+  "block"` is missing, and no current test would catch it because the fixture registers none. This
+  is exactly the silent-incompleteness §6.4 exists to flag.
+
+**`/security-review` found three real findings and none of them blocked**, on a checkable fact
+rather than a judgement: `grep -rn "captureHar"` returns two call sites, both tests, one on the
+localhost fixture and one on a fake browser; `src/index.ts` does not export it. Redaction,
+restrictive file modes, and archive-root containment for `outDir` are now part of 6.1's scope.
+
+**Validation:** `bun run verify` exit 0 on `main` after merge — 27 bun tests, 9 node browser tests,
+lint, typecheck, build.
+
+**Said plainly rather than smoothed over:** capture launches **headless**, and plan §3 specifies
+headful — a real divergence, recorded on #29 rather than closed here. The four review gates ran
+only after the developer asked whether they had; two self-designed review rounds before that had
+found none of the four defects the gates did.
+
+**Next:** slice 2 — the adaptive sweep, which is what makes `lazyImage` reachable at all.
+
+---
+
 ## P1 — element identity, end to end (2026-07-31, `/tdd` + `/scrutinize` + `/security-review` + `/code-review`, #9 #20 #21 #24)
 
 **Goal:** the contract every later stage references — name an element, and recognise it again in a
