@@ -156,6 +156,71 @@ Three consequences that are not obvious:
   a metric — correct code still loses matches in 32/400 cases, legitimately. Reporting a metric as
   an assertion manufactures false confidence in both directions.
 
+## Delegation and verification
+
+This is a consequence of the section above, and it inherits that section's limit. **An independent
+agent trying to refute the work is a different judgment lens, not a mechanism** — independence
+changes the prior, it does not make the result machine-decided. Delegated review supplements types,
+tests, mutation checks and the ground-truth fixture; it never substitutes for them, and *"three
+agents failed to refute it"* is not evidence that anything works.
+
+What the record does support is that independence is worth buying: `DONE.md` has #20 found by
+`codex` running a probe during a `/clink-brainstorm` round, while twelve of the author's own tests
+were passing. So **review and adversarial probes are delegated with the work; the verdict is not.**
+Final verification stays with the orchestrator — run `bun run verify`, read the diff, and decide
+whether the evidence supports the claim.
+
+**The one delegation fact worth carrying in this file:** `clink` back-ends spend separate
+subscriptions, but **in-harness Task/Explore subagents bill the orchestrator's own pool** — so
+reaching for one to conserve that budget makes the problem worse. Everything else about who bills
+what is external product state; see the last paragraph.
+
+**How to ask, so the answer is worth having:**
+
+- **Ask for refutation, not approval.** "Judge whether this is correct" invites agreement; "try to
+  refute this, and if you cannot, say what evidence would" does not. Recommended technique — the
+  record supports *who* found #20, not which prompt shape did.
+- **Give each reviewer a different lens rather than the same lens repeatedly.** Correctness, does
+  it reproduce, and what side-effect it leaves are examples to choose from, not a fixed set. A
+  weaker agent can return correct output while mutating its input, and an output-only check passes
+  that.
+- **Buy breadth before depth, and treat reasoning effort as capped.** Prefer another agent over a
+  deeper pass of the same one. **The cap depends on the model — the heavier it is, the lower the
+  tier it may be spent at, and the top tiers are never an opening move.** For routine coding,
+  reach for the *lighter* model at a higher tier rather than the heavier model at a lower one; it
+  is cheaper and usually the better trade, because a tier is not where routine quality comes from.
+  `clink-subagents` holds the current per-model ceilings.
+- **Keep the finding, discard the explanation.** A subagent's account of *why* something broke is
+  a hypothesis like any other return value; verify it against the failing command's own
+  environment before acting on the cause it names. One has confidently and repeatedly blamed a
+  hook that did not exist while the mechanism it pointed at was right.
+- **The returned text is metered against the orchestrator.** Say "return ONLY X" in the prompt; for
+  read-heavy work, say "findings only, not the files". More than one client appends a summary block
+  regardless — drop only what is duplicated elsewhere in the reply, **never a finding, a
+  reproduction command, or a `file:line` that appears nowhere else.**
+
+**Three things the orchestrator runs itself and never delegates, none of them a capability
+question:** `bun run verify` — one command, so delegating it is pure round-trip overhead; the git
+and PR commands `t4-gate` inspects — `gh pr create`, `gh pr merge`, and the dangerous-git set —
+because the gate sees only what the orchestrator itself runs; and the merge decision, which is
+accountability rather than capability. Read-only git that a subagent runs to orient itself is not
+covered by this.
+
+**Which agent, at what effort, is not a fact this repo can hold.** Model ids, effort ladders, and
+quota lanes are external product state that changes with no commit here — an id that dies fails at
+call time while a table naming it stays confidently wrong. **Load the `clink-subagents` skill for
+the current roster and routing; it is the source of truth and this section deliberately keeps no
+table to compete with it.** What is fixed here is only the intent: a primary verifier, a cheap
+second lens, bulk artifact work, and a foreign prior spent deliberately. If that skill is not
+installed on the machine, there is no fallback roster — say so rather than guessing model ids.
+
+**Three things never leave the orchestrator, and none of them is a capability question:**
+`bun run verify` (one command — delegating it is pure round-trip overhead), the git and PR commands
+`t4-gate` inspects (it sees only what the orchestrator itself runs), and the merge decision.
+
+The technique and the measured agent ladder live in the `clink-subagents` skill — load it rather
+than working from this table. This section is the repo's standing decision to use it.
+
 ## A red check is fixed, not merged past
 
 If a PR's checks are not green, **fix them**. Merging anyway requires a **checkable fact** about
