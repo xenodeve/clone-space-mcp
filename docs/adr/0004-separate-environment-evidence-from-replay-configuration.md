@@ -1,8 +1,8 @@
 # ADR 0004 — Separate environment evidence from replay configuration
 
-- **Status:** Pending (2026-08-01) — contract accepted; implementation tracked separately
+- **Status:** Accepted (2026-08-01) — capture-side implementation delivered by #42
 - **Area:** Capture / replay / archive security
-- **Related:** #39 (decision), #29 (P2), plan §6.2, ADR 0003
+- **Related:** #39 (decision), #42 (implementation), #29 (P2), plan §6.2, ADR 0003
 
 ## Context
 

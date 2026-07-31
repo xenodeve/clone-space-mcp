@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
@@ -16,13 +16,29 @@ test("captureHar configures and drives a browser context", async () => {
       async get() {},
     },
     async newPage() {
+      let evaluation = 0;
       return {
+        localStorage: { async items() { return []; } },
+        sessionStorage: { async items() { return []; } },
         async goto(url: string, options: { waitUntil: "load" }) {
           gotoCall = { url, options };
         },
         on() {},
         async evaluate<Result>() {
-          return undefined as Result;
+          evaluation += 1;
+          if (evaluation === 1) return undefined as Result;
+          return {
+            origin: "https://example.com",
+            viewport: { width: 1280, height: 720 },
+            devicePixelRatio: 1,
+            locale: "en-US",
+            locales: ["en-US"],
+            timezoneId: "UTC",
+            reducedMotion: "no-preference",
+            colorScheme: "light",
+            userAgent: "FixtureAgent/1.0",
+            fontFaces: { entries: [], truncated: false },
+          } as Result;
         },
       };
     },
@@ -33,6 +49,9 @@ test("captureHar configures and drives a browser context", async () => {
   };
 
   const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
     async newContext(options: { recordHar: { path: string } }) {
       contextOptions = options;
       harPath = options.recordHar.path;
@@ -72,6 +91,9 @@ test("captureHar refuses to mix a new capture with existing archive files", asyn
     await expect(
       captureHar({
         browser: {
+          version() {
+            return "Chromium/140.0.0.0";
+          },
           async newContext() {
             browserCalled = true;
             throw new Error("browser must not be called");
@@ -83,6 +105,304 @@ test("captureHar refuses to mix a new capture with existing archive files", asyn
     ).rejects.toThrow(/output directory must be empty/);
     expect(browserCalled).toBe(false);
     expect(readFileSync(existing, "utf8")).toBe("EXISTING_SENTINEL");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("captureHar rejects an invalid primary URL before opening the browser", async () => {
+  const root = mkdtempSync(join(tmpdir(), "clone-space-record-invalid-origin-"));
+  let browserCalled = false;
+
+  try {
+    await expect(
+      captureHar({
+        browser: {
+          version() {
+            return "Chromium/140.0.0.0";
+          },
+          async newContext() {
+            browserCalled = true;
+            return {
+              request: { async get() {} },
+              async newPage() {
+                throw new Error("browser must not be called");
+              },
+              async close() {},
+            };
+          },
+        },
+        url: "not a valid absolute URL",
+        outDir: join(root, "archive"),
+      }),
+    ).rejects.toThrow(/cannot be parsed as a URL|Invalid URL/);
+    expect(browserCalled).toBe(false);
+    expect(readdirSync(root)).toEqual([]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("captureHar publishes environment.json v1 with distinct surfaces and empty default storage", async () => {
+  let harPath: string | undefined;
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-env-"));
+  const url = "https://example.com/page";
+
+  const context = {
+    request: {
+      async get() {},
+    },
+    async newPage() {
+      let evaluation = 0;
+      return {
+        localStorage: { async items() { return []; } },
+        sessionStorage: { async items() { return []; } },
+        async goto() {},
+        on() {},
+        async evaluate<Result>() {
+          evaluation += 1;
+          if (evaluation === 1) return undefined as Result;
+          return {
+            origin: "https://example.com",
+            viewport: { width: 1280, height: 720 },
+            devicePixelRatio: 1,
+            locale: "en-US",
+            locales: ["en-US"],
+            timezoneId: "UTC",
+            reducedMotion: "no-preference",
+            colorScheme: "light",
+            userAgent: "FixtureAgent/1.0",
+            fontFaces: { entries: [], truncated: false },
+          } as Result;
+        },
+      };
+    },
+    async close() {
+      writeFileSync(harPath!, '{"log":{"entries":[]}}');
+    },
+  };
+
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return context;
+    },
+  };
+
+  try {
+    await captureHar({ browser, url, outDir });
+
+    const environment = JSON.parse(readFileSync(join(outDir, "environment.json"), "utf8"));
+
+    expect(environment).toMatchObject({
+      schemaVersion: 1,
+      primaryOrigin: "https://example.com",
+      capture: {
+        requested: {},
+        observed: {
+          viewport: { width: 1280, height: 720 },
+          devicePixelRatio: 1,
+          locale: "en-US",
+          locales: ["en-US"],
+          timezoneId: "UTC",
+          reducedMotion: "no-preference",
+          colorScheme: "light",
+          userAgent: "FixtureAgent/1.0",
+          browser: {
+            name: "chromium",
+            version: "Chromium/140.0.0.0",
+            playwrightVersion: "1.62.0",
+          },
+          fontFaces: { entries: [], truncated: false },
+        },
+      },
+      replay: {
+        context: {
+          viewport: { width: 1280, height: 720 },
+          deviceScaleFactor: 1,
+          locale: "en-US",
+          timezoneId: "UTC",
+          reducedMotion: "no-preference",
+          colorScheme: "light",
+          userAgent: "FixtureAgent/1.0",
+        },
+        requiredBrowser: {
+          name: "chromium",
+          version: "Chromium/140.0.0.0",
+          playwrightVersion: "1.62.0",
+        },
+      },
+    });
+    expect(environment.replay.storage).toEqual({
+      origin: "https://example.com",
+      allowlist: {
+        localStorage: [],
+        sessionStorage: [],
+      },
+      localStorage: [],
+      sessionStorage: [],
+    });
+    expect(environment.omissions).toEqual({
+      storage: {
+        policy: "explicit-allowlist",
+        omittedLocalStorageEntries: 0,
+        omittedSessionStorageEntries: 0,
+        indexedDB: "not-collected",
+        cacheStorage: "not-collected",
+        cookies: "not-restored",
+        crossOriginStorage: "not-collected",
+      },
+      fonts: "declared-faces-only; host-font availability and text metrics not captured",
+    });
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar publishes only explicitly allowlisted primary-origin storage", async () => {
+  let harPath: string | undefined;
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-storage-"));
+  let evaluation = 0;
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return {
+        request: { async get() {} },
+        async newPage() {
+          return {
+            localStorage: {
+              async items() {
+                return [
+                  { name: "theme", value: "dark" },
+                  { name: "private-local-name", value: "PRIVATE_LOCAL_VALUE" },
+                ];
+              },
+            },
+            sessionStorage: {
+              async items() {
+                return [
+                  { name: "panel", value: "open" },
+                  { name: "private-session-name", value: "PRIVATE_SESSION_VALUE" },
+                ];
+              },
+            },
+            async goto() {},
+            on() {},
+            async evaluate<Result>() {
+              evaluation += 1;
+              if (evaluation === 1) return undefined as Result;
+              return {
+                origin: "https://example.com",
+                viewport: { width: 1280, height: 720 },
+                devicePixelRatio: 1,
+                locale: "en-US",
+                locales: ["en-US"],
+                timezoneId: "UTC",
+                reducedMotion: "no-preference",
+                colorScheme: "light",
+                userAgent: "FixtureAgent/1.0",
+                fontFaces: { entries: [], truncated: false },
+              } as Result;
+            },
+          };
+        },
+        async close() {
+          writeFileSync(harPath!, '{"log":{"entries":[]}}');
+        },
+      };
+    },
+  };
+
+  try {
+    await captureHar({
+      browser,
+      url: "https://example.com/page",
+      outDir,
+      storageAllowlist: {
+        localStorage: ["theme"],
+        sessionStorage: ["panel"],
+      },
+    });
+    const text = readFileSync(join(outDir, "environment.json"), "utf8");
+    const environment = JSON.parse(text);
+
+    expect(environment.replay.storage).toEqual({
+      origin: "https://example.com",
+      allowlist: { localStorage: ["theme"], sessionStorage: ["panel"] },
+      localStorage: [{ name: "theme", value: "dark" }],
+      sessionStorage: [{ name: "panel", value: "open" }],
+    });
+    expect(environment.omissions.storage.omittedLocalStorageEntries).toBe(1);
+    expect(environment.omissions.storage.omittedSessionStorageEntries).toBe(1);
+    expect(text).not.toContain("private-local-name");
+    expect(text).not.toContain("PRIVATE_LOCAL_VALUE");
+    expect(text).not.toContain("private-session-name");
+    expect(text).not.toContain("PRIVATE_SESSION_VALUE");
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar rejects duplicate storage allowlist keys without publishing an archive", async () => {
+  let harPath: string | undefined;
+  const root = mkdtempSync(join(tmpdir(), "clone-space-record-duplicate-"));
+  const outDir = join(root, "archive");
+  let evaluation = 0;
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return {
+        request: { async get() {} },
+        async newPage() {
+          return {
+            localStorage: { async items() { return []; } },
+            sessionStorage: { async items() { return []; } },
+            async goto() {},
+            on() {},
+            async evaluate<Result>() {
+              evaluation += 1;
+              if (evaluation === 1) return undefined as Result;
+              return {
+                origin: "https://example.com",
+                viewport: { width: 1280, height: 720 },
+                devicePixelRatio: 1,
+                locale: "en-US",
+                locales: ["en-US"],
+                timezoneId: "UTC",
+                reducedMotion: "no-preference",
+                colorScheme: "light",
+                userAgent: "FixtureAgent/1.0",
+                fontFaces: { entries: [], truncated: false },
+              } as Result;
+            },
+          };
+        },
+        async close() {
+          writeFileSync(harPath!, '{"log":{"entries":[]}}');
+        },
+      };
+    },
+  };
+
+  try {
+    await expect(
+      captureHar({
+        browser,
+        url: "https://example.com/page",
+        outDir,
+        storageAllowlist: { localStorage: ["theme", "theme"] },
+      }),
+    ).rejects.toThrow(/localStorage allowlist contains duplicate key: theme/);
+    expect(() => readFileSync(join(outDir, "environment.json"), "utf8")).toThrow();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

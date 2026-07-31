@@ -104,6 +104,11 @@ export async function startFixtureServers(): Promise<FixtureServers> {
       if (pathname === "/instrumented.js.map") {
         return new Response(built.map, { headers: { "content-type": CONTENT_TYPES[".map"]! } });
       }
+      if (pathname === "/redirect-target.html") {
+        return new Response("<script>localStorage.setItem('redirect-secret', 'CROSS_ORIGIN_VALUE')</script>", {
+          headers: { "content-type": CONTENT_TYPES[".html"]! },
+        });
+      }
       if (pathname !== "/theme.css") return new Response("not found", { status: 404 });
 
       // Deliberately no Access-Control-Allow-Origin: the page must NOT be able to read
@@ -139,6 +144,9 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           headers: { "content-type": CONTENT_TYPES[".html"]! },
         });
       }
+      if (pathname === "/cross-origin-redirect.html") {
+        return Response.redirect(new URL("/redirect-target.html", crossOriginUrl), 302);
+      }
       if (pathname === "/credential-probe.html" || pathname === "/credential-probe-fail.html") {
         // Build every sentinel from fragments so the response body itself does not
         // contain the value that the archive redactor is expected to remove.
@@ -163,6 +171,21 @@ export async function startFixtureServers(): Promise<FixtureServers> {
             "set-cookie": "session=FAKE_COOKIE_SENTINEL; HttpOnly",
           },
         });
+      }
+      if (pathname === "/environment-probe.html") {
+        const crossOriginFrame = new URL("/redirect-target.html", crossOriginUrl);
+        const html = `<iframe src="${crossOriginFrame.href}"></iframe><script>
+          localStorage.setItem("theme", "dark");
+          localStorage.setItem("private-local-name", "PRIVATE_LOCAL_VALUE");
+          sessionStorage.setItem("panel", "open");
+          sessionStorage.setItem("private-session-name", "PRIVATE_SESSION_VALUE");
+          for (let index = 0; index < 300; index += 1) {
+            const family = (index < 257 ? "Zulu Fixture " : "Alpha Fixture ")
+              + String(index).padStart(3, "0");
+            document.fonts.add(new FontFace(family, "url(data:font/woff2;base64,d09GMg==)"));
+          }
+        </script>`;
+        return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
       }
       if (pathname === "/credential-probe") {
         await req.text();
