@@ -6,6 +6,41 @@
 
 ---
 
+## P2 slice 2 — adaptive sweep reaches lazy content (2026-07-31, `/tdd` + `/simplify` fallback + `/scrutinize` + `/code-review`, #29 #32)
+
+**Goal:** make capture reach a resource that plain navigation cannot request. The fixture's
+`lazy-hero-panel` exposes `/assets/lazy-panel.svg` only through `data-lazy-src`; its
+`IntersectionObserver` assigns `src` only after the element enters the viewport.
+
+**Shipped:** `captureHar` now runs an adaptive document sweep in `src/capture/record.ts:38`.
+It advances by 0.8 viewport, waits two animation frames plus 75 ms, adapts when document height
+changes, and stops after three checkpoints where both scroll position and document height remain
+unchanged. Browser coverage lives at `test/browser/capture.browser.ts:75` and `:91`.
+
+**RED → GREEN:** before the sweep, the browser suite passed 1/2 and failed with *the HAR is missing
+the lazy image request triggered by the capture sweep*. After implementation it passed 2/2.
+Disabling the sweep loop returned the same test to RED, proving the assertion depends on the new
+mechanism rather than an eager fixture fetch.
+
+**Review finding reproduced and fixed:** the first implementation reset its empty-checkpoint
+counter whenever it had not reached the bottom. A page whose `window.scrollTo` was a no-op therefore
+never terminated. The added browser test timed out at 1.5 seconds with *the capture sweep did not
+terminate* (the runner reported about 1.8 seconds); after the fix it completed in about 419 ms.
+
+**Validation:** fresh pre-merge `bun run verify` exited 0 for merge commit `85f2757`'s tree —
+27 bun tests, 11 node browser tests, lint, typecheck and build. PR #32 had no unresolved review
+threads. GitHub Actions did not execute because the account-wide billing lock in #2 prevented every
+job from starting; PR #32 restates that standing exemption.
+
+**Deferred deliberately:** bounded network quiet and the full `capture-incomplete` termination
+budget remain §6.10; nested and horizontal scrollers remain §6.11. `captureHar` still has only test
+callers and is not exported from `src/index.ts`, so this slice does not silently approximate either
+contract before its dedicated work lands.
+
+**Next:** slice 3 — explicitly fetch the fixture's published sourcemap into the HAR/archive.
+
+---
+
 ## P2 slice 1 — record a HAR of the fixture (2026-07-31, `/tdd` + `/simplify` + `/scrutinize` + `/security-review` + `/code-review`, #29 #30)
 
 **Goal:** the first artifact of the capture stage, and the phase's most expensive decision made on
