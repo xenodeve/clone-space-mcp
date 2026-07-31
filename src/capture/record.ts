@@ -40,10 +40,13 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         Array.from(document.scripts)
           .filter((script) => script.src)
           .map(async (script) => {
-            const source = await (await fetch(script.src)).text();
-            const sourceMappingURL = source.match(/\/\/[#@]\s*sourceMappingURL=(\S+)/)?.[1];
-            if (sourceMappingURL) {
-              await fetch(new URL(sourceMappingURL, script.src).href);
+            try {
+              const source = await (await fetch(script.src)).text();
+              const sourceMappingURL = source.match(/\/\/[#@]\s*sourceMappingURL=(\S+)/)?.[1];
+              if (sourceMappingURL) {
+                await fetch(new URL(sourceMappingURL, script.src).href);
+              }
+            } catch {
             }
           }),
       );
