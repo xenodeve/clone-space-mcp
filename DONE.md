@@ -6,6 +6,36 @@
 
 ---
 
+## P2 slice 3 — fetch published sourcemaps (2026-07-31, `/tdd` + `/simplify` fallback + `/scrutinize` + `/code-review`, #29 #34)
+
+**Goal:** capture a published sourcemap while the live network is still available. Browsers do not
+request `sourceMappingURL` targets themselves, so replay cannot recover a map that capture omitted.
+
+**Shipped:** `captureHar` listens to Playwright script responses, reads their bodies without
+requesting each script twice, resolves relative `sourceMappingURL` values against the response URL,
+and fetches discovered maps through the BrowserContext request client. That path records attached
+map bodies in the same HAR and works for a cross-origin script whose body page JavaScript cannot
+read because it has no CORS header.
+
+**RED → GREEN and sensitivity:** the original map assertion passed only after explicit fetching;
+removing that fetch returned it to RED. Review then found that page-side discovery duplicated every
+script request and missed no-CORS cross-origin maps. With the final tests against the old
+implementation, 5/7 browser tests passed: the instrumented script appeared twice and the
+cross-origin map was absent. Response-based discovery plus `context.request.get` made the suite
+7/7. A fixture mutation returning 404 for the map failed with `404 !== 200`, proving the test
+requires a successful attached map rather than only a matching request URL.
+
+**Validation:** fresh pre-merge `bun run verify` exited 0 for PR #34's tree — 27 Bun tests,
+15 Node browser tests, lint, typecheck and build. The PR had no unresolved review threads. All four
+GitHub jobs had zero steps and the annotation *The job was not started because your account is
+locked due to a billing issue.*, so PR #34 used the #2 standing exemption recorded in its body.
+
+**Next:** split the first remaining archive contract, §6.1 redaction, into its dedicated
+security-labelled issue before implementation. Issue #29 remains open until every §6 contract and
+capture artifact reaches its phase exit criterion.
+
+---
+
 ## P2 slice 2 — adaptive sweep reaches lazy content (2026-07-31, `/tdd` + `/simplify` fallback + `/scrutinize` + `/code-review`, #29 #32)
 
 **Goal:** make capture reach a resource that plain navigation cannot request. The fixture's
