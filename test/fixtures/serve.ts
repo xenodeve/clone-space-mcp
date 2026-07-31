@@ -118,7 +118,12 @@ export async function startFixtureServers(): Promise<FixtureServers> {
 
   const primary = Bun.serve({
     port: 0,
-    async fetch(req) {
+    websocket: {
+      message(socket, message) {
+        socket.send(message);
+      },
+    },
+    async fetch(req, server) {
       const { pathname } = new URL(req.url);
 
       if (pathname === "/" || pathname === "/index.html") {
@@ -133,6 +138,42 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         return new Response(`<script src="${script.href}"></script>`, {
           headers: { "content-type": CONTENT_TYPES[".html"]! },
         });
+      }
+      if (pathname === "/credential-probe.html" || pathname === "/credential-probe-fail.html") {
+        // Build every sentinel from fragments so the response body itself does not
+        // contain the value that the archive redactor is expected to remove.
+        const html = `<script type="module">
+          const value = (kind) => ["FAKE", kind, "SENTINEL"].join("_");
+          const request = new XMLHttpRequest();
+          request.open("POST", "/credential-probe?AcCeSs_ToKeN=" + value("QUERY"), false);
+          request.setRequestHeader("Authorization", "Bearer " + value("AUTH"));
+          request.setRequestHeader("Content-Type", "application/json");
+          request.send(JSON.stringify({ token: value("REQUEST") }));
+          await new Promise((resolve, reject) => {
+            const socket = new WebSocket("ws://" + location.host + "/credential-probe-ws");
+            socket.addEventListener("open", () => socket.send(value("WEBSOCKET")));
+            socket.addEventListener("message", () => { socket.close(); resolve(); });
+            socket.addEventListener("error", reject);
+          });
+          ${pathname === "/credential-probe-fail.html" ? 'window.requestAnimationFrame = () => { throw new Error("fixture sweep failure"); };' : ""}
+        </script>`;
+        return new Response(html, {
+          headers: {
+            "content-type": CONTENT_TYPES[".html"]!,
+            "set-cookie": "session=FAKE_COOKIE_SENTINEL; HttpOnly",
+          },
+        });
+      }
+      if (pathname === "/credential-probe") {
+        await req.text();
+        return new Response(null, {
+          status: 204,
+          headers: { "set-cookie": "response=FAKE_SET_COOKIE_SENTINEL; HttpOnly" },
+        });
+      }
+      if (pathname === "/credential-probe-ws") {
+        if (server.upgrade(req)) return;
+        return new Response("websocket upgrade failed", { status: 500 });
       }
 
       if (pathname === "/build/instrumented.js") {

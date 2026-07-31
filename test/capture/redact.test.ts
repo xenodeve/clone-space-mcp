@@ -1,0 +1,305 @@
+import { expect, test } from "bun:test";
+import { link, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { redactHarArchive } from "../../src/capture/redact.ts";
+
+const REDACTED = "[REDACTED]";
+
+type Har = {
+  log: {
+    entries: Array<{
+      _resourceType?: string;
+      request: {
+        url: string;
+        headers: Array<{ name: string; value: string }>;
+        cookies: Array<{ name: string; value: string }>;
+        queryString: Array<{ name: string; value: string }>;
+        bodySize: number;
+        postData: {
+          _file: string;
+          text: string;
+          params: Array<{ name: string; value: string }>;
+        };
+      };
+      response: {
+        bodySize?: number;
+        headers: Array<{ name: string; value: string }>;
+        cookies: Array<{ name: string; value: string }>;
+        content: { _file?: string; size?: number };
+        redirectURL?: string;
+      };
+    }>;
+  };
+};
+
+async function createArchive(har: Har): Promise<{ root: string; harPath: string }> {
+  const root = await mkdtemp(join(tmpdir(), "clone-space-redact-"));
+  const harPath = join(root, "network.har");
+  await writeFile(harPath, `${JSON.stringify(har)}\n`);
+  return { root, harPath };
+}
+
+test("redacts case-insensitive headers/cookies and synchronizes credential-like query values", async () => {
+  const requestBodyPath = "requests/request-body.bin";
+  const responseBodyPath = "responses/response-body.txt";
+  const { root, harPath } = await createArchive({
+    log: {
+      entries: [
+        {
+          request: {
+            url: "https://USER_SENTINEL:PASSWORD_SENTINEL@example.test/page?AcCeSs_ToKeN=URL_QUERY_SENTINEL&cLiEnT_SeCrEt=URL_SECRET_SENTINEL&accessKey=ACCESS_KEY_SENTINEL&page=2",
+            headers: [
+              { name: "aUtHoRiZaTiOn", value: "Bearer AUTH_SENTINEL" },
+              { name: "cOoKiE", value: "session=HEADER_COOKIE_SENTINEL" },
+              { name: "X-Api-Key", value: "API_KEY_SENTINEL" },
+              { name: "Referer", value: "https://example.test/from?token=REFERER_SENTINEL" },
+              { name: "Content-Length", value: "99" },
+              { name: "X-Trace", value: "keep-me" },
+            ],
+            cookies: [
+              { name: "SeSsIoN", value: "COOKIE_SENTINEL" },
+              { name: "theme", value: "dark" },
+            ],
+            queryString: [
+              { name: "aCcEsS_ToKeN", value: "QUERY_SENTINEL" },
+              { name: "cLiEnT_SeCrEt", value: "CLIENT_SECRET_SENTINEL" },
+              { name: "accessKey", value: "ACCESS_KEY_SENTINEL" },
+              { name: "page", value: "2" },
+            ],
+            bodySize: 99,
+            postData: {
+              _file: requestBodyPath,
+              text: "inline request body",
+              params: [{ name: "field", value: "REQUEST_PARAM_SENTINEL" }],
+            },
+          },
+          response: {
+            headers: [
+              { name: "sEt-CoOkIe", value: "response=SET_COOKIE_SENTINEL" },
+              { name: "Location", value: "/next?refresh_token=LOCATION_SENTINEL" },
+              { name: "Content-Type", value: "text/plain" },
+            ],
+            cookies: [{ name: "sId", value: "RESPONSE_COOKIE_SENTINEL" }],
+            content: { _file: responseBodyPath },
+            redirectURL: "https://example.test/next?id_token=REDIRECT_SENTINEL",
+          },
+        },
+      ],
+    },
+  });
+
+  try {
+    await mkdir(join(root, "requests"));
+    await mkdir(join(root, "responses"));
+    await writeFile(join(root, requestBodyPath), "REQUEST_BODY_SENTINEL");
+    await writeFile(join(root, responseBodyPath), "SAFE_RESPONSE_BODY");
+
+    await redactHarArchive(harPath);
+
+    const redacted = JSON.parse(await readFile(harPath, "utf8")) as Har;
+    const entry = redacted.log.entries[0]!;
+    const request = entry.request;
+    const response = entry.response;
+
+    expect(request.headers).toEqual([
+      { name: "aUtHoRiZaTiOn", value: REDACTED },
+      { name: "cOoKiE", value: REDACTED },
+      { name: "X-Api-Key", value: REDACTED },
+      { name: "Referer", value: "https://example.test/from?token=%5BREDACTED%5D" },
+      { name: "Content-Length", value: String(Buffer.byteLength(`${REDACTED}\n`)) },
+      { name: "X-Trace", value: "keep-me" },
+    ]);
+    expect(request.cookies).toEqual([
+      { name: "SeSsIoN", value: REDACTED },
+      { name: "theme", value: REDACTED },
+    ]);
+    expect(request.queryString).toEqual([
+      { name: "aCcEsS_ToKeN", value: REDACTED },
+      { name: "cLiEnT_SeCrEt", value: REDACTED },
+      { name: "accessKey", value: REDACTED },
+      { name: "page", value: "2" },
+    ]);
+    expect(decodeURIComponent(new URL(request.url).username)).toBe(REDACTED);
+    expect(decodeURIComponent(new URL(request.url).password)).toBe(REDACTED);
+    expect(new URL(request.url).searchParams.get("AcCeSs_ToKeN")).toBe(
+      request.queryString[0]!.value,
+    );
+    expect(new URL(request.url).searchParams.get("cLiEnT_SeCrEt")).toBe(
+      request.queryString[1]!.value,
+    );
+    expect(new URL(request.url).searchParams.get("accessKey")).toBe(request.queryString[2]!.value);
+    expect(request.postData).toMatchObject({
+      _file: requestBodyPath,
+      text: "",
+      params: [],
+    });
+    expect(request.bodySize).toBe(Buffer.byteLength(`${REDACTED}\n`));
+    expect(await readFile(join(root, requestBodyPath), "utf8")).toBe(`${REDACTED}\n`);
+    expect(response.headers).toEqual([
+      { name: "sEt-CoOkIe", value: REDACTED },
+      { name: "Location", value: "/next?refresh_token=%5BREDACTED%5D" },
+      { name: "Content-Type", value: "text/plain" },
+    ]);
+    expect(response.cookies).toEqual([{ name: "sId", value: REDACTED }]);
+    expect(response.redirectURL).toBe("https://example.test/next?id_token=%5BREDACTED%5D");
+    expect(response.content._file).toBe(responseBodyPath);
+    expect(await readFile(join(root, responseBodyPath), "utf8")).toBe("SAFE_RESPONSE_BODY");
+    if (process.platform !== "win32") {
+      expect((await stat(root)).mode & 0o777).toBe(0o700);
+      expect((await stat(join(root, "requests"))).mode & 0o777).toBe(0o700);
+      expect((await stat(join(root, "responses"))).mode & 0o777).toBe(0o700);
+      expect((await stat(harPath)).mode & 0o777).toBe(0o600);
+      expect((await stat(join(root, requestBodyPath))).mode & 0o777).toBe(0o600);
+      expect((await stat(join(root, responseBodyPath))).mode & 0o777).toBe(0o600);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("redacts attached WebSocket frames in both directions", async () => {
+  const framePath = "websocket-frames.jsonl";
+  const { root, harPath } = await createArchive({
+    log: {
+      entries: [
+        {
+          _resourceType: "websocket",
+          request: {
+            url: "ws://example.test/socket",
+            headers: [],
+            cookies: [],
+            queryString: [],
+            bodySize: 0,
+            postData: { text: "", params: [], _file: "request.txt" },
+          },
+          response: {
+            headers: [],
+            cookies: [],
+            content: { _file: framePath, size: 200 },
+            bodySize: 200,
+          },
+        },
+      ],
+    },
+  });
+
+  try {
+    await writeFile(join(root, "request.txt"), "REQUEST_FRAME_HANDSHAKE");
+    await writeFile(
+      join(root, framePath),
+      '{"type":"send","data":"CLIENT_WEBSOCKET_SENTINEL"}\n{"type":"receive","data":"SERVER_WEBSOCKET_SENTINEL"}\n',
+    );
+    await redactHarArchive(harPath);
+
+    const redacted = JSON.parse(await readFile(harPath, "utf8")) as Har;
+    const response = redacted.log.entries[0]!.response;
+    expect(await readFile(join(root, framePath), "utf8")).toBe(`${REDACTED}\n`);
+    expect(response.bodySize).toBe(Buffer.byteLength(`${REDACTED}\n`));
+    expect(response.content.size).toBe(Buffer.byteLength(`${REDACTED}\n`));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("refuses an attached request body that traverses outside the archive", async () => {
+  const { root, harPath } = await createArchive({
+    log: {
+      entries: [
+        {
+          request: {
+            url: "https://example.test",
+            headers: [],
+            cookies: [],
+            queryString: [],
+            bodySize: 1,
+            postData: { _file: "../outside.txt", text: "", params: [] },
+          },
+          response: { headers: [], cookies: [], content: { _file: "response.txt" } },
+        },
+      ],
+    },
+  });
+  const outsidePath = join(root, "..", "outside.txt");
+
+  try {
+    await writeFile(outsidePath, "OUTSIDE_SENTINEL");
+    await expect(redactHarArchive(harPath)).rejects.toThrow(/escapes archive root/);
+    expect(await readFile(outsidePath, "utf8")).toBe("OUTSIDE_SENTINEL");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outsidePath, { force: true });
+  }
+});
+
+test("refuses a symlinked attached body that escapes the archive when symlinks are supported", async () => {
+  const { root, harPath } = await createArchive({
+    log: {
+      entries: [
+        {
+          request: {
+            url: "https://example.test",
+            headers: [],
+            cookies: [],
+            queryString: [],
+            bodySize: 1,
+            postData: { _file: "linked-body.txt", text: "", params: [] },
+          },
+          response: { headers: [], cookies: [], content: { _file: "response.txt" } },
+        },
+      ],
+    },
+  });
+  const outsideRoot = await mkdtemp(join(tmpdir(), "clone-space-redact-outside-"));
+  const outsidePath = join(outsideRoot, "outside.txt");
+  const linkPath = join(root, "linked-body.txt");
+
+  try {
+    await writeFile(outsidePath, "SYMLINK_TARGET_SENTINEL");
+    try {
+      await symlink(outsidePath, linkPath, "file");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EACCES" || code === "EPERM" || code === "ENOTSUP") return;
+      throw error;
+    }
+
+    await expect(redactHarArchive(harPath)).rejects.toThrow(/symbolic link|outside archive root/);
+    expect(await readFile(outsidePath, "utf8")).toBe("SYMLINK_TARGET_SENTINEL");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outsideRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses a hard-linked attached body without changing its other name", async () => {
+  const { root, harPath } = await createArchive({
+    log: {
+      entries: [
+        {
+          request: {
+            url: "https://example.test",
+            headers: [],
+            cookies: [],
+            queryString: [],
+            bodySize: 1,
+            postData: { _file: "linked-body.txt", text: "", params: [] },
+          },
+          response: { headers: [], cookies: [], content: {} },
+        },
+      ],
+    },
+  });
+  const outsideRoot = await mkdtemp(join(tmpdir(), "clone-space-redact-hardlink-"));
+  const outsidePath = join(outsideRoot, "outside.txt");
+
+  try {
+    await writeFile(outsidePath, "HARD_LINK_TARGET_SENTINEL");
+    await link(outsidePath, join(root, "linked-body.txt"));
+    await expect(redactHarArchive(harPath)).rejects.toThrow(/multiple hard links/);
+    expect(await readFile(outsidePath, "utf8")).toBe("HARD_LINK_TARGET_SENTINEL");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outsideRoot, { recursive: true, force: true });
+  }
+});
