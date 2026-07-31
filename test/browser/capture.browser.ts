@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { startFixtureServers, type FixtureServers } from "../../scripts/fixture-client.ts";
 import { captureHar } from "../../src/capture/record.ts";
-import { harResourceUrls } from "../../src/capture/har.ts";
 
 const fixtureManifest = JSON.parse(
   readFileSync(new URL("../fixtures/motion-site/fixture-manifest.json", import.meta.url), "utf8"),
@@ -40,14 +39,23 @@ test("captures cross-origin stylesheet and iframe document requests in the HAR",
     outDir: tempDir,
   });
   const har = JSON.parse(readFileSync(harPath, "utf8"));
-  const urls = harResourceUrls(har);
+  const entries = har.log.entries;
+  const crossOrigin = new URL(servers.crossOrigin.url).origin;
+  const stylesheetEntry = entries.find((entry: { request: { url: string } }) => {
+    const url = new URL(entry.request.url);
+    return url.origin === crossOrigin && url.pathname === fixtureManifest.assets.crossOriginStylesheet;
+  });
 
+  assert.ok(stylesheetEntry, "the HAR is missing the cross-origin stylesheet request");
   assert.ok(
-    urls.some((url) => new URL(url).pathname === fixtureManifest.assets.crossOriginStylesheet),
-    "the HAR is missing the cross-origin stylesheet request",
+    stylesheetEntry.response?.content?._file,
+    "the stylesheet entry is missing attached content",
   );
   assert.ok(
-    urls.some((url) => new URL(url).pathname === fixtureManifest.assets.iframeDocument),
+    entries.some(
+      (entry: { request: { url: string } }) =>
+        new URL(entry.request.url).pathname === fixtureManifest.assets.iframeDocument,
+    ),
     "the HAR is missing the iframe document request",
   );
 });

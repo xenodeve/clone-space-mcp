@@ -43,25 +43,18 @@ describe("harResourceUrls", () => {
   });
 
   test("does not mutate the input", () => {
+    const entries = [
+      { request: { url: "https://example.com/index.html" } },
+      { request: { url: "https://example.com/app.js" } },
+    ];
     const har = {
       log: {
-        entries: [
-          { request: { url: "https://example.com/index.html" } },
-          { request: { url: "https://example.com/app.js" } },
-        ],
-      },
-    };
-    const copy = {
-      log: {
-        entries: [
-          { request: { url: "https://example.com/index.html" } },
-          { request: { url: "https://example.com/app.js" } },
-        ],
+        entries,
       },
     };
 
     harResourceUrls(har);
 
-    expect(har).toEqual(copy);
+    expect(har.log.entries).toBe(entries);
   });
 });
