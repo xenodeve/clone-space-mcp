@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 
 interface CaptureHarPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
+  evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
 }
 
 interface CaptureHarContext {
@@ -34,6 +35,38 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
   try {
     const page = await context.newPage();
     await page.goto(options.url, { waitUntil: "load" });
+    await page.evaluate(async () => {
+      const waitForCheckpoint = async () => {
+        await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
+        await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
+        await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 75));
+      };
+
+      let previousScrollY = -1;
+      let previousHeight = -1;
+      let emptyCheckpoints = 0;
+
+      while (emptyCheckpoints < 3) {
+        const viewportHeight = Math.max(window.innerHeight, 1);
+        const scrollHeight = document.documentElement.scrollHeight;
+        const maxScrollY = Math.max(scrollHeight - viewportHeight, 0);
+        const nextScrollY = Math.min(window.scrollY + viewportHeight * 0.8, maxScrollY);
+
+        window.scrollTo(0, nextScrollY);
+        await waitForCheckpoint();
+
+        const currentScrollY = window.scrollY;
+        const currentHeight = document.documentElement.scrollHeight;
+        if (currentScrollY === previousScrollY && currentHeight === previousHeight) {
+          emptyCheckpoints += 1;
+        } else {
+          emptyCheckpoints = 0;
+        }
+
+        previousScrollY = currentScrollY;
+        previousHeight = currentHeight;
+      }
+    });
   } finally {
     await context.close();
   }

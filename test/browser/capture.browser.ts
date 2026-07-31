@@ -13,6 +13,7 @@ const fixtureManifest = JSON.parse(
   assets: {
     crossOriginStylesheet: string;
     iframeDocument: string;
+    lazyImage: string;
   };
 };
 
@@ -69,4 +70,39 @@ test("captures cross-origin stylesheet and iframe document requests in the HAR",
     normalizedEntries.some(({ url }) => url.pathname === fixtureManifest.assets.iframeDocument),
     "the HAR is missing the iframe document request",
   );
+});
+
+test("sweeps the page to capture the IntersectionObserver-gated lazy image", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: tempDir,
+  });
+  const har = JSON.parse(readFileSync(harPath, "utf8"));
+  const entries = har.log.entries as HarEntry[];
+  const lazyImage = new URL(fixtureManifest.assets.lazyImage, servers.primary.url);
+
+  assert.ok(
+    entries.some((entry) => entry.request.url === lazyImage.href),
+    "the HAR is missing the lazy image request triggered by the capture sweep",
+  );
+});
+
+test("stops after three empty checkpoints when scrolling cannot advance", async () => {
+  const lockedPage = encodeURIComponent(`
+    <body style="height: 5000px">
+      <script>window.scrollTo = () => {};</script>
+    </body>
+  `);
+
+  await Promise.race([
+    captureHar({
+      browser,
+      url: `data:text/html,${lockedPage}`,
+      outDir: tempDir,
+    }),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("the capture sweep did not terminate")), 1_500);
+    }),
+  ]);
 });
