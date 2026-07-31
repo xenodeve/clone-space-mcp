@@ -98,6 +98,12 @@ export async function startFixtureServers(): Promise<FixtureServers> {
     port: 0,
     fetch(req) {
       const { pathname } = new URL(req.url);
+      if (pathname === "/instrumented.js") {
+        return new Response(built.js, { headers: { "content-type": CONTENT_TYPES[".js"]! } });
+      }
+      if (pathname === "/instrumented.js.map") {
+        return new Response(built.map, { headers: { "content-type": CONTENT_TYPES[".map"]! } });
+      }
       if (pathname !== "/theme.css") return new Response("not found", { status: 404 });
 
       // Deliberately no Access-Control-Allow-Origin: the page must NOT be able to read
@@ -121,6 +127,12 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           crossOriginUrl,
         );
         return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
+      }
+      if (pathname === "/cross-origin-script.html") {
+        const script = new URL("/instrumented.js", crossOriginUrl);
+        return new Response(`<script src="${script.href}"></script>`, {
+          headers: { "content-type": CONTENT_TYPES[".html"]! },
+        });
       }
 
       if (pathname === "/build/instrumented.js") {
