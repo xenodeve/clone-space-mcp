@@ -1,5 +1,12 @@
-import { mkdir, mkdtemp, readdir, rename, rm, rmdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import {
+  collectEnvironment,
+  type EnvironmentV1,
+  type EnvironmentPage,
+  type ReplayContext,
+  type StorageAllowlist,
+} from "./environment.ts";
 import { redactHarArchive } from "./redact.ts";
 
 interface CaptureHarResponse {
@@ -8,7 +15,7 @@ interface CaptureHarResponse {
   text(): Promise<string>;
 }
 
-interface CaptureHarPage {
+interface CaptureHarPage extends EnvironmentPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
   on(event: "response", handler: (response: CaptureHarResponse) => void): void;
   evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
@@ -23,7 +30,8 @@ interface CaptureHarContext {
 }
 
 interface CaptureHarBrowser {
-  newContext(options: {
+  version(): string;
+  newContext(options: Partial<ReplayContext> & {
     recordHar: {
       path: string;
       mode: "full";
@@ -36,6 +44,9 @@ export interface CaptureHarOptions {
   browser: CaptureHarBrowser;
   url: string;
   outDir: string;
+  environment?: Partial<ReplayContext>;
+  browserChannel?: string;
+  storageAllowlist?: StorageAllowlist;
 }
 
 async function assertEmptyOutputDirectory(path: string): Promise<void> {
@@ -49,6 +60,7 @@ async function assertEmptyOutputDirectory(path: string): Promise<void> {
 }
 
 export async function captureHar(options: CaptureHarOptions): Promise<string> {
+  new URL(options.url);
   const archiveRoot = resolve(options.outDir);
   const archiveParent = dirname(archiveRoot);
   await mkdir(archiveParent, { recursive: true });
@@ -59,7 +71,9 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
   try {
     const context = await options.browser.newContext({
       recordHar: { path: stagingHarPath, mode: "full", content: "attach" },
+      ...options.environment,
     });
+    let environment: EnvironmentV1;
     try {
       const page = await context.newPage();
       // Response bodies come from the browser's network stack, not the page, so
@@ -119,10 +133,23 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           previousHeight = currentHeight;
         }
       });
+      environment = await collectEnvironment({
+        page,
+        url: options.url,
+        browserVersion: options.browser.version(),
+        browserChannel: options.browserChannel,
+        requested: options.environment,
+        storageAllowlist: options.storageAllowlist,
+      });
     } finally {
       await context.close();
     }
 
+    await writeFile(
+      resolve(stagingRoot, "environment.json"),
+      `${JSON.stringify(environment, null, 2)}\n`,
+      { mode: 0o600 },
+    );
     await redactHarArchive(stagingHarPath);
     await assertEmptyOutputDirectory(archiveRoot);
     try {

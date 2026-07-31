@@ -9,7 +9,7 @@ import {
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { startFixtureServers, type FixtureServers } from "../../scripts/fixture-client.ts";
 import { captureHar } from "../../src/capture/record.ts";
@@ -217,6 +217,91 @@ test("redacts transport credentials from the HAR and attached request bodies", a
   assert.equal(readFileSync(resolve(dirname(harPath), webSocketFrames), "utf8"), "[REDACTED]\n");
 });
 
+test("publishes the requested and observed environment without non-allowlisted storage", async () => {
+  const outDir = nextCaptureOutDir();
+  const harPath = await captureHar({
+    browser,
+    url: new URL("/environment-probe.html", servers.primary.url).href,
+    outDir,
+    environment: {
+      viewport: { width: 900, height: 600 },
+      deviceScaleFactor: 2,
+      locale: "th-TH",
+      timezoneId: "Asia/Bangkok",
+      reducedMotion: "reduce",
+      colorScheme: "dark",
+      userAgent: "CloneSpaceFixture/1.0",
+    },
+    storageAllowlist: {
+      localStorage: ["theme", "missing-key"],
+      sessionStorage: ["panel"],
+    },
+    browserChannel: "chromium",
+  });
+  const environmentText = readFileSync(resolve(dirname(harPath), "environment.json"), "utf8");
+  const environment = JSON.parse(environmentText);
+
+  assert.deepEqual(environment.capture.requested, {
+    viewport: { width: 900, height: 600 },
+    deviceScaleFactor: 2,
+    locale: "th-TH",
+    timezoneId: "Asia/Bangkok",
+    reducedMotion: "reduce",
+    colorScheme: "dark",
+    userAgent: "CloneSpaceFixture/1.0",
+  });
+  assert.deepEqual(environment.capture.observed.viewport, { width: 900, height: 600 });
+  assert.equal(environment.capture.observed.devicePixelRatio, 2);
+  assert.equal(environment.capture.observed.locale, "th-TH");
+  assert.equal(environment.capture.observed.timezoneId, "Asia/Bangkok");
+  assert.equal(environment.capture.observed.reducedMotion, "reduce");
+  assert.equal(environment.capture.observed.colorScheme, "dark");
+  assert.equal(environment.capture.observed.userAgent, "CloneSpaceFixture/1.0");
+  assert.ok(Array.isArray(environment.capture.observed.userAgentData.brands));
+  assert.equal(typeof environment.capture.observed.userAgentData.mobile, "boolean");
+  assert.equal(typeof environment.capture.observed.userAgentData.platform, "string");
+  assert.deepEqual(environment.replay.requiredBrowser, {
+    name: "chromium",
+    version: browser.version(),
+    playwrightVersion: "1.62.0",
+    channel: "chromium",
+  });
+  assert.deepEqual(environment.replay.context, environment.capture.requested);
+  assert.deepEqual(environment.replay.storage.allowlist.localStorage, ["missing-key", "theme"]);
+  assert.deepEqual(environment.replay.storage.localStorage, [{ name: "theme", value: "dark" }]);
+  assert.deepEqual(environment.replay.storage.sessionStorage, [{ name: "panel", value: "open" }]);
+  assert.equal(environment.omissions.storage.omittedLocalStorageEntries, 1);
+  assert.equal(environment.omissions.storage.omittedSessionStorageEntries, 1);
+  assert.ok(
+    environment.capture.observed.fontFaces.entries.some(
+      (entry: { family: string }) => entry.family.includes("Alpha Fixture 299"),
+    ),
+    `the declared fixture FontFace is missing: ${JSON.stringify(
+      environment.capture.observed.fontFaces.entries.slice(0, 3),
+    )}`,
+  );
+  assert.equal(environment.capture.observed.fontFaces.entries.length, 256);
+  assert.equal(environment.capture.observed.fontFaces.truncated, true);
+  assert.doesNotMatch(environmentText, /PRIVATE_(LOCAL|SESSION)_VALUE/);
+  assert.doesNotMatch(environmentText, /private-(local|session)-name/);
+  assert.doesNotMatch(environmentText, /redirect-secret|CROSS_ORIGIN_VALUE/);
+});
+
+test("refuses to publish storage captured after a cross-origin redirect", async () => {
+  const outDir = nextCaptureOutDir();
+
+  await assert.rejects(
+    captureHar({
+      browser,
+      url: new URL("/cross-origin-redirect.html", servers.primary.url).href,
+      outDir,
+      storageAllowlist: { localStorage: ["redirect-secret"] },
+    }),
+    /cross-origin redirect/,
+  );
+  assert.equal(existsSync(outDir), false);
+});
+
 test("does not publish raw credentials when a failed capture is retried", async () => {
   const outDir = nextCaptureOutDir();
 
@@ -229,6 +314,11 @@ test("does not publish raw credentials when a failed capture is retried", async 
     /fixture sweep failure/,
   );
   assert.equal(existsSync(outDir), false, "failed capture published its staging directory");
+  assert.equal(
+    readdirSync(tempDir).some((name) => name.startsWith(`.${basename(outDir)}-capture-`)),
+    false,
+    "failed capture left private staging behind",
+  );
 
   const harPath = await captureHar({
     browser,
