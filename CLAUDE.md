@@ -184,9 +184,12 @@ what is external product state; see the last paragraph.
   it reproduce, and what side-effect it leaves are examples to choose from, not a fixed set. A
   weaker agent can return correct output while mutating its input, and an output-only check passes
   that.
-- **Buy breadth before depth.** Prefer another agent over a deeper pass of the same one, and
-  escalate reasoning effort only on a leaf that has already resisted a lower tier — never as an
-  opening move. The top rungs are also where a subscription's allowance goes fastest.
+- **Buy breadth before depth, and treat reasoning effort as capped.** Prefer another agent over a
+  deeper pass of the same one. **The cap depends on the model — the heavier it is, the lower the
+  tier it may be spent at, and the top tiers are never an opening move.** For routine coding,
+  reach for the *lighter* model at a higher tier rather than the heavier model at a lower one; it
+  is cheaper and usually the better trade, because a tier is not where routine quality comes from.
+  `clink-subagents` holds the current per-model ceilings.
 - **Keep the finding, discard the explanation.** A subagent's account of *why* something broke is
   a hypothesis like any other return value; verify it against the failing command's own
   environment before acting on the cause it names. One has confidently and repeatedly blamed a
