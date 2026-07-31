@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { redactHarArchive } from "./redact.ts";
 
 interface CaptureHarResponse {
   url(): string;
@@ -105,5 +106,6 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     await context.close();
   }
 
+  await redactHarArchive(harPath);
   return harPath;
 }

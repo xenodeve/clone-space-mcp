@@ -134,6 +134,31 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           headers: { "content-type": CONTENT_TYPES[".html"]! },
         });
       }
+      if (pathname === "/credential-probe.html") {
+        // Build every sentinel from fragments so the response body itself does not
+        // contain the value that the archive redactor is expected to remove.
+        const html = `<script>
+          const value = (kind) => ["FAKE", kind, "SENTINEL"].join("_");
+          const request = new XMLHttpRequest();
+          request.open("POST", "/credential-probe?AcCeSs_ToKeN=" + value("QUERY"), false);
+          request.setRequestHeader("Authorization", "Bearer " + value("AUTH"));
+          request.setRequestHeader("Content-Type", "application/json");
+          request.send(JSON.stringify({ token: value("REQUEST") }));
+        </script>`;
+        return new Response(html, {
+          headers: {
+            "content-type": CONTENT_TYPES[".html"]!,
+            "set-cookie": "session=FAKE_COOKIE_SENTINEL; HttpOnly",
+          },
+        });
+      }
+      if (pathname === "/credential-probe") {
+        await req.text();
+        return new Response(null, {
+          status: 204,
+          headers: { "set-cookie": "response=FAKE_SET_COOKIE_SENTINEL; HttpOnly" },
+        });
+      }
 
       if (pathname === "/build/instrumented.js") {
         return new Response(built.js, { headers: { "content-type": CONTENT_TYPES[".js"]! } });

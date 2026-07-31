@@ -9,6 +9,7 @@ re-deriving it. A decision that overturns an earlier one marks the old ADR **Sup
 |---|-------|------|--------|
 | [0001](0001-node-drives-the-browser-bun-runs-everything-else.md) | Node drives the browser; Bun runs everything else | Infra | Accepted |
 | [0002](0002-element-identity-wa-ids-with-fingerprint-reconciliation.md) | `wa:` element identity, with fingerprint reconciliation and an explicit unresolved state | Identity | Accepted — **injection impl pending** (#9) |
+| [0003](0003-redact-transport-credentials-before-publishing-captures.md) | Redact transport credentials before publishing captures | Capture / security | Accepted |
 
 ## Decisions that will need an ADR before the code lands
 

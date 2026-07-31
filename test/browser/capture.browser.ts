@@ -1,6 +1,13 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -147,6 +154,31 @@ test("captures the sourcemap of a cross-origin script the page cannot read", asy
     200,
     "the cross-origin sourcemap request did not succeed",
   );
+});
+
+test("redacts transport credentials from the HAR and attached request bodies", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: new URL("/credential-probe.html", servers.primary.url).href,
+    outDir: tempDir,
+  });
+  const sentinels = [
+    "FAKE_AUTH_SENTINEL",
+    "FAKE_COOKIE_SENTINEL",
+    "FAKE_QUERY_SENTINEL",
+    "FAKE_REQUEST_SENTINEL",
+    "FAKE_SET_COOKIE_SENTINEL",
+  ];
+  const leakedByFile = readdirSync(dirname(harPath), { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .flatMap((entry) => {
+      const content = readFileSync(resolve(dirname(harPath), entry.name), "utf8");
+      return sentinels
+        .filter((sentinel) => content.includes(sentinel))
+        .map((sentinel) => `${entry.name}: ${sentinel}`);
+    });
+
+  assert.deepEqual(leakedByFile, [], `archive leaked credentials:\n${leakedByFile.join("\n")}`);
 });
 
 test("continues when an external script cannot be read for sourcemap discovery", async () => {
