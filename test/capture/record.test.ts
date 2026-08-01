@@ -17,13 +17,18 @@ test("captureHar configures and drives a browser context", async () => {
     },
     async newPage() {
       let evaluation = 0;
+      let pageUrl = "";
       return {
         localStorage: { async items() { return []; } },
         sessionStorage: { async items() { return []; } },
         async goto(url: string, options: { waitUntil: "load" }) {
+          pageUrl = url;
           gotoCall = { url, options };
         },
         on() {},
+        url() {
+          return pageUrl;
+        },
         async evaluate<Result>() {
           evaluation += 1;
           if (evaluation === 1) return undefined as Result;
@@ -154,11 +159,17 @@ test("captureHar publishes environment.json v1 with distinct surfaces and empty 
     },
     async newPage() {
       let evaluation = 0;
+      let pageUrl = "";
       return {
         localStorage: { async items() { return []; } },
         sessionStorage: { async items() { return []; } },
-        async goto() {},
+        async goto(url: string) {
+          pageUrl = url;
+        },
         on() {},
+        url() {
+          return pageUrl;
+        },
         async evaluate<Result>() {
           evaluation += 1;
           if (evaluation === 1) return undefined as Result;
@@ -275,6 +286,7 @@ test("captureHar publishes only explicitly allowlisted primary-origin storage", 
       return {
         request: { async get() {} },
         async newPage() {
+          let pageUrl = "";
           return {
             localStorage: {
               async items() {
@@ -292,8 +304,13 @@ test("captureHar publishes only explicitly allowlisted primary-origin storage", 
                 ];
               },
             },
-            async goto() {},
+            async goto(url: string) {
+              pageUrl = url;
+            },
             on() {},
+            url() {
+              return pageUrl;
+            },
             async evaluate<Result>() {
               evaluation += 1;
               if (evaluation === 1) return undefined as Result;
@@ -363,11 +380,17 @@ test("captureHar rejects duplicate storage allowlist keys without publishing an 
       return {
         request: { async get() {} },
         async newPage() {
+          let pageUrl = "";
           return {
             localStorage: { async items() { return []; } },
             sessionStorage: { async items() { return []; } },
-            async goto() {},
+            async goto(url: string) {
+              pageUrl = url;
+            },
             on() {},
+            url() {
+              return pageUrl;
+            },
             async evaluate<Result>() {
               evaluation += 1;
               if (evaluation === 1) return undefined as Result;

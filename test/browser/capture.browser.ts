@@ -372,3 +372,26 @@ test("stops after three empty checkpoints when scrolling cannot advance", async 
     }),
   ]);
 });
+
+test("the document epoch is derived from the document, not a constant", async () => {
+  // ADR 0005 calls the epoch "a producer-recorded identifier for the primary
+  // frame/document at checkpoint open". A constant satisfies the schema while recording
+  // nothing, and a coherence check that compares constants can never detect incoherence
+  // — which is the whole reason §6.3 exists.
+  //
+  // Both captures use the SAME origin and differ only in the document, so an epoch built
+  // from the origin alone fails this too. It does NOT assert that two runs of the same
+  // page differ: the epoch is a handle within one run, the same rule `wa:` ids follow.
+  const epochOf = async (url: string): Promise<unknown> => {
+    const harPath = await captureHar({ browser, url, outDir: nextCaptureOutDir() });
+    const doc = JSON.parse(readFileSync(resolve(dirname(harPath), "checkpoints.json"), "utf8"));
+    return doc.checkpoints[0].primaryTarget.documentEpoch;
+  };
+
+  const rootEpoch = await epochOf(servers.primary.url);
+  const frameEpoch = await epochOf(
+    new URL(fixtureManifest.assets.iframeDocument, servers.primary.url).href,
+  );
+
+  assert.notDeepEqual(rootEpoch, frameEpoch, "two different documents share one epoch");
+});

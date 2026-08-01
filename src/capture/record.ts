@@ -20,6 +20,7 @@ interface CaptureHarPage extends EnvironmentPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
   on(event: "response", handler: (response: CaptureHarResponse) => void): void;
   evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
+  url(): string;
 }
 
 interface CaptureHarContext {
@@ -76,6 +77,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       ...options.environment,
     });
     let environment: EnvironmentV1;
+    let documentEpoch: string;
     try {
       const page = await context.newPage();
       // Response bodies come from the browser's network stack, not the page, so
@@ -143,6 +145,8 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         requested: options.environment,
         storageAllowlist: options.storageAllowlist,
       });
+      // Checkpoint opens after the sweep: record the live document, not the request URL.
+      documentEpoch = `epoch:${page.url()}`;
     } finally {
       await context.close();
     }
@@ -160,7 +164,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           checkpoints: [
             {
               checkpointId: "cp:0",
-              primaryTarget: { documentEpoch: "epoch:0" },
+              primaryTarget: { documentEpoch },
               openedAt: performance.now() - runStartedAt,
               artifacts: [],
             },
