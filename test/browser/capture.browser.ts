@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { startFixtureServers, type FixtureServers } from "../../scripts/fixture-client.ts";
+import { validateCheckpoints } from "../../src/capture/checkpoints.ts";
 import { captureHar } from "../../src/capture/record.ts";
 
 const fixtureManifest = JSON.parse(
@@ -215,6 +216,18 @@ test("redacts transport credentials from the HAR and attached request bodies", a
   assert.deepEqual(leakedByFile, [], `archive leaked credentials:\n${leakedByFile.join("\n")}`);
   assert.ok(webSocketFrames, "fixture did not produce an attached WebSocket frame file");
   assert.equal(readFileSync(resolve(dirname(harPath), webSocketFrames), "utf8"), "[REDACTED]\n");
+});
+
+test("publishes a checkpoints.json that validateCheckpoints accepts", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const checkpointsPath = resolve(dirname(harPath), "checkpoints.json");
+  assert.ok(existsSync(checkpointsPath), "published archive is missing checkpoints.json");
+  const checkpoints = JSON.parse(readFileSync(checkpointsPath, "utf8"));
+  assert.deepEqual(validateCheckpoints(checkpoints), { ok: true });
 });
 
 test("publishes the requested and observed environment without non-allowlisted storage", async () => {

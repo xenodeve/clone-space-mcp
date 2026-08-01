@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   collectEnvironment,
   type EnvironmentV1,
@@ -67,6 +68,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
   await assertEmptyOutputDirectory(archiveRoot);
   const stagingRoot = await mkdtemp(join(archiveParent, `.${basename(archiveRoot)}-capture-`));
   const stagingHarPath = resolve(stagingRoot, "network.har");
+  const runStartedAt = performance.now();
 
   try {
     const context = await options.browser.newContext({
@@ -148,6 +150,25 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     await writeFile(
       resolve(stagingRoot, "environment.json"),
       `${JSON.stringify(environment, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+    await writeFile(
+      resolve(stagingRoot, "checkpoints.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          checkpoints: [
+            {
+              checkpointId: "cp:0",
+              primaryTarget: { documentEpoch: "epoch:0" },
+              openedAt: performance.now() - runStartedAt,
+              artifacts: [],
+            },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
       { mode: 0o600 },
     );
     await redactHarArchive(stagingHarPath);
