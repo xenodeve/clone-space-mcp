@@ -151,9 +151,26 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       await context.close();
     }
 
+    const finalCheckpoint = {
+      checkpointId: "cp:0",
+      primaryTarget: { documentEpoch },
+      openedAt: performance.now() - runStartedAt,
+      artifacts: [],
+    };
     await writeFile(
       resolve(stagingRoot, "environment.json"),
-      `${JSON.stringify(environment, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          ...environment,
+          checkpoint: {
+            checkpointId: finalCheckpoint.checkpointId,
+            documentEpoch: finalCheckpoint.primaryTarget.documentEpoch,
+            openedAt: finalCheckpoint.openedAt,
+          },
+        },
+        null,
+        2,
+      )}\n`,
       { mode: 0o600 },
     );
     await writeFile(
@@ -161,14 +178,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       `${JSON.stringify(
         {
           schemaVersion: 1,
-          checkpoints: [
-            {
-              checkpointId: "cp:0",
-              primaryTarget: { documentEpoch },
-              openedAt: performance.now() - runStartedAt,
-              artifacts: [],
-            },
-          ],
+          checkpoints: [finalCheckpoint],
         },
         null,
         2,

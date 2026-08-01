@@ -395,3 +395,56 @@ test("the document epoch is derived from the document, not a constant", async ()
 
   assert.notDeepEqual(rootEpoch, frameEpoch, "two different documents share one epoch");
 });
+
+test("binds environment.json to the final checkpoint", async () => {
+  // ADR 0005: environment.json must carry the final checkpoint's checkpointId,
+  // document epoch, and monotonic timestamp. A presence-only check would accept
+  // garbage; naming a non-final checkpoint is the incoherence §6.3 exists to catch.
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const archiveRoot = dirname(harPath);
+  const environment = JSON.parse(
+    readFileSync(resolve(archiveRoot, "environment.json"), "utf8"),
+  ) as { checkpoint?: unknown };
+  const checkpoints = JSON.parse(
+    readFileSync(resolve(archiveRoot, "checkpoints.json"), "utf8"),
+  ) as {
+    checkpoints: Array<{
+      checkpointId: string;
+      openedAt: number;
+      primaryTarget: { documentEpoch: string };
+    }>;
+  };
+  const finalCheckpoint = checkpoints.checkpoints[checkpoints.checkpoints.length - 1];
+  assert.ok(finalCheckpoint, "checkpoints.json has no final checkpoint");
+
+  assert.ok(
+    environment.checkpoint &&
+      typeof environment.checkpoint === "object" &&
+      !Array.isArray(environment.checkpoint),
+    "environment.json is missing final-checkpoint binding",
+  );
+  const binding = environment.checkpoint as {
+    checkpointId?: unknown;
+    documentEpoch?: unknown;
+    openedAt?: unknown;
+  };
+  assert.equal(
+    binding.checkpointId,
+    finalCheckpoint.checkpointId,
+    "environment checkpointId does not match the final checkpoint",
+  );
+  assert.equal(
+    binding.documentEpoch,
+    finalCheckpoint.primaryTarget.documentEpoch,
+    "environment documentEpoch does not match the final checkpoint",
+  );
+  assert.equal(
+    binding.openedAt,
+    finalCheckpoint.openedAt,
+    "environment openedAt does not match the final checkpoint",
+  );
+});
