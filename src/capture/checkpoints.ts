@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 const SUPPORTED_SCHEMA_VERSION = 1;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -21,6 +24,20 @@ function isCheckpoint(
   return true;
 }
 
+async function readJsonFile(path: string): Promise<unknown | undefined> {
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } {
   if (!isRecord(doc)) return { ok: false };
   if (doc.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
@@ -34,6 +51,49 @@ export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } 
     }
     previousOpenedAt = checkpoint.openedAt;
   }
+
+  return { ok: true };
+}
+
+export async function validateStagedArchive(
+  stagingRoot: string,
+): Promise<{ ok: true } | { ok: false }> {
+  const checkpointsDoc = await readJsonFile(join(stagingRoot, "checkpoints.json"));
+  if (checkpointsDoc === undefined) return { ok: false };
+  if (!validateCheckpoints(checkpointsDoc).ok) return { ok: false };
+
+  // validateCheckpoints already narrowed the shape; re-read through the same guards.
+  if (!isRecord(checkpointsDoc) || !Array.isArray(checkpointsDoc.checkpoints)) {
+    return { ok: false };
+  }
+  const checkpoints = checkpointsDoc.checkpoints.filter(isCheckpoint);
+  if (checkpoints.length !== checkpointsDoc.checkpoints.length) return { ok: false };
+
+  const finalCheckpoint = checkpoints[checkpoints.length - 1];
+  if (finalCheckpoint === undefined) return { ok: false };
+
+  const environmentDoc = await readJsonFile(join(stagingRoot, "environment.json"));
+  if (environmentDoc === undefined) return { ok: false };
+  if (!isRecord(environmentDoc)) return { ok: false };
+  if (!isRecord(environmentDoc.checkpoint)) return { ok: false };
+
+  const binding = environmentDoc.checkpoint;
+  if (typeof binding.checkpointId !== "string") return { ok: false };
+  if (typeof binding.documentEpoch !== "string") return { ok: false };
+  if (typeof binding.openedAt !== "number") return { ok: false };
+
+  // Coherent final-checkpoint binding: environment must name the final checkpoint
+  // with matching epoch and monotonic timestamp.
+  if (binding.checkpointId !== finalCheckpoint.checkpointId) return { ok: false };
+  if (binding.documentEpoch !== finalCheckpoint.primaryTarget.documentEpoch) {
+    return { ok: false };
+  }
+  if (binding.openedAt !== finalCheckpoint.openedAt) return { ok: false };
+
+  // ADR 0005 also lists "a binding names an unknown checkpointId" as its own refusal. Today it
+  // is unreachable: environment.json is the only bound artifact and the check above already
+  // requires it to BE the final checkpoint. A guard that cannot fail reads as protection that
+  // is not there, so it is left out until a second artifact binds and can actually violate it.
 
   return { ok: true };
 }

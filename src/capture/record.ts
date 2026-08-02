@@ -8,6 +8,7 @@ import {
   type ReplayContext,
   type StorageAllowlist,
 } from "./environment.ts";
+import { validateStagedArchive } from "./checkpoints.ts";
 import { redactHarArchive } from "./redact.ts";
 
 interface CaptureHarResponse {
@@ -186,6 +187,10 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       { mode: 0o600 },
     );
     await redactHarArchive(stagingHarPath);
+    const staged = await validateStagedArchive(stagingRoot);
+    if (!staged.ok) {
+      throw new Error("staged archive failed checkpoint coherence validation");
+    }
     await assertEmptyOutputDirectory(archiveRoot);
     try {
       await rmdir(archiveRoot);
