@@ -28,7 +28,13 @@ function isCheckpoint(
   }
   if (!Array.isArray(value.artifacts)) return false;
   if (!isRecord(value.primaryTarget)) return false;
-  if (typeof value.primaryTarget.documentEpoch !== "string") return false;
+  if (
+    typeof value.primaryTarget.documentEpoch !== "string" ||
+    value.primaryTarget.documentEpoch.length === 0 ||
+    /^epoch:-\d+$/.test(value.primaryTarget.documentEpoch)
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -50,6 +56,7 @@ export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } 
   if (!isRecord(doc)) return { ok: false };
   if (doc.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
   if (!Array.isArray(doc.checkpoints)) return { ok: false };
+  if (doc.checkpoints.length === 0) return { ok: false };
   if (!isRecord(doc.har)) return { ok: false };
   if (typeof doc.har.path !== "string" || doc.har.path.length === 0) {
     return { ok: false };

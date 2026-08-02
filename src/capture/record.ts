@@ -157,7 +157,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         storageAllowlist: options.storageAllowlist,
       });
       // Checkpoint opens after the sweep: record the live document, not the request URL.
-      documentEpoch = `epoch:${mainFrameNavigationCount}`;
+      documentEpoch = `epoch:${Math.max(mainFrameNavigationCount, 0)}`;
     } finally {
       await context.close();
     }
