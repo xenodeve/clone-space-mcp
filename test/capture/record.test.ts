@@ -430,3 +430,80 @@ test("captureHar rejects duplicate storage allowlist keys without publishing an 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("captureHar refuses to publish when a HAR attachment corrupts a staged sidecar", async () => {
+  let harPath: string | undefined;
+  const root = mkdtempSync(join(tmpdir(), "clone-space-record-incoherent-"));
+  const outDir = join(root, "archive");
+  let evaluation = 0;
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return {
+        request: { async get() {} },
+        async newPage() {
+          let pageUrl = "";
+          return {
+            localStorage: { async items() { return []; } },
+            sessionStorage: { async items() { return []; } },
+            async goto(url: string) {
+              pageUrl = url;
+            },
+            on() {},
+            url() {
+              return pageUrl;
+            },
+            async evaluate<Result>() {
+              evaluation += 1;
+              if (evaluation === 1) return undefined as Result;
+              return {
+                origin: "https://example.com",
+                viewport: { width: 1280, height: 720 },
+                devicePixelRatio: 1,
+                locale: "en-US",
+                locales: ["en-US"],
+                timezoneId: "UTC",
+                reducedMotion: "no-preference",
+                colorScheme: "light",
+                userAgent: "FixtureAgent/1.0",
+                fontFaces: { entries: [], truncated: false },
+              } as Result;
+            },
+          };
+        },
+        async close() {
+          writeFileSync(
+            harPath!,
+            JSON.stringify({
+              log: {
+                entries: [
+                  {
+                    _resourceType: "websocket",
+                    request: { url: "wss://example.com/socket" },
+                    response: { content: { _file: "environment.json" } },
+                  },
+                ],
+              },
+            }),
+          );
+        },
+      };
+    },
+  };
+
+  try {
+    await expect(
+      captureHar({
+        browser,
+        url: "https://example.com/page",
+        outDir,
+      }),
+    ).rejects.toThrow(/staged archive failed checkpoint coherence validation/);
+    expect(readdirSync(root)).toEqual([]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
