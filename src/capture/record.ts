@@ -17,11 +17,15 @@ interface CaptureHarResponse {
   text(): Promise<string>;
 }
 
+interface CaptureHarFrame {
+  parentFrame(): CaptureHarFrame | null;
+}
+
 interface CaptureHarPage extends EnvironmentPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
   on(event: "response", handler: (response: CaptureHarResponse) => void): void;
+  on(event: "framenavigated", handler: (frame: CaptureHarFrame) => void): void;
   evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
-  url(): string;
 }
 
 interface CaptureHarContext {
@@ -85,6 +89,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // discovery is not subject to CORS and never issues a second script request.
       const discoveredMapUrls = new Set<string>();
       const pendingScriptReads: Promise<void>[] = [];
+      let mainFrameNavigationCount = -1;
       page.on("response", (response) => {
         if (response.request().resourceType() !== "script") return;
         pendingScriptReads.push(
@@ -98,6 +103,9 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
             })
             .catch(() => {}),
         );
+      });
+      page.on("framenavigated", (frame) => {
+        if (frame.parentFrame() === null) mainFrameNavigationCount += 1;
       });
 
       await page.goto(options.url, { waitUntil: "load" });
@@ -147,7 +155,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         storageAllowlist: options.storageAllowlist,
       });
       // Checkpoint opens after the sweep: record the live document, not the request URL.
-      documentEpoch = `epoch:${page.url()}`;
+      documentEpoch = `epoch:${mainFrameNavigationCount}`;
     } finally {
       await context.close();
     }

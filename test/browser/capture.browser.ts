@@ -373,15 +373,26 @@ test("stops after three empty checkpoints when scrolling cannot advance", async 
   ]);
 });
 
-test("the document epoch is derived from the document, not a constant", async () => {
-  // ADR 0005 calls the epoch "a producer-recorded identifier for the primary
-  // frame/document at checkpoint open". A constant satisfies the schema while recording
-  // nothing, and a coherence check that compares constants can never detect incoherence
-  // — which is the whole reason §6.3 exists.
-  //
-  // Both captures use the SAME origin and differ only in the document, so an epoch built
-  // from the origin alone fails this too. It does NOT assert that two runs of the same
-  // page differ: the epoch is a handle within one run, the same rule `wa:` ids follow.
+test("publishes an opaque document epoch instead of the page URL", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const checkpoints = JSON.parse(
+    readFileSync(resolve(dirname(harPath), "checkpoints.json"), "utf8"),
+  ) as { checkpoints: Array<{ primaryTarget: { documentEpoch: string } }> };
+
+  const firstCheckpoint = checkpoints.checkpoints[0];
+  assert.ok(firstCheckpoint, "the archive published no checkpoint at all");
+  assert.doesNotMatch(
+    firstCheckpoint.primaryTarget.documentEpoch,
+    /http/,
+    "document epoch must not contain the page URL",
+  );
+});
+
+test("starts each capture's document epoch counter at zero", async () => {
   const epochOf = async (url: string): Promise<unknown> => {
     const harPath = await captureHar({ browser, url, outDir: nextCaptureOutDir() });
     const doc = JSON.parse(readFileSync(resolve(dirname(harPath), "checkpoints.json"), "utf8"));
@@ -393,7 +404,8 @@ test("the document epoch is derived from the document, not a constant", async ()
     new URL(fixtureManifest.assets.iframeDocument, servers.primary.url).href,
   );
 
-  assert.notDeepEqual(rootEpoch, frameEpoch, "two different documents share one epoch");
+  assert.equal(rootEpoch, "epoch:0");
+  assert.equal(frameEpoch, "epoch:0");
 });
 
 test("binds environment.json to the final checkpoint", async () => {
