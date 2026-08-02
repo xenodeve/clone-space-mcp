@@ -47,6 +47,8 @@ interface CaptureHarBrowser {
   }): Promise<CaptureHarContext>;
 }
 
+const HAR_FILE_NAME = "network.har";
+
 export interface CaptureHarOptions {
   browser: CaptureHarBrowser;
   url: string;
@@ -73,7 +75,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
   await mkdir(archiveParent, { recursive: true });
   await assertEmptyOutputDirectory(archiveRoot);
   const stagingRoot = await mkdtemp(join(archiveParent, `.${basename(archiveRoot)}-capture-`));
-  const stagingHarPath = resolve(stagingRoot, "network.har");
+  const stagingHarPath = resolve(stagingRoot, HAR_FILE_NAME);
   const runStartedAt = performance.now();
 
   try {
@@ -187,6 +189,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       `${JSON.stringify(
         {
           schemaVersion: 1,
+          har: { path: HAR_FILE_NAME, scope: "run" },
           checkpoints: [finalCheckpoint],
         },
         null,

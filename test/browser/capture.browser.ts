@@ -230,6 +230,22 @@ test("publishes a checkpoints.json that validateCheckpoints accepts", async () =
   assert.deepEqual(validateCheckpoints(checkpoints), { ok: true });
 });
 
+test("associates the published checkpoints document with the run HAR", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const archiveRoot = dirname(harPath);
+  const checkpoints = JSON.parse(
+    readFileSync(resolve(archiveRoot, "checkpoints.json"), "utf8"),
+  ) as { har?: { path?: string; scope?: string } };
+
+  assert.equal(checkpoints.har?.path, "network.har");
+  assert.equal(checkpoints.har?.scope, "run");
+  assert.ok(existsSync(resolve(archiveRoot, "network.har")), "the associated HAR file is missing");
+});
+
 test("publishes the requested and observed environment without non-allowlisted storage", async () => {
   const outDir = nextCaptureOutDir();
   const harPath = await captureHar({

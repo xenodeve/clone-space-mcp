@@ -7,6 +7,7 @@ import { validateCheckpoints } from "../../src/capture/checkpoints.ts";
 test("accepts a well-formed document with non-decreasing timestamps", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -24,6 +25,56 @@ test("accepts a well-formed document with non-decreasing timestamps", () => {
   });
 
   expect(result).toEqual({ ok: true });
+});
+
+test("rejects a document missing the run-level HAR association", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:0" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a document whose HAR scope is not run", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "checkpoint" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:0" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a document whose HAR path is empty", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:0" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
 });
 
 test("rejects a document whose schemaVersion is not the supported major", () => {

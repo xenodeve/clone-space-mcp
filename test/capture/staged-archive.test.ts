@@ -20,6 +20,7 @@ test("accepts a coherent staging directory", async () => {
   try {
     writeJson(stagingRoot, "checkpoints.json", {
       schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -71,6 +72,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
   try {
     writeJson(stagingRoot, "checkpoints.json", {
       schemaVersion: 2,
+      har: { path: "network.har", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -102,6 +104,7 @@ test("refuses when environment.json has no coherent final-checkpoint binding", a
   try {
     writeJson(stagingRoot, "checkpoints.json", {
       schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -128,6 +131,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
   try {
     writeJson(stagingRoot, "checkpoints.json", {
       schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -165,6 +169,7 @@ test("refuses when the binding names a real checkpoint that is not the final one
   try {
     writeJson(stagingRoot, "checkpoints.json", {
       schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",

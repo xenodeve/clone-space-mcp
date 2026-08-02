@@ -50,6 +50,11 @@ export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } 
   if (!isRecord(doc)) return { ok: false };
   if (doc.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
   if (!Array.isArray(doc.checkpoints)) return { ok: false };
+  if (!isRecord(doc.har)) return { ok: false };
+  if (typeof doc.har.path !== "string" || doc.har.path.length === 0) {
+    return { ok: false };
+  }
+  if (doc.har.scope !== "run") return { ok: false };
 
   let previousOpenedAt: number | undefined;
   const checkpointIds = new Set<string>();
