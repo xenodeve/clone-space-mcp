@@ -78,3 +78,66 @@ test("rejects a run whose monotonic timestamps decrease between two checkpoints"
 
   expect(result).toEqual({ ok: false });
 });
+
+test("rejects duplicate checkpointId values within one run", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:0" },
+        openedAt: 0,
+        artifacts: [],
+      },
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:1" },
+        openedAt: 120,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects an empty checkpointId", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    checkpoints: [
+      {
+        checkpointId: "",
+        primaryTarget: { documentEpoch: "epoch:0" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a negative openedAt", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:0" },
+        openedAt: -1,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects an infinite openedAt parsed from JSON", () => {
+  const document = JSON.parse(
+    '{"schemaVersion":1,"checkpoints":[{"checkpointId":"cp:0","primaryTarget":{"documentEpoch":"epoch:0"},"openedAt":1e309,"artifacts":[]}]}'
+  );
+  const result = validateCheckpoints(document);
+
+  expect(result).toEqual({ ok: false });
+});

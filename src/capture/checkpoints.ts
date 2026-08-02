@@ -16,8 +16,16 @@ function isCheckpoint(
   primaryTarget: { documentEpoch: string };
 } {
   if (!isRecord(value)) return false;
-  if (typeof value.checkpointId !== "string") return false;
-  if (typeof value.openedAt !== "number") return false;
+  if (typeof value.checkpointId !== "string" || value.checkpointId.length === 0) {
+    return false;
+  }
+  if (
+    typeof value.openedAt !== "number" ||
+    !Number.isFinite(value.openedAt) ||
+    value.openedAt < 0
+  ) {
+    return false;
+  }
   if (!Array.isArray(value.artifacts)) return false;
   if (!isRecord(value.primaryTarget)) return false;
   if (typeof value.primaryTarget.documentEpoch !== "string") return false;
@@ -44,8 +52,11 @@ export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } 
   if (!Array.isArray(doc.checkpoints)) return { ok: false };
 
   let previousOpenedAt: number | undefined;
+  const checkpointIds = new Set<string>();
   for (const checkpoint of doc.checkpoints) {
     if (!isCheckpoint(checkpoint)) return { ok: false };
+    if (checkpointIds.has(checkpoint.checkpointId)) return { ok: false };
+    checkpointIds.add(checkpoint.checkpointId);
     if (previousOpenedAt !== undefined && checkpoint.openedAt < previousOpenedAt) {
       return { ok: false };
     }
@@ -80,7 +91,13 @@ export async function validateStagedArchive(
   const binding = environmentDoc.checkpoint;
   if (typeof binding.checkpointId !== "string") return { ok: false };
   if (typeof binding.documentEpoch !== "string") return { ok: false };
-  if (typeof binding.openedAt !== "number") return { ok: false };
+  if (
+    typeof binding.openedAt !== "number" ||
+    !Number.isFinite(binding.openedAt) ||
+    binding.openedAt < 0
+  ) {
+    return { ok: false };
+  }
 
   // Coherent final-checkpoint binding: environment must name the final checkpoint
   // with matching epoch and monotonic timestamp.

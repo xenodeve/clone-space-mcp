@@ -154,10 +154,10 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
   }
 });
 
-// The "unknown checkpointId" case above names an id that is absent entirely, which several
+// The "unknown checkpointId" case above names a checkpointId that is absent entirely, which several
 // guards all catch, so it cannot prove any single one is needed. ADR 0005 lists the conditions
 // separately, and this isolates the final-checkpoint identity guard: two checkpoints sharing an
-// epoch and a timestamp, differing only in id, with the binding naming the one that is not last.
+// epoch and a timestamp, differing only in checkpointId, with the binding naming the one that is not last.
 // Equal timestamps are legal — the monotonic rule forbids decreasing, not repeating — so this is
 // reachable, and it is the only case that fails when that guard is removed.
 test("refuses when the binding names a real checkpoint that is not the final one", async () => {
