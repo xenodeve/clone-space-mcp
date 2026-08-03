@@ -1,6 +1,6 @@
 # ADR 0005 — Checkpoint coherence for archive artifacts
 
-- **Status:** Pending — contract accepted; capture-side implementation not landed
+- **Status:** Accepted — landed in #47 / PR #48 (`1322e57`)
 - **Area:** Capture / archive integrity
 - **Related:** #45 (decision), #29 (P2), plan §6.3, ADR 0003, ADR 0004
 
