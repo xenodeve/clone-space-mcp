@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateStagedArchive } from "../../src/capture/checkpoints.ts";
@@ -338,5 +338,106 @@ test("accepts a coherent staging directory whose HAR is present", async () => {
     expect(result).toEqual({ ok: true });
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses when the HAR association names the staging root itself", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeJson(stagingRoot, "checkpoints.json", {
+      schemaVersion: 1,
+      har: { path: ".", scope: "run" },
+      checkpoints: [
+        {
+          checkpointId: "cp:0",
+          primaryTarget: { documentEpoch: "epoch:ABCDEF0123456789ABCDEF0123456789" },
+          openedAt: 42.5,
+          artifacts: [],
+        },
+      ],
+    });
+    writeJson(stagingRoot, "environment.json", {
+      schemaVersion: 1,
+      checkpoint: {
+        checkpointId: "cp:0",
+        documentEpoch: "epoch:ABCDEF0123456789ABCDEF0123456789",
+        openedAt: 42.5,
+      },
+    });
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses when the HAR association names a directory", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeJson(stagingRoot, "checkpoints.json", {
+      schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
+      checkpoints: [
+        {
+          checkpointId: "cp:0",
+          primaryTarget: { documentEpoch: "epoch:1234ABCD5678EF901234ABCD5678EF90" },
+          openedAt: 42.5,
+          artifacts: [],
+        },
+      ],
+    });
+    mkdirSync(join(stagingRoot, "network.har"));
+    writeJson(stagingRoot, "environment.json", {
+      schemaVersion: 1,
+      checkpoint: {
+        checkpointId: "cp:0",
+        documentEpoch: "epoch:1234ABCD5678EF901234ABCD5678EF90",
+        openedAt: 42.5,
+      },
+    });
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses when the HAR association resolves outside the staging root", async () => {
+  const stagingRoot = makeStagingRoot();
+  const outsideDir = mkdtempSync(join(tmpdir(), "clone-space-outside-"));
+  try {
+    writeJson(stagingRoot, "checkpoints.json", {
+      schemaVersion: 1,
+      har: { path: "link/outside.har", scope: "run" },
+      checkpoints: [
+        {
+          checkpointId: "cp:0",
+          primaryTarget: { documentEpoch: "epoch:DEADBEEFCAFEBABEDEADBEEFCAFEBABE" },
+          openedAt: 42.5,
+          artifacts: [],
+        },
+      ],
+    });
+    writeFileSync(join(outsideDir, "outside.har"), "");
+    symlinkSync(outsideDir, join(stagingRoot, "link"), "junction");
+    writeJson(stagingRoot, "environment.json", {
+      schemaVersion: 1,
+      checkpoint: {
+        checkpointId: "cp:0",
+        documentEpoch: "epoch:DEADBEEFCAFEBABEDEADBEEFCAFEBABE",
+        openedAt: 42.5,
+      },
+    });
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
   }
 });

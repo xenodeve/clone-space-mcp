@@ -1,5 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, readFile, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, sep } from "node:path";
 
 const SUPPORTED_SCHEMA_VERSION = 1;
 
@@ -59,6 +59,17 @@ async function readJsonFile(path: string): Promise<unknown | undefined> {
   }
 }
 
+// Deliberately duplicated from redact.ts because that module may not be touched here.
+function isStrictlyWithin(root: string, candidate: string): boolean {
+  const relativeCandidate = relative(root, candidate);
+  return (
+    relativeCandidate.length > 0 &&
+    relativeCandidate !== ".." &&
+    !relativeCandidate.startsWith(`..${sep}`) &&
+    !isAbsolute(relativeCandidate)
+  );
+}
+
 export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } {
   if (!isRecord(doc)) return { ok: false };
   if (doc.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
@@ -108,9 +119,15 @@ export async function validateStagedArchive(
   ) {
     return { ok: false };
   }
-  // Refuse a missing HAR; the run-level association must point to evidence in the staged archive.
+  // Refuse a missing or non-file HAR; the run-level association must point to evidence in the staged archive.
   try {
-    await stat(join(stagingRoot, checkpointsDoc.har.path));
+    const harPath = join(stagingRoot, checkpointsDoc.har.path);
+    if (!(await lstat(harPath)).isFile()) return { ok: false };
+    const [resolvedRoot, resolvedHarPath] = await Promise.all([
+      realpath(stagingRoot),
+      realpath(harPath),
+    ]);
+    if (!isStrictlyWithin(resolvedRoot, resolvedHarPath)) return { ok: false };
   } catch {
     return { ok: false };
   }
