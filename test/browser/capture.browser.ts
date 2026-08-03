@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { startFixtureServers, type FixtureServers } from "../../scripts/fixture-client.ts";
+import { validateCheckpoints } from "../../src/capture/checkpoints.ts";
 import { captureHar } from "../../src/capture/record.ts";
 
 const fixtureManifest = JSON.parse(
@@ -217,6 +218,34 @@ test("redacts transport credentials from the HAR and attached request bodies", a
   assert.equal(readFileSync(resolve(dirname(harPath), webSocketFrames), "utf8"), "[REDACTED]\n");
 });
 
+test("publishes a checkpoints.json that validateCheckpoints accepts", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const checkpointsPath = resolve(dirname(harPath), "checkpoints.json");
+  assert.ok(existsSync(checkpointsPath), "published archive is missing checkpoints.json");
+  const checkpoints = JSON.parse(readFileSync(checkpointsPath, "utf8"));
+  assert.deepEqual(validateCheckpoints(checkpoints), { ok: true });
+});
+
+test("associates the published checkpoints document with the run HAR", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const archiveRoot = dirname(harPath);
+  const checkpoints = JSON.parse(
+    readFileSync(resolve(archiveRoot, "checkpoints.json"), "utf8"),
+  ) as { har?: { path?: string; scope?: string } };
+
+  assert.equal(checkpoints.har?.path, "network.har");
+  assert.equal(checkpoints.har?.scope, "run");
+  assert.ok(existsSync(resolve(archiveRoot, "network.har")), "the associated HAR file is missing");
+});
+
 test("publishes the requested and observed environment without non-allowlisted storage", async () => {
   const outDir = nextCaptureOutDir();
   const harPath = await captureHar({
@@ -358,4 +387,100 @@ test("stops after three empty checkpoints when scrolling cannot advance", async 
       setTimeout(() => reject(new Error("the capture sweep did not terminate")), 1_500);
     }),
   ]);
+});
+
+test("publishes an opaque document epoch instead of the page URL", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const checkpoints = JSON.parse(
+    readFileSync(resolve(dirname(harPath), "checkpoints.json"), "utf8"),
+  ) as { checkpoints: Array<{ primaryTarget: { documentEpoch: string } }> };
+
+  const firstCheckpoint = checkpoints.checkpoints[0];
+  assert.ok(firstCheckpoint, "the archive published no checkpoint at all");
+  assert.doesNotMatch(
+    firstCheckpoint.primaryTarget.documentEpoch,
+    /http/,
+    "document epoch must not contain the page URL",
+  );
+});
+
+test("gives two different documents two different opaque epochs", async () => {
+  const epochOf = async (url: string): Promise<string> => {
+    const harPath = await captureHar({ browser, url, outDir: nextCaptureOutDir() });
+    const doc = JSON.parse(readFileSync(resolve(dirname(harPath), "checkpoints.json"), "utf8")) as {
+      checkpoints: Array<{ primaryTarget: { documentEpoch: string } }>;
+    };
+    const epoch = doc.checkpoints[0]?.primaryTarget.documentEpoch;
+    assert.ok(epoch, "the archive published no checkpoint at all");
+    return epoch;
+  };
+
+  const rootEpoch = await epochOf(servers.primary.url);
+  const frameEpoch = await epochOf(
+    new URL(fixtureManifest.assets.iframeDocument, servers.primary.url).href,
+  );
+
+  // Spelled out rather than imported from the validator: a test that shares the constant it
+  // checks cannot disagree with the code, and loosening one would silently loosen the other.
+  const OPAQUE_EPOCH = /^epoch:[0-9A-Za-z_-]{16,}$/;
+  assert.notEqual(rootEpoch, frameEpoch, "two different documents must not share one epoch");
+  assert.match(rootEpoch, OPAQUE_EPOCH);
+  assert.match(frameEpoch, OPAQUE_EPOCH);
+});
+
+test("binds environment.json to the final checkpoint", async () => {
+  // ADR 0005: environment.json must carry the final checkpoint's checkpointId,
+  // document epoch, and monotonic timestamp. A presence-only check would accept
+  // garbage; naming a non-final checkpoint is the incoherence §6.3 exists to catch.
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const archiveRoot = dirname(harPath);
+  const environment = JSON.parse(
+    readFileSync(resolve(archiveRoot, "environment.json"), "utf8"),
+  ) as { checkpoint?: unknown };
+  const checkpoints = JSON.parse(
+    readFileSync(resolve(archiveRoot, "checkpoints.json"), "utf8"),
+  ) as {
+    checkpoints: Array<{
+      checkpointId: string;
+      openedAt: number;
+      primaryTarget: { documentEpoch: string };
+    }>;
+  };
+  const finalCheckpoint = checkpoints.checkpoints[checkpoints.checkpoints.length - 1];
+  assert.ok(finalCheckpoint, "checkpoints.json has no final checkpoint");
+
+  assert.ok(
+    environment.checkpoint &&
+      typeof environment.checkpoint === "object" &&
+      !Array.isArray(environment.checkpoint),
+    "environment.json is missing final-checkpoint binding",
+  );
+  const binding = environment.checkpoint as {
+    checkpointId?: unknown;
+    documentEpoch?: unknown;
+    openedAt?: unknown;
+  };
+  assert.equal(
+    binding.checkpointId,
+    finalCheckpoint.checkpointId,
+    "environment checkpointId does not match the final checkpoint",
+  );
+  assert.equal(
+    binding.documentEpoch,
+    finalCheckpoint.primaryTarget.documentEpoch,
+    "environment documentEpoch does not match the final checkpoint",
+  );
+  assert.equal(
+    binding.openedAt,
+    finalCheckpoint.openedAt,
+    "environment openedAt does not match the final checkpoint",
+  );
 });

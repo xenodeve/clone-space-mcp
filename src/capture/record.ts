@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   collectEnvironment,
   type EnvironmentV1,
@@ -7,6 +8,7 @@ import {
   type ReplayContext,
   type StorageAllowlist,
 } from "./environment.ts";
+import { validateStagedArchive } from "./checkpoints.ts";
 import { redactHarArchive } from "./redact.ts";
 
 interface CaptureHarResponse {
@@ -21,11 +23,28 @@ interface CaptureHarPage extends EnvironmentPage {
   evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
 }
 
+/**
+ * The one call the document epoch needs. A `loaderId` is minted per new-document commit, so
+ * the same-document routing `history.pushState` drives leaves it untouched — which is the
+ * property ADR 0005 requires and a navigation counter does not have. Playwright's
+ * `page.on("framenavigated")` fires for same-document routing too, so counting it there hands
+ * the page control of the value; reading the loaderId here does not.
+ *
+ * Measured: `Page.getFrameTree` returns the loaderId without `Page.enable`, so the domain is
+ * left off rather than enabled for notifications nothing subscribes to.
+ */
+interface CaptureHarCdpSession {
+  send(method: "Page.getFrameTree"): Promise<{ frameTree: { frame: { loaderId: string } } }>;
+}
+
 interface CaptureHarContext {
   request: {
     get(url: string): Promise<unknown>;
   };
   newPage(): Promise<CaptureHarPage>;
+  // `unknown` because Playwright's own parameter is `Page | Frame`, and the structural page
+  // declared above is neither — a narrower type here makes a real BrowserContext unassignable.
+  newCDPSession(page: unknown): Promise<CaptureHarCdpSession>;
   close(): Promise<void>;
 }
 
@@ -39,6 +58,8 @@ interface CaptureHarBrowser {
     };
   }): Promise<CaptureHarContext>;
 }
+
+const HAR_FILE_NAME = "network.har";
 
 export interface CaptureHarOptions {
   browser: CaptureHarBrowser;
@@ -66,7 +87,8 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
   await mkdir(archiveParent, { recursive: true });
   await assertEmptyOutputDirectory(archiveRoot);
   const stagingRoot = await mkdtemp(join(archiveParent, `.${basename(archiveRoot)}-capture-`));
-  const stagingHarPath = resolve(stagingRoot, "network.har");
+  const stagingHarPath = resolve(stagingRoot, HAR_FILE_NAME);
+  const runStartedAt = performance.now();
 
   try {
     const context = await options.browser.newContext({
@@ -74,6 +96,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       ...options.environment,
     });
     let environment: EnvironmentV1;
+    let documentEpoch: string;
     try {
       const page = await context.newPage();
       // Response bodies come from the browser's network stack, not the page, so
@@ -133,6 +156,11 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           previousHeight = currentHeight;
         }
       });
+      // The checkpoint opens after the sweep and spans the environment collection, so the
+      // epoch is read at open — the document that is live now, not the one the requested URL
+      // asked for — and read again at close.
+      const cdp = await context.newCDPSession(page);
+      const loaderIdAtOpen = (await cdp.send("Page.getFrameTree")).frameTree.frame.loaderId;
       environment = await collectEnvironment({
         page,
         url: options.url,
@@ -141,16 +169,59 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         requested: options.environment,
         storageAllowlist: options.storageAllowlist,
       });
+      // A same-origin navigation during collection would leave environment.json describing one
+      // document under an epoch naming another — an archive that reads as coherent while
+      // describing a page that never existed, which is the failure §6.3 exists to detect.
+      // ADR 0005: fail closed, so the archive looks incomplete rather than looking complete.
+      const loaderIdAtClose = (await cdp.send("Page.getFrameTree")).frameTree.frame.loaderId;
+      if (loaderIdAtClose !== loaderIdAtOpen) {
+        throw new Error("the primary document changed while the checkpoint was open");
+      }
+      documentEpoch = `epoch:${loaderIdAtOpen}`;
     } finally {
       await context.close();
     }
 
+    const finalCheckpoint = {
+      checkpointId: "cp:0",
+      primaryTarget: { documentEpoch },
+      openedAt: performance.now() - runStartedAt,
+      artifacts: [],
+    };
     await writeFile(
       resolve(stagingRoot, "environment.json"),
-      `${JSON.stringify(environment, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          ...environment,
+          checkpoint: {
+            checkpointId: finalCheckpoint.checkpointId,
+            documentEpoch: finalCheckpoint.primaryTarget.documentEpoch,
+            openedAt: finalCheckpoint.openedAt,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
+    await writeFile(
+      resolve(stagingRoot, "checkpoints.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          har: { path: HAR_FILE_NAME, scope: "run" },
+          checkpoints: [finalCheckpoint],
+        },
+        null,
+        2,
+      )}\n`,
       { mode: 0o600 },
     );
     await redactHarArchive(stagingHarPath);
+    const staged = await validateStagedArchive(stagingRoot);
+    if (!staged.ok) {
+      throw new Error("staged archive failed checkpoint coherence validation");
+    }
     await assertEmptyOutputDirectory(archiveRoot);
     try {
       await rmdir(archiveRoot);
