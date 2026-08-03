@@ -264,6 +264,74 @@ test("accepts an opaque document token as the epoch", () => {
   expect(result).toEqual({ ok: true });
 });
 
+test("rejects a har.path that escapes the archive", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "../outside.har", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:A0B1C2D3E4F5061728394A5B6C7D8E9F" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects an absolute har.path", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "/etc/passwd", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:B1C2D3E4F5061728394A5B6C7D8E9F0A" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a har.path with an interior parent segment", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "net/../../outside.har", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:C2D3E4F5061728394A5B6C7D8E9F0A1B" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("accepts a har.path in a subdirectory of the archive", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "net/network.har", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:D3E4F5061728394A5B6C7D8E9F0A1B2C" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: true });
+});
+
 test("rejects a document with no checkpoints", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
