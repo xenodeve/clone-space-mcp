@@ -3,6 +3,14 @@ import { join } from "node:path";
 
 const SUPPORTED_SCHEMA_VERSION = 1;
 
+/**
+ * A document epoch is an opaque token minted by the browser for one document commit — long
+ * enough not to be a counter, and drawn from a charset with no URL punctuation. The shape is
+ * asserted rather than assumed because `checkpoints.json` is published without passing through
+ * `redactHarArchive`: an epoch built from the page URL leaks whatever its query string held.
+ */
+const DOCUMENT_EPOCH_PATTERN = /^epoch:[0-9A-Za-z_-]{16,}$/;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -30,8 +38,7 @@ function isCheckpoint(
   if (!isRecord(value.primaryTarget)) return false;
   if (
     typeof value.primaryTarget.documentEpoch !== "string" ||
-    value.primaryTarget.documentEpoch.length === 0 ||
-    /^epoch:-\d+$/.test(value.primaryTarget.documentEpoch)
+    !DOCUMENT_EPOCH_PATTERN.test(value.primaryTarget.documentEpoch)
   ) {
     return false;
   }

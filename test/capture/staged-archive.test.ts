@@ -24,7 +24,7 @@ test("accepts a coherent staging directory", async () => {
       checkpoints: [
         {
           checkpointId: "cp:0",
-          primaryTarget: { documentEpoch: "epoch:https://example.test/" },
+          primaryTarget: { documentEpoch: "epoch:11112222333344445555666677778888" },
           openedAt: 42.5,
           artifacts: [],
         },
@@ -34,7 +34,7 @@ test("accepts a coherent staging directory", async () => {
       schemaVersion: 1,
       checkpoint: {
         checkpointId: "cp:0",
-        documentEpoch: "epoch:https://example.test/",
+        documentEpoch: "epoch:11112222333344445555666677778888",
         openedAt: 42.5,
       },
     });
@@ -54,7 +54,7 @@ test("refuses when checkpoints.json is missing", async () => {
       schemaVersion: 1,
       checkpoint: {
         checkpointId: "cp:0",
-        documentEpoch: "epoch:https://example.test/",
+        documentEpoch: "epoch:22223333444455556666777788889999",
         openedAt: 42.5,
       },
     });
@@ -76,7 +76,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
       checkpoints: [
         {
           checkpointId: "cp:0",
-          primaryTarget: { documentEpoch: "epoch:https://example.test/" },
+          primaryTarget: { documentEpoch: "epoch:3333444455556666777788889999AAAA" },
           openedAt: 42.5,
           artifacts: [],
         },
@@ -86,7 +86,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
       schemaVersion: 1,
       checkpoint: {
         checkpointId: "cp:0",
-        documentEpoch: "epoch:https://example.test/",
+        documentEpoch: "epoch:3333444455556666777788889999AAAA",
         openedAt: 42.5,
       },
     });
@@ -108,7 +108,7 @@ test("refuses when environment.json has no coherent final-checkpoint binding", a
       checkpoints: [
         {
           checkpointId: "cp:0",
-          primaryTarget: { documentEpoch: "epoch:https://example.test/" },
+          primaryTarget: { documentEpoch: "epoch:444455556666777788889999AAAABBBB" },
           openedAt: 42.5,
           artifacts: [],
         },
@@ -135,7 +135,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
       checkpoints: [
         {
           checkpointId: "cp:0",
-          primaryTarget: { documentEpoch: "epoch:https://example.test/" },
+          primaryTarget: { documentEpoch: "epoch:444455556666777788889999AAAABBBB" },
           openedAt: 42.5,
           artifacts: [],
         },
@@ -145,7 +145,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
       schemaVersion: 1,
       checkpoint: {
         checkpointId: "cp:99",
-        documentEpoch: "epoch:https://example.test/",
+        documentEpoch: "epoch:444455556666777788889999AAAABBBB",
         openedAt: 42.5,
       },
     });
@@ -173,13 +173,13 @@ test("refuses when the binding names a real checkpoint that is not the final one
       checkpoints: [
         {
           checkpointId: "cp:0",
-          primaryTarget: { documentEpoch: "epoch:https://example.test/" },
+          primaryTarget: { documentEpoch: "epoch:55556666777788889999AAAABBBBCCCC" },
           openedAt: 10,
           artifacts: [],
         },
         {
           checkpointId: "cp:1",
-          primaryTarget: { documentEpoch: "epoch:https://example.test/" },
+          primaryTarget: { documentEpoch: "epoch:55556666777788889999AAAABBBBCCCC" },
           openedAt: 10,
           artifacts: [],
         },
@@ -189,7 +189,7 @@ test("refuses when the binding names a real checkpoint that is not the final one
       schemaVersion: 1,
       checkpoint: {
         checkpointId: "cp:0",
-        documentEpoch: "epoch:https://example.test/",
+        documentEpoch: "epoch:55556666777788889999AAAABBBBCCCC",
         openedAt: 10,
       },
     });

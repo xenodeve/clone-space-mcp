@@ -408,11 +408,15 @@ test("publishes an opaque document epoch instead of the page URL", async () => {
   );
 });
 
-test("starts each capture's document epoch counter at zero", async () => {
-  const epochOf = async (url: string): Promise<unknown> => {
+test("gives two different documents two different opaque epochs", async () => {
+  const epochOf = async (url: string): Promise<string> => {
     const harPath = await captureHar({ browser, url, outDir: nextCaptureOutDir() });
-    const doc = JSON.parse(readFileSync(resolve(dirname(harPath), "checkpoints.json"), "utf8"));
-    return doc.checkpoints[0].primaryTarget.documentEpoch;
+    const doc = JSON.parse(readFileSync(resolve(dirname(harPath), "checkpoints.json"), "utf8")) as {
+      checkpoints: Array<{ primaryTarget: { documentEpoch: string } }>;
+    };
+    const epoch = doc.checkpoints[0]?.primaryTarget.documentEpoch;
+    assert.ok(epoch, "the archive published no checkpoint at all");
+    return epoch;
   };
 
   const rootEpoch = await epochOf(servers.primary.url);
@@ -420,8 +424,12 @@ test("starts each capture's document epoch counter at zero", async () => {
     new URL(fixtureManifest.assets.iframeDocument, servers.primary.url).href,
   );
 
-  assert.equal(rootEpoch, "epoch:0");
-  assert.equal(frameEpoch, "epoch:0");
+  // The retired counter design gave both of these "epoch:0" — it identified the navigation
+  // ordinal, which page JavaScript can drive with history.pushState, not the document. The
+  // epoch now comes from Chromium's loaderId, which is minted per new-document commit.
+  assert.notEqual(rootEpoch, frameEpoch, "two different documents must not share one epoch");
+  assert.match(rootEpoch, /^epoch:[0-9A-Za-z_-]{16,}$/);
+  assert.match(frameEpoch, /^epoch:[0-9A-Za-z_-]{16,}$/);
 });
 
 test("binds environment.json to the final checkpoint", async () => {

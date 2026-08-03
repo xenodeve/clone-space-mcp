@@ -17,15 +17,23 @@ interface CaptureHarResponse {
   text(): Promise<string>;
 }
 
-interface CaptureHarFrame {
-  parentFrame(): CaptureHarFrame | null;
-}
-
 interface CaptureHarPage extends EnvironmentPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
   on(event: "response", handler: (response: CaptureHarResponse) => void): void;
-  on(event: "framenavigated", handler: (frame: CaptureHarFrame) => void): void;
   evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
+}
+
+/**
+ * Only the two calls the document epoch needs. `Page.frameNavigated` — the CDP event — fires
+ * exclusively on a new-document commit; the same-document routing that `history.pushState`
+ * drives arrives as `Page.navigatedWithinDocument` and leaves `loaderId` untouched. Playwright's
+ * similarly-named `page.on("framenavigated")` does NOT make that distinction, which is why the
+ * epoch is read here rather than counted there (ADR 0005: page JavaScript must not be able to
+ * mint or alter an epoch).
+ */
+interface CaptureHarCdpSession {
+  send(method: "Page.enable"): Promise<unknown>;
+  send(method: "Page.getFrameTree"): Promise<{ frameTree: { frame: { loaderId: string } } }>;
 }
 
 interface CaptureHarContext {
@@ -33,6 +41,9 @@ interface CaptureHarContext {
     get(url: string): Promise<unknown>;
   };
   newPage(): Promise<CaptureHarPage>;
+  // `unknown` because Playwright's own parameter is `Page | Frame`, and the structural page
+  // declared above is neither — a narrower type here makes a real BrowserContext unassignable.
+  newCDPSession(page: unknown): Promise<CaptureHarCdpSession>;
   close(): Promise<void>;
 }
 
@@ -91,7 +102,8 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // discovery is not subject to CORS and never issues a second script request.
       const discoveredMapUrls = new Set<string>();
       const pendingScriptReads: Promise<void>[] = [];
-      let mainFrameNavigationCount = -1;
+      const cdp = await context.newCDPSession(page);
+      await cdp.send("Page.enable");
       page.on("response", (response) => {
         if (response.request().resourceType() !== "script") return;
         pendingScriptReads.push(
@@ -105,9 +117,6 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
             })
             .catch(() => {}),
         );
-      });
-      page.on("framenavigated", (frame) => {
-        if (frame.parentFrame() === null) mainFrameNavigationCount += 1;
       });
 
       await page.goto(options.url, { waitUntil: "load" });
@@ -156,8 +165,10 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         requested: options.environment,
         storageAllowlist: options.storageAllowlist,
       });
-      // Checkpoint opens after the sweep: record the live document, not the request URL.
-      documentEpoch = `epoch:${Math.max(mainFrameNavigationCount, 0)}`;
+      // Checkpoint opens after the sweep: read the epoch of the document that is live now,
+      // which is not necessarily the one the requested URL asked for.
+      const { frameTree } = await cdp.send("Page.getFrameTree");
+      documentEpoch = `epoch:${frameTree.frame.loaderId}`;
     } finally {
       await context.close();
     }
