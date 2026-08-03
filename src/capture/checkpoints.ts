@@ -92,12 +92,13 @@ export async function validateStagedArchive(
   if (checkpointsDoc === undefined) return { ok: false };
   if (!validateCheckpoints(checkpointsDoc).ok) return { ok: false };
 
-  // validateCheckpoints already narrowed the shape; re-read through the same guards.
+  // validateCheckpoints already narrowed the shape; re-read through the same guards. No
+  // length comparison after the filter: validateCheckpoints returns ok only when every entry
+  // satisfies isCheckpoint, so the filter can never drop one and the check could never fail.
   if (!isRecord(checkpointsDoc) || !Array.isArray(checkpointsDoc.checkpoints)) {
     return { ok: false };
   }
   const checkpoints = checkpointsDoc.checkpoints.filter(isCheckpoint);
-  if (checkpoints.length !== checkpointsDoc.checkpoints.length) return { ok: false };
 
   const finalCheckpoint = checkpoints[checkpoints.length - 1];
   if (finalCheckpoint === undefined) return { ok: false };

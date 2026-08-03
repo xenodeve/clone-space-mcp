@@ -83,6 +83,38 @@ test("refuses when the binding names the final checkpoint but a different docume
   }
 });
 
+test("refuses when the binding names the final checkpoint but a different openedAt", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeJson(stagingRoot, "checkpoints.json", {
+      schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
+      checkpoints: [
+        {
+          checkpointId: "cp:0",
+          primaryTarget: { documentEpoch: "epoch:6666777788889999AAAABBBBCCCCDDDD" },
+          openedAt: 42.5,
+          artifacts: [],
+        },
+      ],
+    });
+    writeJson(stagingRoot, "environment.json", {
+      schemaVersion: 1,
+      checkpoint: {
+        checkpointId: "cp:0",
+        documentEpoch: "epoch:6666777788889999AAAABBBBCCCCDDDD",
+        openedAt: 43,
+      },
+    });
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
 test("refuses when checkpoints.json is missing", async () => {
   const stagingRoot = makeStagingRoot();
   try {
@@ -194,9 +226,8 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
   }
 });
 
-// The "unknown checkpointId" case above names a checkpointId that is absent entirely, which several
-// guards all catch, so it cannot prove any single one is needed. ADR 0005 lists the conditions
-// separately, and this isolates the final-checkpoint identity guard: two checkpoints sharing an
+// The final-checkpoint identity comparison is the guard under test here. ADR 0005 lists the
+// conditions separately, and this isolates it: two checkpoints sharing an
 // epoch and a timestamp, differing only in checkpointId, with the binding naming the one that is not last.
 // Equal timestamps are legal — the monotonic rule forbids decreasing, not repeating — so this is
 // reachable, and it is the only case that fails when that guard is removed.

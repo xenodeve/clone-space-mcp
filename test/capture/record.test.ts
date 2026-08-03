@@ -8,6 +8,17 @@ function fakeCdpSession(loaderId: string) {
   return async () => ({ send: async () => ({ frameTree: { frame: { loaderId } } }) });
 }
 
+function fakeChangingCdpSession() {
+  const loaderIds = [
+    "11112222333344445555666677778888",
+    "9999AAAABBBBCCCCDDDDEEEEFFFF0000",
+  ];
+  let call = 0;
+  return async () => ({
+    send: async () => ({ frameTree: { frame: { loaderId: loaderIds[call++]! } } }),
+  });
+}
+
 test("captureHar configures and drives a browser context", async () => {
   let contextOptions: unknown;
   let gotoCall: unknown;
@@ -437,6 +448,137 @@ test("captureHar rejects duplicate storage allowlist keys without publishing an 
     expect(() => readFileSync(join(outDir, "environment.json"), "utf8")).toThrow();
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("captureHar refuses to publish when the primary document changes while the checkpoint was open", async () => {
+  let harPath: string | undefined;
+  const root = mkdtempSync(join(tmpdir(), "clone-space-record-document-change-"));
+  const outDir = join(root, "archive");
+  let evaluation = 0;
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return {
+        request: { async get() {} },
+        newCDPSession: fakeChangingCdpSession(),
+        async newPage() {
+          let pageUrl = "";
+          return {
+            localStorage: { async items() { return []; } },
+            sessionStorage: { async items() { return []; } },
+            async goto(url: string) {
+              pageUrl = url;
+            },
+            on() {},
+            url() {
+              return pageUrl;
+            },
+            async evaluate<Result>() {
+              evaluation += 1;
+              if (evaluation === 1) return undefined as Result;
+              return {
+                origin: "https://example.com",
+                viewport: { width: 1280, height: 720 },
+                devicePixelRatio: 1,
+                locale: "en-US",
+                locales: ["en-US"],
+                timezoneId: "UTC",
+                reducedMotion: "no-preference",
+                colorScheme: "light",
+                userAgent: "FixtureAgent/1.0",
+                fontFaces: { entries: [], truncated: false },
+              } as Result;
+            },
+          };
+        },
+        async close() {
+          writeFileSync(harPath!, '{"log":{"entries":[]}}');
+        },
+      };
+    },
+  };
+
+  try {
+    await expect(
+      captureHar({
+        browser,
+        url: "https://example.com/page",
+        outDir,
+      }),
+    ).rejects.toThrow(/the primary document changed while the checkpoint was open/);
+    expect(readdirSync(root)).toEqual([]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("captureHar publishes the document epoch built from the CDP loaderId", async () => {
+  let harPath: string | undefined;
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-document-epoch-"));
+  let evaluation = 0;
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return {
+        request: { async get() {} },
+        newCDPSession: fakeCdpSession("0123456789ABCDEF0123456789ABCDEF"),
+        async newPage() {
+          let pageUrl = "";
+          return {
+            localStorage: { async items() { return []; } },
+            sessionStorage: { async items() { return []; } },
+            async goto(url: string) {
+              pageUrl = url;
+            },
+            on() {},
+            url() {
+              return pageUrl;
+            },
+            async evaluate<Result>() {
+              evaluation += 1;
+              if (evaluation === 1) return undefined as Result;
+              return {
+                origin: "https://example.com",
+                viewport: { width: 1280, height: 720 },
+                devicePixelRatio: 1,
+                locale: "en-US",
+                locales: ["en-US"],
+                timezoneId: "UTC",
+                reducedMotion: "no-preference",
+                colorScheme: "light",
+                userAgent: "FixtureAgent/1.0",
+                fontFaces: { entries: [], truncated: false },
+              } as Result;
+            },
+          };
+        },
+        async close() {
+          writeFileSync(harPath!, '{"log":{"entries":[]}}');
+        },
+      };
+    },
+  };
+
+  try {
+    await captureHar({
+      browser,
+      url: "https://example.com/page",
+      outDir,
+    });
+    const checkpoints = JSON.parse(readFileSync(join(outDir, "checkpoints.json"), "utf8"));
+
+    expect(checkpoints.checkpoints[0].primaryTarget.documentEpoch).toBe(
+      "epoch:0123456789ABCDEF0123456789ABCDEF",
+    );
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
   }
 });
 

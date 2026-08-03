@@ -156,6 +156,11 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           previousHeight = currentHeight;
         }
       });
+      // The checkpoint opens after the sweep and spans the environment collection, so the
+      // epoch is read at open — the document that is live now, not the one the requested URL
+      // asked for — and read again at close.
+      const cdp = await context.newCDPSession(page);
+      const loaderIdAtOpen = (await cdp.send("Page.getFrameTree")).frameTree.frame.loaderId;
       environment = await collectEnvironment({
         page,
         url: options.url,
@@ -164,11 +169,15 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         requested: options.environment,
         storageAllowlist: options.storageAllowlist,
       });
-      // Checkpoint opens after the sweep: read the epoch of the document that is live now,
-      // which is not necessarily the one the requested URL asked for.
-      const cdp = await context.newCDPSession(page);
-      const { frameTree } = await cdp.send("Page.getFrameTree");
-      documentEpoch = `epoch:${frameTree.frame.loaderId}`;
+      // A same-origin navigation during collection would leave environment.json describing one
+      // document under an epoch naming another — an archive that reads as coherent while
+      // describing a page that never existed, which is the failure §6.3 exists to detect.
+      // ADR 0005: fail closed, so the archive looks incomplete rather than looking complete.
+      const loaderIdAtClose = (await cdp.send("Page.getFrameTree")).frameTree.frame.loaderId;
+      if (loaderIdAtClose !== loaderIdAtOpen) {
+        throw new Error("the primary document changed while the checkpoint was open");
+      }
+      documentEpoch = `epoch:${loaderIdAtOpen}`;
     } finally {
       await context.close();
     }
