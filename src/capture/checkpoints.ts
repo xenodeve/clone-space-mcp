@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 const SUPPORTED_SCHEMA_VERSION = 1;
@@ -68,6 +68,15 @@ export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } 
   if (typeof doc.har.path !== "string" || doc.har.path.length === 0) {
     return { ok: false };
   }
+  // Refuse archive escapes and host-native paths; checkpoints can only name archive-relative files.
+  if (
+    doc.har.path.startsWith("/") ||
+    doc.har.path.includes("\\") ||
+    /^[A-Za-z]:/.test(doc.har.path) ||
+    doc.har.path.split("/").includes("..")
+  ) {
+    return { ok: false };
+  }
   if (doc.har.scope !== "run") return { ok: false };
 
   let previousOpenedAt: number | undefined;
@@ -91,6 +100,20 @@ export async function validateStagedArchive(
   const checkpointsDoc = await readJsonFile(join(stagingRoot, "checkpoints.json"));
   if (checkpointsDoc === undefined) return { ok: false };
   if (!validateCheckpoints(checkpointsDoc).ok) return { ok: false };
+
+  if (
+    !isRecord(checkpointsDoc) ||
+    !isRecord(checkpointsDoc.har) ||
+    typeof checkpointsDoc.har.path !== "string"
+  ) {
+    return { ok: false };
+  }
+  // Refuse a missing HAR; the run-level association must point to evidence in the staged archive.
+  try {
+    await stat(join(stagingRoot, checkpointsDoc.har.path));
+  } catch {
+    return { ok: false };
+  }
 
   // validateCheckpoints already narrowed the shape; re-read through the same guards. No
   // length comparison after the filter: validateCheckpoints returns ok only when every entry

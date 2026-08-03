@@ -30,6 +30,7 @@ test("accepts a coherent staging directory", async () => {
         },
       ],
     });
+    writeFileSync(join(stagingRoot, "network.har"), "");
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -66,6 +67,7 @@ test("refuses when the binding names the final checkpoint but a different docume
         },
       ],
     });
+    writeFileSync(join(stagingRoot, "network.har"), "");
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -98,6 +100,7 @@ test("refuses when the binding names the final checkpoint but a different opened
         },
       ],
     });
+    writeFileSync(join(stagingRoot, "network.har"), "");
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -150,6 +153,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
         },
       ],
     });
+    writeFileSync(join(stagingRoot, "network.har"), "");
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -182,6 +186,7 @@ test("refuses when environment.json has no coherent final-checkpoint binding", a
         },
       ],
     });
+    writeFileSync(join(stagingRoot, "network.har"), "");
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
     });
@@ -209,6 +214,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
         },
       ],
     });
+    writeFileSync(join(stagingRoot, "network.har"), "");
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -252,6 +258,7 @@ test("refuses when the binding names a real checkpoint that is not the final one
         },
       ],
     });
+    writeFileSync(join(stagingRoot, "network.har"), "");
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -264,6 +271,71 @@ test("refuses when the binding names a real checkpoint that is not the final one
     const result = await validateStagedArchive(stagingRoot);
 
     expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses when the HAR named by the association is not present", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeJson(stagingRoot, "checkpoints.json", {
+      schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
+      checkpoints: [
+        {
+          checkpointId: "cp:0",
+          primaryTarget: { documentEpoch: "epoch:0123456789ABCDEF0123456789ABCDEF" },
+          openedAt: 42.5,
+          artifacts: [],
+        },
+      ],
+    });
+    writeJson(stagingRoot, "environment.json", {
+      schemaVersion: 1,
+      checkpoint: {
+        checkpointId: "cp:0",
+        documentEpoch: "epoch:0123456789ABCDEF0123456789ABCDEF",
+        openedAt: 42.5,
+      },
+    });
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("accepts a coherent staging directory whose HAR is present", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeJson(stagingRoot, "checkpoints.json", {
+      schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
+      checkpoints: [
+        {
+          checkpointId: "cp:0",
+          primaryTarget: { documentEpoch: "epoch:123456789ABCDEF0123456789ABCDEF0" },
+          openedAt: 42.5,
+          artifacts: [],
+        },
+      ],
+    });
+    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeJson(stagingRoot, "environment.json", {
+      schemaVersion: 1,
+      checkpoint: {
+        checkpointId: "cp:0",
+        documentEpoch: "epoch:123456789ABCDEF0123456789ABCDEF0",
+        openedAt: 42.5,
+      },
+    });
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: true });
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
   }
