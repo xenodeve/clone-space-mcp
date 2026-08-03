@@ -250,6 +250,29 @@ the command you ran, its output, or the `file:line` you read, named alongside it
 it a hypothesis. **"Tests not run" is a complete sentence.** A claim's register never improves by
 being repeated.
 
+## A defect that taught something is recorded with its fix
+
+**When a bug — or a mistake in your own reasoning — turns out to be instructive, the memory note
+goes into the same change that fixes it.** Not a later change, not when someone asks. `t4-agent-memory`
+owns the *how* (one note, `Obsidian-CloneSpaceMcp/`, flat `type:` frontmatter, a line in `Home.md`);
+this is the *when*, and it was the missing half — the session-start protocol only covers reading.
+
+**The threshold is what keeps this from becoming a diary**, which is the failure mode
+`t4-agent-memory` warns about. Write the note only when a future agent could repeat the mistake:
+a wrong invariant, a proposal rejected and later vindicated, a check that looked like it worked and
+did not, a tool whose behaviour contradicts its name. Do **not** write one for a typo, a one-off, or
+anything the commit message and `DONE.md` already carry — those go in the ship log. If it does not
+generalize past the next session, it is not a memory.
+
+**Record what would have caught it, not the narrative.** "On #47 I did X and it broke" is a diary
+line; *"an equivalence claim between two designs is a claim about runtime behaviour, so it needs a
+probe"* is a memory, because it is act-on-able before the next mistake rather than after it.
+
+**This is a written rule and not a mechanism, deliberately** — the trigger is a judgement about
+whether a defect generalizes, and this file prefers mechanisms only where one exists. There is no
+hook that can make that call, so this one rests on discipline and says so rather than pretending
+otherwise.
+
 ## Dev notifications
 
 Notify the developer on: a long task or TDD cycle completing, needing a confirmation before
