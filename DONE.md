@@ -6,6 +6,73 @@
 
 ---
 
+## `bun run mutate` and the regression corpus (2026-08-03, `/tdd`, #24 #53 #55)
+
+**Goal:** make the two rules `CLAUDE.md` already states — a green suite is not evidence the suite
+has teeth, and a mechanism is unproven until run against a bug that actually happened — into a
+command instead of a habit.
+
+**Shipped:** `scripts/mutations.ts` holds seven entries, each a defect that actually shipped or was
+actually found; `scripts/mutate.ts` re-applies each one, runs the suite it names, and requires the
+suite to go red **through the test that entry names**. Four of the seven are guards that were
+measured returning a fully green suite when deleted. It is deliberately **not** part of
+`bun run verify` — it runs the whole suite once per mutation.
+
+**The requirement that was easy to get wrong:** a mutation that fails to apply is a loud failure,
+never a pass. During #47 a `perl` substitution matched nothing because the file was CRLF, the suite
+stayed green, and the run read as *"the guard is covered"* when the guard had never been touched.
+The runner also separates **CAUGHT BY THE WRONG TEST** from CAUGHT — a mutation that reddens the
+suite through an unrelated test proves nothing about the guard it names.
+
+**The runner is proven, not asserted.** Each probe was run by the orchestrator rather than taken
+from the delegated worker's report: clean tree exits 0 with 7/7; an entry whose `find` cannot match
+exits 1 with `MUTATION NOT APPLIED`; an entry whose `expect` names no real test exits 1 with
+`CAUGHT BY THE WRONG TEST`; and `git status` afterwards shows only the three intended files, so
+every mutated source file was restored. Restoration is in a `finally`.
+
+**Validation:** `bun run verify` exited 0 — 73 Bun, 24 Node browser, lint, typecheck, build.
+`bun run mutate` exits 0. PR #55 merged as `ce5fcca`; #53 closed.
+
+**Next:** #24 stays open for the metamorphic check on `reconcile`. It is a **baseline metric**, not
+an assertion — correct code legitimately loses matches in 32/400 cases — so it cannot be expressed
+as a mutation that must be caught, and reporting it as one would be the false confidence #24 was
+filed about. Two browser-only defects are named in a comment in the corpus and left out until
+`suite: "browser"` is actually exercised.
+
+## P2 archive contract 6.3 — the HAR association (2026-08-03, `/tdd` + `/code-review` + `/scrutinize`, #29 #52 #54)
+
+**Goal:** stop `checkpoints.json` from publishing a HAR association that points outside the archive
+or at nothing.
+
+**Shipped:** `har.path` is now validated in two layers. The pure `validateCheckpoints` judges shape
+— no leading `/`, no drive letter, no backslash, no `..` segment. `validateStagedArchive` adds what
+shape cannot answer: `lstat().isFile()` so a symlinked final component fails rather than being
+followed, plus a `realpath` containment comparison that catches a junctioned **intermediate**
+component `lstat` cannot see.
+
+**Neither guard can fire from the producer**, which always writes the `HAR_FILE_NAME` constant.
+That is the reason they need tests rather than the reason they do not — `2d29a66` answered the same
+objection when the publish-validation call could be deleted with the whole suite staying green.
+
+**The first version of the fix was too weak, and two independent lanes found it.** `codex gpt-5.6-sol`
+and `antigravity` Gemini separately flagged that `stat` succeeds on directories and follows
+symlinks. Reproduced before acting: `har.path` of `"."`, of a directory named `network.har`, and of
+an existing subdirectory all returned `{ ok: true }`, none needing a symlink. **An existence check
+is three checks and `stat` performs only the first.**
+
+**The reuse failure worth naming:** `src/capture/redact.ts` already held this logic as `staysWithin`
+and `resolveAttachedFile`, and it was not reused — a weaker version was written from scratch beside
+it. The duplication that remains is deliberate and commented, because that module is the
+secret-handling one and a standing park condition for unattended runs. Recorded in the vault as
+`an-existence-check-is-three-checks`, the first use of the rule added in #50.
+
+**Validation:** `bun run verify` exited 0 — 73 Bun, 24 Node browser, lint, typecheck, build. RED was
+observed on every slice and each guard is proven load-bearing by mutation with disjoint failure
+sets. PR #54 merged as `5399b0b`; #52 closed.
+
+**Next:** the per-artifact binding shape — `artifacts: [null, 42, "not-a-binding"]` still validates.
+That defines a published schema rather than tightening an existing field, so it is its own decision.
+
 ## P2 archive contract 6.3 — checkpoint coherence (2026-08-03, `/tdd` + `/simplify` + `/security-review` + `/code-review` + `/scrutinize`, #29 #45 #46 #47 #48)
 
 **Goal:** make every published archive carry a checkpoint identity that says which document its
