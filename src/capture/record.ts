@@ -24,15 +24,16 @@ interface CaptureHarPage extends EnvironmentPage {
 }
 
 /**
- * Only the two calls the document epoch needs. `Page.frameNavigated` — the CDP event — fires
- * exclusively on a new-document commit; the same-document routing that `history.pushState`
- * drives arrives as `Page.navigatedWithinDocument` and leaves `loaderId` untouched. Playwright's
- * similarly-named `page.on("framenavigated")` does NOT make that distinction, which is why the
- * epoch is read here rather than counted there (ADR 0005: page JavaScript must not be able to
- * mint or alter an epoch).
+ * The one call the document epoch needs. A `loaderId` is minted per new-document commit, so
+ * the same-document routing `history.pushState` drives leaves it untouched — which is the
+ * property ADR 0005 requires and a navigation counter does not have. Playwright's
+ * `page.on("framenavigated")` fires for same-document routing too, so counting it there hands
+ * the page control of the value; reading the loaderId here does not.
+ *
+ * Measured: `Page.getFrameTree` returns the loaderId without `Page.enable`, so the domain is
+ * left off rather than enabled for notifications nothing subscribes to.
  */
 interface CaptureHarCdpSession {
-  send(method: "Page.enable"): Promise<unknown>;
   send(method: "Page.getFrameTree"): Promise<{ frameTree: { frame: { loaderId: string } } }>;
 }
 
@@ -102,8 +103,6 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // discovery is not subject to CORS and never issues a second script request.
       const discoveredMapUrls = new Set<string>();
       const pendingScriptReads: Promise<void>[] = [];
-      const cdp = await context.newCDPSession(page);
-      await cdp.send("Page.enable");
       page.on("response", (response) => {
         if (response.request().resourceType() !== "script") return;
         pendingScriptReads.push(
@@ -167,6 +166,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       });
       // Checkpoint opens after the sweep: read the epoch of the document that is live now,
       // which is not necessarily the one the requested URL asked for.
+      const cdp = await context.newCDPSession(page);
       const { frameTree } = await cdp.send("Page.getFrameTree");
       documentEpoch = `epoch:${frameTree.frame.loaderId}`;
     } finally {

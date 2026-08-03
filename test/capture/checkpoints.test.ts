@@ -210,23 +210,6 @@ test("rejects an empty documentEpoch", () => {
   expect(result).toEqual({ ok: false });
 });
 
-test("rejects a negative documentEpoch counter", () => {
-  const result = validateCheckpoints({
-    schemaVersion: 1,
-    har: { path: "network.har", scope: "run" },
-    checkpoints: [
-      {
-        checkpointId: "cp:0",
-        primaryTarget: { documentEpoch: "epoch:-1" },
-        openedAt: 0,
-        artifacts: [],
-      },
-    ],
-  });
-
-  expect(result).toEqual({ ok: false });
-});
-
 // The epoch is the field that has leaked twice. `checkpoints.json` never passes through
 // `redactHarArchive`, so an epoch carrying the page URL publishes whatever the query string held.
 test("rejects a documentEpoch that carries the captured page URL", () => {

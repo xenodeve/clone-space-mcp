@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
 
+function fakeCdpSession(loaderId: string) {
+  return async () => ({ send: async () => ({ frameTree: { frame: { loaderId } } }) });
+}
+
 test("captureHar configures and drives a browser context", async () => {
   let contextOptions: unknown;
   let gotoCall: unknown;
@@ -15,9 +19,7 @@ test("captureHar configures and drives a browser context", async () => {
     request: {
       async get() {},
     },
-    newCDPSession: async () => ({
-      send: async () => ({ frameTree: { frame: { loaderId: "A1B2C3D4E5F60718293A4B5C6D7E8F90" } } }),
-    }),
+    newCDPSession: fakeCdpSession("A1B2C3D4E5F60718293A4B5C6D7E8F90"),
     async newPage() {
       let evaluation = 0;
       let pageUrl = "";
@@ -133,9 +135,7 @@ test("captureHar rejects an invalid primary URL before opening the browser", asy
             browserCalled = true;
             return {
               request: { async get() {} },
-              newCDPSession: async () => ({
-                send: async () => ({ frameTree: { frame: { loaderId: "B2C3D4E5F60718293A4B5C6D7E8F901A" } } }),
-              }),
+              newCDPSession: fakeCdpSession("B2C3D4E5F60718293A4B5C6D7E8F901A"),
               async newPage() {
                 throw new Error("browser must not be called");
               },
@@ -163,9 +163,7 @@ test("captureHar publishes environment.json v1 with distinct surfaces and empty 
     request: {
       async get() {},
     },
-    newCDPSession: async () => ({
-      send: async () => ({ frameTree: { frame: { loaderId: "C3D4E5F60718293A4B5C6D7E8F901A2B" } } }),
-    }),
+    newCDPSession: fakeCdpSession("C3D4E5F60718293A4B5C6D7E8F901A2B"),
     async newPage() {
       let evaluation = 0;
       let pageUrl = "";
@@ -294,9 +292,7 @@ test("captureHar publishes only explicitly allowlisted primary-origin storage", 
       harPath = options.recordHar.path;
       return {
         request: { async get() {} },
-        newCDPSession: async () => ({
-          send: async () => ({ frameTree: { frame: { loaderId: "D4E5F60718293A4B5C6D7E8F901A2B3C" } } }),
-        }),
+        newCDPSession: fakeCdpSession("D4E5F60718293A4B5C6D7E8F901A2B3C"),
         async newPage() {
           let pageUrl = "";
           return {
@@ -391,9 +387,7 @@ test("captureHar rejects duplicate storage allowlist keys without publishing an 
       harPath = options.recordHar.path;
       return {
         request: { async get() {} },
-        newCDPSession: async () => ({
-          send: async () => ({ frameTree: { frame: { loaderId: "E5F60718293A4B5C6D7E8F901A2B3C4D" } } }),
-        }),
+        newCDPSession: fakeCdpSession("E5F60718293A4B5C6D7E8F901A2B3C4D"),
         async newPage() {
           let pageUrl = "";
           return {
@@ -459,9 +453,7 @@ test("captureHar refuses to publish when a HAR attachment corrupts a staged side
       harPath = options.recordHar.path;
       return {
         request: { async get() {} },
-        newCDPSession: async () => ({
-          send: async () => ({ frameTree: { frame: { loaderId: "F60718293A4B5C6D7E8F901A2B3C4D5E" } } }),
-        }),
+        newCDPSession: fakeCdpSession("F60718293A4B5C6D7E8F901A2B3C4D5E"),
         async newPage() {
           let pageUrl = "";
           return {

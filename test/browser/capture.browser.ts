@@ -424,12 +424,12 @@ test("gives two different documents two different opaque epochs", async () => {
     new URL(fixtureManifest.assets.iframeDocument, servers.primary.url).href,
   );
 
-  // The retired counter design gave both of these "epoch:0" — it identified the navigation
-  // ordinal, which page JavaScript can drive with history.pushState, not the document. The
-  // epoch now comes from Chromium's loaderId, which is minted per new-document commit.
+  // Spelled out rather than imported from the validator: a test that shares the constant it
+  // checks cannot disagree with the code, and loosening one would silently loosen the other.
+  const OPAQUE_EPOCH = /^epoch:[0-9A-Za-z_-]{16,}$/;
   assert.notEqual(rootEpoch, frameEpoch, "two different documents must not share one epoch");
-  assert.match(rootEpoch, /^epoch:[0-9A-Za-z_-]{16,}$/);
-  assert.match(frameEpoch, /^epoch:[0-9A-Za-z_-]{16,}$/);
+  assert.match(rootEpoch, OPAQUE_EPOCH);
+  assert.match(frameEpoch, OPAQUE_EPOCH);
 });
 
 test("binds environment.json to the final checkpoint", async () => {
