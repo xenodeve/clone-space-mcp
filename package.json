@@ -9,6 +9,7 @@
     "lint": "oxlint src test scripts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "mutate": "bun run scripts/mutate.ts",
     "test:browser": "node --test \"test/browser/**/*.browser.ts\"",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "verify": "bun run lint && bun run typecheck && bun test && bun run test:browser && bun run build",
