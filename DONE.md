@@ -6,6 +6,54 @@
 
 ---
 
+## P2 archive contract 6.3 — checkpoint coherence (2026-08-03, `/tdd` + `/simplify` + `/security-review` + `/code-review` + `/scrutinize`, #29 #45 #46 #47 #48)
+
+**Goal:** make every published archive carry a checkpoint identity that says which document its
+evidence describes, and refuse to publish when the parts disagree.
+
+**Shipped:** `captureHar` publishes a versioned `checkpoints.json` with a run-level HAR association,
+binds `environment.json` to the final checkpoint, and fail-closed validates the staging directory
+after redaction and before rename. `documentEpoch` is Chromium's CDP `loaderId`, read at checkpoint
+open and again at close; a change between the two throws, so a same-origin navigation during
+environment collection cannot bind one document's evidence to another document's epoch. ADR 0005
+is now Accepted.
+
+**The design was wrong twice before it was right, and the second time is the lesson.** `epoch:${page.url()}`
+leaked query-string secrets into `checkpoints.json`, which never passes through `redactHarArchive` —
+that function takes the HAR path and touches nothing else, so two of three published artifacts are
+unredacted. Its replacement counted main-frame `framenavigated` events, chosen over the reviewer's
+CDP `loaderId` proposal with the sentence *"same properties, smaller change"* — **and the properties
+were never tested.** Playwright fires that event for same-document routing, so `history.pushState`
+drove the value: measured 0 → 3 across two `pushState` calls and a `replaceState`. The leak changed
+shape and was not closed. CDP's identically-named `Page.frameNavigated` fired **0** times over the
+same sequence and left `loaderId` byte-identical; same-document routing arrives on
+`Page.navigatedWithinDocument`. That distinction is the whole property ADR 0005 asks for. The
+architecture cost that justified rejecting it was also overstated — `record.ts` already used
+structural interfaces, so `newCDPSession` is a few lines and ADR 0001 is untouched.
+
+**RED → GREEN and what mutation found:** every slice had an observed RED. Four guards were found
+unable to fail by deleting them and watching the suite stay green — the `validateStagedArchive`
+call itself, the epoch half of the binding check, the `openedAt` half, and a post-filter length
+comparison that no input can reach. The first three now fail exactly one test each; the fourth was
+removed with the reason left in its place. Reverting the real `e892a5b` defect on top of the new
+validator makes publish validation refuse the archive, where before it published silently — the
+mechanism was run against a bug that actually happened, not predicted to catch one.
+
+**Validation:** `bun run verify` exited 0 — 64 Bun tests, 24 Node browser tests, lint, typecheck and
+build. Nine review passes ran across three model families; four findings were rejected as false
+positives, including an invented `closedAt` field and a session-leak claim disproved by the
+`finally` block two lines below. The finding worth acting on — the epoch read after
+`collectEnvironment` — was raised **independently by `codex gpt-5.6-sol` and `antigravity` Gemini**,
+which is why it was fixed rather than filed. Every GitHub job had zero steps and the exact
+annotation *The job was not started because your account is locked due to a billing issue.*, so the
+documented #2 exemption applied and was restated in the PR body. PR #48 merged as `1322e57`; #47
+closed and §6.3 is checked on #29.
+
+**Next:** three refusals ADR 0005 names are still not implemented — `har.path` traversal outside the
+archive, `har.path` pointing at a missing file, and the per-artifact binding shape, which is
+undefined so `artifacts: [null, 42, "not-a-binding"]` validates. The producer writes `artifacts: []`
+today, so nothing is published unbound. P2 remains open for §6.4–§6.11.
+
 ## P2 archive contract 6.2 — `environment.json` (2026-08-01, `/tdd` + `/security-review` + `/code-review` + `/scrutinize`, #29 #39 #42 #43)
 
 **Goal:** record the browser environment that shaped capture as auditable archive evidence without
