@@ -8,6 +8,13 @@
 **Invoke the `using-t4` skill first.** It is the map that routes a task to the right `t4-*` skill.
 Don't work from memory — skills evolve.
 
+**Re-route at every phase boundary — invoking it once does not discharge a later trigger.** That
+is where it actually gets skipped, not at task start: after writing code → `/simplify`; on finishing
+an item → `/code-review` + `/scrutinize`; on touching auth, a secret, or the publish path →
+`/security-review`; implementation done → `/verify`. A parent skill does not discharge its leaves.
+The exemption *"those are pre-merge gates and no PR is open"* was true and was the wrong fact; the
+gates run on item completion, and skipping them cost three findings in one session.
+
 ## Engineering north-star
 
 Archive a live web page so that:
@@ -157,6 +164,23 @@ Three consequences that are not obvious:
   an assertion manufactures false confidence in both directions.
 
 ## Delegation and verification
+
+**Delegation is the default, not a technique to reach for.** Invoke `clink-subagents` and hand out
+every self-contained, verifiable leaf. The question is not *"is this worth delegating"* — it is
+**"is there a reason this cannot be delegated"**, and the list of such reasons is short and written
+below. This inverts on purpose, because the arithmetic is already recorded in this file and the
+conclusion was never drawn: **the orchestrator's pool is the only metered, context-window-bound
+one.** Back-ends spend separate subscriptions; your own tokens are the scarce resource, and they
+run out mid-task rather than at a convenient boundary.
+
+Two consequences that are easy to get backwards:
+
+- **A long, carefully-reasoned prompt is the expensive part.** If you work out *what* the change
+  should be and then describe it in detail, you have already spent the budget delegation was
+  supposed to save. Point the worker at absolute paths and a contract; let it do the reading.
+- **Delegating to avoid thinking is the failure mode, not the goal.** Decomposition, integration,
+  and the verdict stay yours. Delegate to offload effort and to run independent chunks in parallel
+  — never because you don't want to work out what the task is.
 
 This is a consequence of the section above, and it inherits that section's limit. **An independent
 agent trying to refute the work is a different judgment lens, not a mechanism** — independence
