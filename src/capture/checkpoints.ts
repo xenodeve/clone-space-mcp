@@ -2,6 +2,12 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 
 const SUPPORTED_SCHEMA_VERSION = 1;
+const REQUIRED_CAPABILITY_FLAGS = [
+  "serviceWorkerDependent",
+  "webSocketDependent",
+  "closedShadowRootPresent",
+  "sourcemapDeclared",
+] as const;
 
 /**
  * A document epoch is an opaque token minted by the browser for one document commit — long
@@ -13,6 +19,40 @@ const DOCUMENT_EPOCH_PATTERN = /^epoch:[0-9A-Za-z_-]{16,}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type RunAssociation = { path: string; scope: "run" };
+
+function isRunAssociation(value: unknown): value is RunAssociation {
+  if (!isRecord(value)) return false;
+  if (typeof value.path !== "string" || value.path.length === 0) return false;
+  // Refuse archive escapes and host-native paths; checkpoints can only name archive-relative files.
+  if (
+    value.path.startsWith("/") ||
+    value.path.includes("\\") ||
+    /^[A-Za-z]:/.test(value.path) ||
+    value.path.split("/").includes("..")
+  ) {
+    return false;
+  }
+  return value.scope === "run";
+}
+
+function isCapabilityValue(value: unknown): boolean {
+  return value === true || value === false || value === "undetermined";
+}
+
+export function validateCapabilities(doc: unknown): { ok: true } | { ok: false } {
+  if (!isRecord(doc)) return { ok: false };
+  if (doc.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
+  if (!isRecord(doc.flags)) return { ok: false };
+  for (const flag of REQUIRED_CAPABILITY_FLAGS) {
+    if (!(flag in doc.flags)) return { ok: false };
+  }
+  for (const flag of REQUIRED_CAPABILITY_FLAGS) {
+    if (flag in doc.flags && !isCapabilityValue(doc.flags[flag])) return { ok: false };
+  }
+  return { ok: true };
 }
 
 function isCheckpoint(
@@ -70,25 +110,24 @@ function isStrictlyWithin(root: string, candidate: string): boolean {
   );
 }
 
+async function isStagedRegularFile(root: string, association: RunAssociation): Promise<boolean> {
+  try {
+    const path = join(root, association.path);
+    if (!(await lstat(path)).isFile()) return false;
+    const [resolvedRoot, resolvedPath] = await Promise.all([realpath(root), realpath(path)]);
+    return isStrictlyWithin(resolvedRoot, resolvedPath);
+  } catch {
+    return false;
+  }
+}
+
 export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } {
   if (!isRecord(doc)) return { ok: false };
   if (doc.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
   if (!Array.isArray(doc.checkpoints)) return { ok: false };
   if (doc.checkpoints.length === 0) return { ok: false };
-  if (!isRecord(doc.har)) return { ok: false };
-  if (typeof doc.har.path !== "string" || doc.har.path.length === 0) {
-    return { ok: false };
-  }
-  // Refuse archive escapes and host-native paths; checkpoints can only name archive-relative files.
-  if (
-    doc.har.path.startsWith("/") ||
-    doc.har.path.includes("\\") ||
-    /^[A-Za-z]:/.test(doc.har.path) ||
-    doc.har.path.split("/").includes("..")
-  ) {
-    return { ok: false };
-  }
-  if (doc.har.scope !== "run") return { ok: false };
+  if (!isRunAssociation(doc.har)) return { ok: false };
+  if (!isRunAssociation(doc.capabilities)) return { ok: false };
 
   let previousOpenedAt: number | undefined;
   const checkpointIds = new Set<string>();
@@ -114,23 +153,24 @@ export async function validateStagedArchive(
 
   if (
     !isRecord(checkpointsDoc) ||
-    !isRecord(checkpointsDoc.har) ||
-    typeof checkpointsDoc.har.path !== "string"
+    !isRunAssociation(checkpointsDoc.har) ||
+    !isRunAssociation(checkpointsDoc.capabilities)
   ) {
     return { ok: false };
   }
-  // Refuse a missing or non-file HAR; the run-level association must point to evidence in the staged archive.
-  try {
-    const harPath = join(stagingRoot, checkpointsDoc.har.path);
-    if (!(await lstat(harPath)).isFile()) return { ok: false };
-    const [resolvedRoot, resolvedHarPath] = await Promise.all([
-      realpath(stagingRoot),
-      realpath(harPath),
-    ]);
-    if (!isStrictlyWithin(resolvedRoot, resolvedHarPath)) return { ok: false };
-  } catch {
+  // Refuse missing, non-file, or escaping run-level associations; each must point to staged evidence.
+  if (!(await isStagedRegularFile(stagingRoot, checkpointsDoc.har))) return { ok: false };
+  if (!(await isStagedRegularFile(stagingRoot, checkpointsDoc.capabilities))) {
     return { ok: false };
   }
+
+  const capabilitiesDoc = await readJsonFile(
+    join(stagingRoot, checkpointsDoc.capabilities.path),
+  );
+  if (capabilitiesDoc === undefined || !validateCapabilities(capabilitiesDoc).ok) {
+    return { ok: false };
+  }
+  // A true or undetermined flag is a measurement outcome, not archive damage, so it must not refuse publication.
 
   // validateCheckpoints already narrowed the shape; re-read through the same guards. No
   // length comparison after the filter: validateCheckpoints returns ok only when every entry

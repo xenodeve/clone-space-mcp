@@ -246,6 +246,32 @@ test("associates the published checkpoints document with the run HAR", async () 
   assert.ok(existsSync(resolve(archiveRoot, "network.har")), "the associated HAR file is missing");
 });
 
+test("publishes a run-scoped capabilities document", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const archiveRoot = dirname(harPath);
+  const capabilitiesPath = resolve(archiveRoot, "capabilities.json");
+  const checkpoints = JSON.parse(
+    readFileSync(resolve(archiveRoot, "checkpoints.json"), "utf8"),
+  ) as { capabilities?: { path?: string; scope?: string } };
+
+  assert.equal(checkpoints.capabilities?.path, "capabilities.json");
+  assert.equal(checkpoints.capabilities?.scope, "run");
+  assert.deepEqual(JSON.parse(readFileSync(capabilitiesPath, "utf8")), {
+    schemaVersion: 1,
+    flags: {
+      serviceWorkerDependent: false,
+      webSocketDependent: false,
+      closedShadowRootPresent: false,
+      sourcemapDeclared: false,
+    },
+  });
+  assert.equal(statSync(capabilitiesPath).mode & 0o600, 0o600);
+});
+
 test("publishes the requested and observed environment without non-allowlisted storage", async () => {
   const outDir = nextCaptureOutDir();
   const harPath = await captureHar({

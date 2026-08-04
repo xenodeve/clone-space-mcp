@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateCheckpoints } from "../../src/capture/checkpoints.ts";
+import { validateCapabilities, validateCheckpoints } from "../../src/capture/checkpoints.ts";
 
 // The three rejection cases below are only meaningful next to this one. Without it, a validator
 // that returns { ok: false } for every input — refusing valid archives as well as invalid ones —
@@ -8,6 +8,7 @@ test("accepts a well-formed document with non-decreasing timestamps", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -30,6 +31,7 @@ test("accepts a well-formed document with non-decreasing timestamps", () => {
 test("rejects a document missing the run-level HAR association", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -47,6 +49,7 @@ test("rejects a document whose HAR scope is not run", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "network.har", scope: "checkpoint" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -64,6 +67,7 @@ test("rejects a document whose HAR path is empty", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -80,6 +84,8 @@ test("rejects a document whose HAR path is empty", () => {
 test("rejects a document whose schemaVersion is not the supported major", () => {
   const result = validateCheckpoints({
     schemaVersion: 2,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -96,6 +102,8 @@ test("rejects a document whose schemaVersion is not the supported major", () => 
 test("rejects a document missing a required field", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         primaryTarget: { documentEpoch: "epoch:0718293A4B5C6D7E8F901A2B3C4D5E6F" },
@@ -111,6 +119,8 @@ test("rejects a document missing a required field", () => {
 test("rejects a run whose monotonic timestamps decrease between two checkpoints", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -133,6 +143,8 @@ test("rejects a run whose monotonic timestamps decrease between two checkpoints"
 test("rejects duplicate checkpointId values within one run", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -155,6 +167,8 @@ test("rejects duplicate checkpointId values within one run", () => {
 test("rejects an empty checkpointId", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "",
@@ -171,6 +185,8 @@ test("rejects an empty checkpointId", () => {
 test("rejects a negative openedAt", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -186,7 +202,7 @@ test("rejects a negative openedAt", () => {
 
 test("rejects an infinite openedAt parsed from JSON", () => {
   const document = JSON.parse(
-    '{"schemaVersion":1,"checkpoints":[{"checkpointId":"cp:0","primaryTarget":{"documentEpoch":"epoch:7E8F901A2B3C4D5E6F7018293A4B5C6D"},"openedAt":1e309,"artifacts":[]}]}'
+    '{"schemaVersion":1,"har":{"path":"network.har","scope":"run"},"capabilities":{"path":"capabilities.json","scope":"run"},"checkpoints":[{"checkpointId":"cp:0","primaryTarget":{"documentEpoch":"epoch:7E8F901A2B3C4D5E6F7018293A4B5C6D"},"openedAt":1e309,"artifacts":[]}]}'
   );
   const result = validateCheckpoints(document);
 
@@ -197,6 +213,7 @@ test("rejects an empty documentEpoch", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -216,6 +233,7 @@ test("rejects a documentEpoch that carries the captured page URL", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -233,6 +251,7 @@ test("rejects a documentEpoch too short to be an opaque document token", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -251,6 +270,7 @@ test("accepts an opaque document token as the epoch", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -268,6 +288,7 @@ test("rejects a har.path that escapes the archive", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "../outside.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -285,6 +306,7 @@ test("rejects an absolute har.path", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "/etc/passwd", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -302,6 +324,7 @@ test("rejects a har.path with an interior parent segment", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "net/../../outside.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -319,6 +342,7 @@ test("accepts a har.path in a subdirectory of the archive", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "net/network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -336,7 +360,134 @@ test("rejects a document with no checkpoints", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
     har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
     checkpoints: [],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("accepts a run-scoped capabilities association", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:0123456789ABCDEF0123456789ABCDEF" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: true });
+});
+
+test("rejects a document missing the run-level capabilities association", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:123456789ABCDEF0123456789ABCDEF0" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a document whose capabilities scope is not run", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "checkpoint" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:23456789ABCDEF0123456789ABCDEF01" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a capabilities association with an archive escape", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "../capabilities.json", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:3456789ABCDEF0123456789ABCDEF012" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("accepts capabilities with the four tri-state flags", () => {
+  const result = validateCapabilities({
+    schemaVersion: 1,
+    flags: {
+      serviceWorkerDependent: true,
+      webSocketDependent: false,
+      closedShadowRootPresent: "undetermined",
+      sourcemapDeclared: false,
+    },
+  });
+
+  expect(result).toEqual({ ok: true });
+});
+
+test("rejects capabilities with an unsupported schema version", () => {
+  const result = validateCapabilities({
+    schemaVersion: 2,
+    flags: {
+      serviceWorkerDependent: false,
+      webSocketDependent: false,
+      closedShadowRootPresent: false,
+      sourcemapDeclared: false,
+    },
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects capabilities missing one of the four flags", () => {
+  const result = validateCapabilities({
+    schemaVersion: 1,
+    flags: {
+      serviceWorkerDependent: false,
+      webSocketDependent: false,
+      closedShadowRootPresent: false,
+    },
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects capabilities with a value outside the tri-state contract", () => {
+  const result = validateCapabilities({
+    schemaVersion: 1,
+    flags: {
+      serviceWorkerDependent: "yes",
+      webSocketDependent: false,
+      closedShadowRootPresent: false,
+      sourcemapDeclared: false,
+    },
   });
 
   expect(result).toEqual({ ok: false });

@@ -60,6 +60,7 @@ interface CaptureHarBrowser {
 }
 
 const HAR_FILE_NAME = "network.har";
+const CAPABILITIES_FILE_NAME = "capabilities.json";
 
 export interface CaptureHarOptions {
   browser: CaptureHarBrowser;
@@ -204,12 +205,31 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       )}\n`,
       { mode: 0o600 },
     );
+    // Issue #63 writes fixed false values; there is no detection in this slice. Issue #64 adds detection.
+    await writeFile(
+      resolve(stagingRoot, CAPABILITIES_FILE_NAME),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          flags: {
+            serviceWorkerDependent: false,
+            webSocketDependent: false,
+            closedShadowRootPresent: false,
+            sourcemapDeclared: false,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
     await writeFile(
       resolve(stagingRoot, "checkpoints.json"),
       `${JSON.stringify(
         {
           schemaVersion: 1,
           har: { path: HAR_FILE_NAME, scope: "run" },
+          capabilities: { path: CAPABILITIES_FILE_NAME, scope: "run" },
           checkpoints: [finalCheckpoint],
         },
         null,
