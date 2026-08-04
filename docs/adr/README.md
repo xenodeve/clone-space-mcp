@@ -12,6 +12,7 @@ re-deriving it. A decision that overturns an earlier one marks the old ADR **Sup
 | [0003](0003-redact-transport-credentials-before-publishing-captures.md) | Redact transport credentials before publishing captures | Capture / security | Accepted |
 | [0004](0004-separate-environment-evidence-from-replay-configuration.md) | Separate environment evidence from replay configuration | Capture / replay / security | Accepted — implemented by #42 |
 | [0005](0005-checkpoint-coherence-for-archive-artifacts.md) | Checkpoint coherence for archive artifacts | Capture / archive integrity | Accepted — contract via #45, implementation via #47 |
+| [0006](0006-run-scoped-archive-artifacts-and-capability-flags.md) | Run-scoped archive artifacts, and the §6.4 capability contract | Capture / archive integrity | Pending — contract via #60; implementation #61–#64 |
 
 ## Decisions that will need an ADR before the code lands
 
@@ -21,7 +22,7 @@ implements it, grounded in the code as it is then — not written speculatively 
 | Decision | Phase |
 |---|---|
 | Replay navigates the **original URL** through `routeFromHAR(..., { notFound: 'abort' })` so real JS re-executes — rather than serializing the hydrated DOM as the bootstrap | replay |
-| The remaining **archive contracts** found in the 2026-07-31 review (#21) — capability flags, request normalization, `TargetRef`, bounded traces, transactional integrity, target inventory, capture budget | capture |
+| The remaining **archive contracts** found in the 2026-07-31 review (#21) — ~~capability flags~~ (ADR 0006), request normalization, `TargetRef`, bounded traces, transactional integrity, target inventory, capture budget | capture |
 | Archive schema and behavior-graph schema are versioned **separately**, and raw evidence is retained so a better extractor never forces a re-capture | capture |
 | Sourcemaps are fetched during live capture — the page never requests `.map` itself, so they are unobtainable at replay if missed | capture |
 | `serviceWorkers: 'block'` at both capture and replay, because HAR routing does not cover SW-intercepted requests | capture |

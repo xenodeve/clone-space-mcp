@@ -80,6 +80,13 @@ Future probe artifacts (`DOMSnapshot`, listeners, styles, screenshots, library s
 carry the three fields (or an equivalent binding that resolves through `checkpoints.json` to the
 same three values). An artifact that omits the binding is incomplete.
 
+**Scoped by ADR 0006:** that last sentence governs **checkpoint-scoped** artifacts only. It was
+already untrue of the HAR, which this ADR exempts as run-level two paragraphs above, and ADR 0006
+turns that one-off exemption into the artifact class it always was. A **run-scoped** artifact —
+one whose every field would still be true if the primary document changed mid-run — carries no
+binding, and `checkpoints.json` records it as `<name>: { path, scope: "run" }`. Binding an artifact
+that should not be bound is worse than omitting it, because the binding is read as a guarantee.
+
 ### Publish validation
 
 Publication stays inside ADR 0003's private-staging boundary. After redaction and before rename,
