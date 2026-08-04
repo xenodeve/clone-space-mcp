@@ -25,7 +25,7 @@
       "id": "sourcemap",
       "mechanism": "sourcemap",
       "selector": "[data-fixture-id='sourcemap']",
-      "expect": "The served instrumented.js script publishes a sourceMappingURL whose map is served with mappings."
+      "expect": "Scrolling the marked element into view injects late-instrumented.js, which publishes a sourceMappingURL whose map is served with mappings."
     }
   ]
 }

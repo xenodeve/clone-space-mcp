@@ -134,11 +134,13 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     try {
       const page = await context.newPage();
       const cdp = await context.newCDPSession(page);
+      let observingDependencies = true;
       let serviceWorkerDependent = false;
       // The listener and domain are installed before navigation. If either setup step fails,
       // capture aborts instead of publishing an archive with incomplete ServiceWorker coverage;
       // therefore this flag's no-positive undetermined state is unreachable.
       cdp.on("ServiceWorker.workerRegistrationUpdated", (event) => {
+        if (!observingDependencies) return;
         if (
           event.registrations?.some(
             (registration) =>
@@ -157,12 +159,14 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // an upgrade that is refused; listener setup failure aborts capture, so undetermined is
       // unreachable for this flag.
       page.on("websocket", () => {
+        if (!observingDependencies) return;
         webSocketDependent = true;
       });
 
       // Response bodies come from the browser's network stack, not the page, so
       // discovery is not subject to CORS and never issues a second script request.
       const discoveredMapUrls = new Set<string>();
+      let sourcemapDeclared = false;
       let scriptBodyUnreadable = false;
       const pendingScriptReads: Promise<void>[] = [];
       page.on("response", (response) => {
@@ -170,24 +174,26 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         pendingScriptReads.push(
           response
             .text()
-            .then((source) => {
-              const sourceMappingURL = source.match(/\/\/[#@]\s*sourceMappingURL=(\S+)/)?.[1];
-              if (sourceMappingURL) {
-                discoveredMapUrls.add(new URL(sourceMappingURL, response.url()).href);
-              }
-            })
-            .catch(() => {
-              scriptBodyUnreadable = true;
-            }),
+            .then(
+              (source) => {
+                const sourceMappingURL = source.match(/\/\/[#@]\s*sourceMappingURL=(\S+)/)?.[1];
+                if (sourceMappingURL) {
+                  sourcemapDeclared = true;
+                  try {
+                    discoveredMapUrls.add(new URL(sourceMappingURL, response.url()).href);
+                  } catch {
+                    // A declaration with an unresolvable URL is still a declaration.
+                  }
+                }
+              },
+              () => {
+                scriptBodyUnreadable = true;
+              },
+            ),
         );
       });
 
       await page.goto(options.url, { waitUntil: "load" });
-      await Promise.all(pendingScriptReads);
-      await Promise.all(
-        [...discoveredMapUrls].map((url) => context.request.get(url).catch(() => undefined)),
-      );
-
       await page.evaluate(async () => {
         const waitForCheckpoint = async () => {
           await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
@@ -220,6 +226,15 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           previousHeight = currentHeight;
         }
       });
+      let drainedScriptReads = 0;
+      while (drainedScriptReads < pendingScriptReads.length) {
+        const batch = pendingScriptReads.slice(drainedScriptReads);
+        drainedScriptReads = pendingScriptReads.length;
+        await Promise.all(batch);
+      }
+      await Promise.all(
+        [...discoveredMapUrls].map((url) => context.request.get(url).catch(() => undefined)),
+      );
       // The checkpoint opens after the sweep and spans the environment collection, so the
       // epoch is read at open — the document that is live now, not the one the requested URL
       // asked for — and read again at close.
@@ -255,11 +270,12 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         throw new Error("the primary document changed while the checkpoint was open");
       }
       documentEpoch = `epoch:${loaderIdAtOpen}`;
+      observingDependencies = false;
       capabilities = {
         serviceWorkerDependent,
         webSocketDependent,
         closedShadowRootPresent,
-        sourcemapDeclared: discoveredMapUrls.size > 0 ? true : scriptBodyUnreadable ? "undetermined" : false,
+        sourcemapDeclared: sourcemapDeclared ? true : scriptBodyUnreadable ? "undetermined" : false,
       };
     } finally {
       await context.close();

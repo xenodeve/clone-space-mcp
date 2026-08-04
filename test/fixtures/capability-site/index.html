@@ -9,10 +9,12 @@
       <section data-fixture-id="service-worker">service worker</section>
       <section data-fixture-id="websocket">websocket</section>
       <section data-fixture-id="closed-shadow-root" id="closed-shadow-host">closed shadow root</section>
-      <section data-fixture-id="sourcemap">declared sourcemap</section>
+      <div style="height: 220vh" aria-hidden="true"></div>
+      <section data-fixture-id="sourcemap" id="late-sourcemap-trigger">
+        sweep-loaded declared sourcemap
+      </section>
     </main>
 
-    <script src="/instrumented.js"></script>
     <script>
       navigator.serviceWorker.register("/capability-worker.js");
 
@@ -24,6 +26,16 @@
       const content = document.createElement("span");
       content.textContent = "closed-shadow-content";
       shadow.append(content);
+
+      const lateSourcemapTrigger = document.querySelector("#late-sourcemap-trigger");
+      const lateScriptObserver = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        lateScriptObserver.disconnect();
+        const script = document.createElement("script");
+        script.src = "/late-instrumented.js";
+        document.body.append(script);
+      });
+      lateScriptObserver.observe(lateSourcemapTrigger);
     </script>
   </body>
 </html>

@@ -292,6 +292,13 @@ test("publishes true capabilities for the capability fixture", async () => {
       sourcemapDeclared: true,
     },
   });
+
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as { log: { entries: HarEntry[] } };
+  const lateMapUrl = new URL("/late-instrumented.js.map", servers.capability.url).href;
+  assert.ok(
+    har.log.entries.some((entry) => entry.request.url === lateMapUrl),
+    "the HAR is missing the sourcemap declared by the script loaded during the sweep",
+  );
 });
 
 test("publishes the requested and observed environment without non-allowlisted storage", async () => {

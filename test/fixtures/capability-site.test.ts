@@ -102,14 +102,18 @@ describe("the served page genuinely exercises every capability", () => {
     expect(page).toContain("shadow.append(content)");
   });
 
-  test("the declared sourcemap is served and parses with mappings", async () => {
-    const scriptUrl = new URL("/instrumented.js", servers.capability.url);
+  test("the declared sourcemap script is injected during scrolling and its map is served", async () => {
+    const page = await servedPage();
+    expect(page).toContain('lateScriptObserver.observe(lateSourcemapTrigger)');
+    expect(page).toContain('script.src = "/late-instrumented.js"');
+
+    const scriptUrl = new URL("/late-instrumented.js", servers.capability.url);
     const scriptResponse = await fetch(scriptUrl);
     expect(scriptResponse.status).toBe(200);
 
     const script = await scriptResponse.text();
     const sourceMappingUrl = script.match(/\/\/# sourceMappingURL=([^\s]+)/)?.[1];
-    expect(sourceMappingUrl).toBe("instrumented.js.map");
+    expect(sourceMappingUrl).toBe("late-instrumented.js.map");
 
     const mapResponse = await fetch(new URL(sourceMappingUrl!, scriptUrl));
     expect(mapResponse.status).toBe(200);
