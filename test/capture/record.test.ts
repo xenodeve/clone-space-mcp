@@ -1,5 +1,14 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
@@ -95,6 +104,21 @@ test("captureHar configures and drives a browser context", async () => {
     expect((contextOptions as { recordHar: { path: string } }).recordHar.path).not.toBe(harPath);
     expect(gotoCall).toEqual({ url, options: { waitUntil: "load" } });
     expect(contextClosed).toBe(true);
+    expect(existsSync(join(outDir, "capabilities.json"))).toBe(true);
+    expect(JSON.parse(readFileSync(join(outDir, "capabilities.json"), "utf8"))).toEqual({
+      schemaVersion: 1,
+      flags: {
+        serviceWorkerDependent: false,
+        webSocketDependent: false,
+        closedShadowRootPresent: false,
+        sourcemapDeclared: false,
+      },
+    });
+    expect(statSync(join(outDir, "capabilities.json")).mode & 0o600).toBe(0o600);
+    expect(JSON.parse(readFileSync(join(outDir, "checkpoints.json"), "utf8")).capabilities).toEqual({
+      path: "capabilities.json",
+      scope: "run",
+    });
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
