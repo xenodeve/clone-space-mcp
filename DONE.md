@@ -6,6 +6,48 @@
 
 ---
 
+## Safety mechanisms complete, and fifteen guards that could not fail (2026-08-04, `/tdd`, #24 #68 #72 #73)
+
+**Goal:** finish the mechanisms `CLAUDE.md` names, and answer the question #63's isolation sweep
+raised — how many of this repo's guards read as validation without being it.
+
+**Shipped:** `bun run metamorphic`, the last of #24's four deliverables, and a validator in which
+every remaining refusal point is reachable and tested.
+
+**Fifteen of the validator's refusal points failed nothing when deleted.** An exhaustive sweep —
+every guard in `src/capture/checkpoints.ts`, not the five the issue named — found exactly one that
+was reachable and merely untested: a checkpoint whose `artifacts` is not an array. It has a test
+now. The other fourteen could not be reached at all, because an earlier or later guard already
+refuses everything they would, and they are gone with the reason in each one's place. The shape the
+removals take is normalization rather than a check: a non-record JSON value becomes `{}` and the
+guard below refuses it for the field it lacks. The binding type checks went the same way — strict
+inequality against the final checkpoint already refuses every value of the wrong type.
+
+**Behaviour was proven preserved, not argued.** This is the only change in the run that deletes
+validation code, so twenty-six malformed documents — `null`, array, string and number in every
+position the removed guards covered — were run against `main` and against the branch. Byte-identical
+output. The refactor changes which guard refuses, never whether one does.
+
+**`bun run mutate` earned its keep on something that was not a rehearsal.** The normalization moved
+source text four corpus entries matched on, and the runner refused the run with `MUTATION NOT
+APPLIED` rather than reporting a pass — the first time the loud-failure requirement from #53 caught
+that class in the wild rather than in its own self-proof. It is the exact silent no-op that cost
+#47 a false "the guard is covered".
+
+**The metamorphic check measured 78/400, not the 32/400 #24 records, and the generator was not
+tuned toward the recorded number.** A figure adjusted until it matches an expectation measures
+nothing. The two describe different corpora, and the script says so in its own output rather than
+only in the report — printing a delta without that line invites reading 46 as drift in `reconcile`
+when nothing about `reconcile` changed, which is the category error #24 exists to prevent, one level
+up. It is outside `bun test`, `bun run verify` and the corpus by design: correct code legitimately
+loses matches when an unrelated node exposes a genuinely ambiguous element.
+
+**Validation:** `bun run verify` exited 0 — 102 Bun tests, 26 Node browser tests, lint, typecheck
+and build. `bun run mutate` exits 0 with 17 caught and none surviving, up from 7 at the start of the
+day. PRs #72 and #73 merged; #24 and #68 closed.
+
+**Next:** §6.5 request normalization, which needs a grill before it needs an issue.
+
 ## P2 archive contract 6.4 — capability flags (2026-08-04, `/grill-me` + `/clink-brainstorm` + `/tdd`, #29 #59 #60 #61 #62 #63 #64 #65 #66 #67 #69 #70)
 
 **Goal:** make an archive say when `extract` will come back empty for a reason that is not
