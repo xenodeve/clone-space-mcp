@@ -14,7 +14,14 @@ import { join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
 
 function fakeCdpSession(loaderId: string) {
-  return async () => ({ send: async () => ({ frameTree: { frame: { loaderId } } }) });
+  return async () => ({
+    send: async (method: string) => {
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { loaderId } } };
+      if (method === "DOM.getDocument") return { root: {} };
+      return {};
+    },
+    on() {},
+  });
 }
 
 function fakeChangingCdpSession() {
@@ -24,7 +31,14 @@ function fakeChangingCdpSession() {
   ];
   let call = 0;
   return async () => ({
-    send: async () => ({ frameTree: { frame: { loaderId: loaderIds[call++]! } } }),
+    send: async (method: string) => {
+      if (method === "Page.getFrameTree") {
+        return { frameTree: { frame: { loaderId: loaderIds[call++]! } } };
+      }
+      if (method === "DOM.getDocument") return { root: {} };
+      return {};
+    },
+    on() {},
   });
 }
 
@@ -119,6 +133,87 @@ test("captureHar configures and drives a browser context", async () => {
       path: "capabilities.json",
       scope: "run",
     });
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("publishes sourcemapDeclared as undetermined when a script body cannot be read", async () => {
+  let harPath: string | undefined;
+  let responseHandler:
+    | ((response: {
+        request(): { resourceType(): string };
+        url(): string;
+        text(): Promise<string>;
+      }) => void)
+    | undefined;
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-sourcemap-undetermined-"));
+  const context = {
+    request: { async get() {} },
+    newCDPSession: fakeCdpSession("A1B2C3D4E5F60718293A4B5C6D7E8F90"),
+    async newPage() {
+      let pageUrl = "";
+      return {
+        localStorage: { async items() { return []; } },
+        sessionStorage: { async items() { return []; } },
+        async goto(url: string) {
+          pageUrl = url;
+          responseHandler?.({
+            request: () => ({ resourceType: () => "script" }),
+            url: () => "https://example.com/unreadable.js",
+            text: async () => {
+              throw new Error("response body unavailable");
+            },
+          });
+        },
+        on(
+          _event: string,
+          handler: (response: {
+            request(): { resourceType(): string };
+            url(): string;
+            text(): Promise<string>;
+          }) => void,
+        ) {
+          responseHandler = handler;
+        },
+        url() {
+          return pageUrl;
+        },
+        async evaluate<Result>() {
+          return {
+            origin: "https://example.com",
+            viewport: { width: 1280, height: 720 },
+            devicePixelRatio: 1,
+            locale: "en-US",
+            locales: ["en-US"],
+            timezoneId: "UTC",
+            reducedMotion: "no-preference",
+            colorScheme: "light",
+            userAgent: "FixtureAgent/1.0",
+            fontFaces: { entries: [], truncated: false },
+          } as Result;
+        },
+      };
+    },
+    async close() {
+      writeFileSync(harPath!, '{"log":{"entries":[]}}');
+    },
+  };
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return context;
+    },
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+    const capabilities = JSON.parse(readFileSync(join(outDir, "capabilities.json"), "utf8"));
+
+    expect(capabilities.flags.sourcemapDeclared).toBe("undetermined");
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
