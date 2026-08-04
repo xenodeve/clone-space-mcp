@@ -219,6 +219,176 @@ test("publishes sourcemapDeclared as undetermined when a script body cannot be r
   }
 });
 
+test("publishes a sourcemap declaration whose URL cannot be resolved", async () => {
+  let harPath: string | undefined;
+  let responseHandler:
+    | ((response: {
+        request(): { resourceType(): string };
+        url(): string;
+        text(): Promise<string>;
+      }) => void)
+    | undefined;
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-invalid-sourcemap-url-"));
+  const context = {
+    request: { async get() {} },
+    newCDPSession: fakeCdpSession("A1B2C3D4E5F60718293A4B5C6D7E8F90"),
+    async newPage() {
+      let pageUrl = "";
+      return {
+        localStorage: { async items() { return []; } },
+        sessionStorage: { async items() { return []; } },
+        async goto(url: string) {
+          pageUrl = url;
+          responseHandler?.({
+            request: () => ({ resourceType: () => "script" }),
+            url: () => "https://example.com/declared.js",
+            text: async () => "//# sourceMappingURL=http://[",
+          });
+        },
+        on(
+          _event: string,
+          handler: (response: {
+            request(): { resourceType(): string };
+            url(): string;
+            text(): Promise<string>;
+          }) => void,
+        ) {
+          responseHandler = handler;
+        },
+        url() {
+          return pageUrl;
+        },
+        async evaluate<Result>() {
+          return {
+            origin: "https://example.com",
+            viewport: { width: 1280, height: 720 },
+            devicePixelRatio: 1,
+            locale: "en-US",
+            locales: ["en-US"],
+            timezoneId: "UTC",
+            reducedMotion: "no-preference",
+            colorScheme: "light",
+            userAgent: "FixtureAgent/1.0",
+            fontFaces: { entries: [], truncated: false },
+          } as Result;
+        },
+      };
+    },
+    async close() {
+      writeFileSync(harPath!, '{"log":{"entries":[]}}');
+    },
+  };
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return context;
+    },
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+    const capabilities = JSON.parse(readFileSync(join(outDir, "capabilities.json"), "utf8"));
+
+    expect(capabilities.flags.sourcemapDeclared).toBe(true);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("ignores dependency events delivered after capabilities are observed", async () => {
+  let harPath: string | undefined;
+  let registrationHandler:
+    | ((event: { registrations?: Array<{ scopeURL?: string; isDeleted?: boolean }> }) => void)
+    | undefined;
+  let lateRegistrationInspected = false;
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-observation-boundary-"));
+  const context = {
+    request: { async get() {} },
+    async newCDPSession() {
+      return {
+        async send(method: string) {
+          if (method === "Page.getFrameTree") {
+            return { frameTree: { frame: { loaderId: "A1B2C3D4E5F60718293A4B5C6D7E8F90" } } };
+          }
+          if (method === "DOM.getDocument") return { root: {} };
+          return {};
+        },
+        on(
+          _event: string,
+          handler: (event: {
+            registrations?: Array<{ scopeURL?: string; isDeleted?: boolean }>;
+          }) => void,
+        ) {
+          registrationHandler = handler;
+        },
+      };
+    },
+    async newPage() {
+      let pageUrl = "";
+      return {
+        localStorage: { async items() { return []; } },
+        sessionStorage: { async items() { return []; } },
+        async goto(url: string) {
+          pageUrl = url;
+        },
+        on() {},
+        url() {
+          return pageUrl;
+        },
+        async evaluate<Result>() {
+          return {
+            origin: "https://example.com",
+            viewport: { width: 1280, height: 720 },
+            devicePixelRatio: 1,
+            locale: "en-US",
+            locales: ["en-US"],
+            timezoneId: "UTC",
+            reducedMotion: "no-preference",
+            colorScheme: "light",
+            userAgent: "FixtureAgent/1.0",
+            fontFaces: { entries: [], truncated: false },
+          } as Result;
+        },
+      };
+    },
+    async close() {
+      registrationHandler?.({
+        registrations: [
+          {
+            get scopeURL() {
+              lateRegistrationInspected = true;
+              return "https://example.com/late-worker/";
+            },
+          },
+        ],
+      });
+      writeFileSync(harPath!, '{"log":{"entries":[]}}');
+    },
+  };
+  const browser = {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return context;
+    },
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+    const capabilities = JSON.parse(readFileSync(join(outDir, "capabilities.json"), "utf8"));
+
+    expect(lateRegistrationInspected).toBe(false);
+    expect(capabilities.flags.serviceWorkerDependent).toBe(false);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 test("captureHar refuses to mix a new capture with existing archive files", async () => {
   const root = mkdtempSync(join(tmpdir(), "clone-space-record-existing-"));
   const outDir = join(root, "archive");
