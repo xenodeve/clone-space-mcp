@@ -6,6 +6,52 @@
 
 ---
 
+## What the skipped gates were hiding (2026-08-05, `/code-review` + `/scrutinize` + `/tdd`, #75 #76 #77 #78 #79)
+
+**Goal:** run the review gates that were skipped across seven merged slices, and fix what they found.
+
+**The gates were skipped, and that was the finding.** `/simplify`, `/code-review` and `/scrutinize`
+never ran on #53, #61–#64, #68 or #24, and no exemption was written — which the workflow calls a
+violation rather than an exemption. Running them afterwards on the merged diff produced **five real
+defects in code that TDD, mutation proofs, `bun run verify` and `bun run mutate` at 17/17 had all
+passed.** Two independent model families flagged the most serious one at the same line.
+
+**`sourcemapDeclared` told the truth only by accident.** Pending script reads were drained before the
+adaptive sweep, and the sweep exists precisely to trigger lazily-loaded content — so a script
+arriving during it was never awaited. The flag could publish `false` for a page that declared a map,
+and because the same set drives the fetch, **a map discovered during the sweep was never pulled into
+the HAR at all.** That half predates §6.4: it is lost archive evidence, not a wrong boolean.
+Separately, `new URL(...)` sat inside the then-handler, so an unparseable URL threw into the catch
+meaning *body unreadable* and the archive answered `"undetermined"` about something it knew. And the
+dependency listeners stayed live through `context.close()` while the flags were copied earlier.
+
+**Why the net missed it:** the fixture loaded every script before the sweep, so the race never fired
+and the flag was right for the wrong reason. Mutation testing cannot reach an ordering bug the
+fixture never creates. The fixture now loads one during the sweep.
+
+**The metamorphic check was measuring a duplicate.** Its injected node spread `...source`, copying
+tag, frameKey and every stable attribute, so it landed in the same fingerprint bucket as its source —
+"duplicate an existing element", not "add a node that corresponds to nothing in capture". Corrected,
+the figure moves from **78/400 to 2/400** at the same seed, with nothing tuned toward either. The
+harness now asserts the property before reconciling and treats a collision as a harness failure.
+
+**That correction cost the mechanism its evidence, and it is filed rather than buried.** #24
+justified the check by measuring 32/400 against 135/400 with #20 restored. That belongs to the old
+transform, so by this repo's own rule the corrected harness is an **unproven mechanism** until it is
+run against #20 — #78, with the instruction to keep it and say so if it turns out not to
+discriminate.
+
+**`bun run mutate` refused two runs.** Both times a fix moved source text an anchor matched, and the
+runner reported `MUTATION NOT APPLIED` rather than a pass — the silent no-op class that cost #47 a
+false *the guard is covered*. Second and third time it has caught that in the wild.
+
+**Validation:** `bun run verify` exited 0 — 104 Bun tests, 26 Node browser tests, lint, typecheck and
+build. `bun run mutate` exits 0 with 20 caught and none surviving. Every fix had an observed RED and
+is caught by its own test. PRs #77 and #79 merged; #75 and #76 closed.
+
+**Next:** #78 measures whether the corrected metric still discriminates. §6.5 request normalization
+needs a grill before it needs an issue.
+
 ## Safety mechanisms complete, and fifteen guards that could not fail (2026-08-04, `/tdd`, #24 #68 #72 #73)
 
 **Goal:** finish the mechanisms `CLAUDE.md` names, and answer the question #63's isolation sweep
