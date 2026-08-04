@@ -3,13 +3,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Serves the motion fixture from two distinct origins.
+ * Serves the motion and capability fixtures from three distinct origins.
  *
  * Two servers, not one, because spike Q3 asks whether `CSS.getStyleSheetText` can read
  * a stylesheet the page itself cannot. That question only exists when the stylesheet is
  * genuinely cross-origin, and "cross-origin" on localhost means a different port with no
  * CORS header — a same-origin file with a different path would make the whole test
  * vacuous while still looking like it passed.
+ *
+ * The capability site has its own origin so later tests can add true-side conditions without
+ * changing motion-site/, whose missing capabilities are part of its ground truth.
  *
  * Ports are allocated by the OS (`port: 0`) so a stale process or a parallel run can
  * never make this flaky, and the resulting cross-origin URL is injected into the HTML at
@@ -19,6 +22,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SITE = join(HERE, "motion-site");
 const CROSS = join(HERE, "cross-origin");
+const CAPABILITY = join(HERE, "capability-site");
 const GSAP_DIST = join(HERE, "../../node_modules/gsap/dist");
 
 /** Placeholder in index.html, replaced with the real cross-origin URL at serve time. */
@@ -33,6 +37,7 @@ export interface FixtureOrigin {
 export interface FixtureServers {
   primary: FixtureOrigin;
   crossOrigin: FixtureOrigin;
+  capability: FixtureOrigin;
   stop(): Promise<void>;
 }
 
@@ -230,11 +235,25 @@ export async function startFixtureServers(): Promise<FixtureServers> {
     },
   });
 
+  const capability = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const { pathname } = new URL(req.url);
+      if (pathname !== "/" && pathname !== "/index.html") {
+        return new Response("not found", { status: 404 });
+      }
+      return new Response(file(join(CAPABILITY, "index.html")), {
+        headers: { "content-type": CONTENT_TYPES[".html"]! },
+      });
+    },
+  });
+
   return {
     primary: originOf(primary),
     crossOrigin: originOf(crossOrigin),
+    capability: originOf(capability),
     async stop() {
-      await Promise.all([primary.stop(true), crossOrigin.stop(true)]);
+      await Promise.all([primary.stop(true), crossOrigin.stop(true), capability.stop(true)]);
     },
   };
 }
