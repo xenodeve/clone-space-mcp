@@ -16,17 +16,30 @@ the resolved-match count drops.
 
 ## Measurement
 
+### Retraction of the previous measurement
+
+The previously reported **78/400** is **RETRACTED**. That run did not measure the unrelated
+replay-only node described by this report: the old transform spread a real replay element and
+changed only its `id` and sibling ordinal. Because `fingerprintKey` ignores `id`, it measured an
+inserted duplicate sharing the source's fingerprint bucket. The resulting match drops were often
+the correct ambiguity handling for that different transform.
+
+The previous explanation that the higher count came from small tag and stable-attribute pools is
+also **RETRACTED**. It explained the duplicate transform, not a measured corpus difference.
+
+### Corrected measurement
+
 | | Count |
 |---|---:|
-| Observed drop count | **78/400** |
+| Corrected observed drop count | **2/400** |
 | #24 recorded baseline | **32/400** |
-| Delta | **+46/400** |
+| Delta from #24 figure | **-30/400** |
 
-The observed figure differs materially from the 32/400 historical baseline. This is a finding
-about this generator's corpus, not a reason to tune it toward the recorded number. The generator
-uses small tag and stable-attribute pools, which create more repeated fingerprint buckets than
-the historical corpus likely did; that is the current explanation for the higher count, not a
-measured equivalence between the two corpora.
+The corrected transform preserves the injected element's real parent and its effect on same-tag
+sibling ordinals, while adding the stable `data-metamorphic-unrelated=case-<index>` attribute.
+That attribute is absent from the real capture and original replay corpus, so the injected node is
+unmatchable by `fingerprintKey`. The harness asserts that its key collides with no element in
+`capture` before reconciling; a collision is a harness failure with a non-zero exit.
 
 ## Why this is a metric, not an assertion
 
@@ -34,7 +47,7 @@ The metamorphic check is deliberately not part of `bun test`, `bun run verify`, 
 corpus. Correct `reconcile` code can legitimately lose matches after an unrelated node is added:
 the extra candidate can expose a genuinely ambiguous element, which should be reported unresolved
 rather than guessed. A non-zero count is therefore expected and legitimate. Drift from 32/400 is
-information for a human about the generator and reconciler; it is not a gate.
+information for a human about the corrected generator and reconciler; it is not a gate.
 
 ## Re-run
 

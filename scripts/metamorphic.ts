@@ -3,6 +3,7 @@ import {
   type ElementFingerprint,
   type IdentitySnapshot,
 } from "../src/identity/reconcile.ts";
+import { fingerprintKey } from "../src/identity/fingerprint.ts";
 
 const N = 400;
 const BASELINE = 32;
@@ -121,10 +122,26 @@ function addUnrelatedNode(replay: IdentitySnapshot, random: SeededRandom, caseIn
 
   elements.push({
     ...source,
+    attrs: {
+      ...source.attrs,
+      "data-metamorphic-unrelated": `case-${caseIndex}`,
+    },
     id: `wa:0:${10_000 + caseIndex}`,
     siblingOrdinal: insertionOrdinal,
   });
   return { ...replay, elements };
+}
+
+function assertUnmatchable(injected: ElementFingerprint, capture: IdentitySnapshot): void {
+  const injectedKey = fingerprintKey(injected);
+  const collisions = capture.elements.filter((element) => fingerprintKey(element) === injectedKey);
+  if (collisions.length > 0) {
+    throw new Error(
+      `HARNESS FAILURE: injected node ${injected.id} fingerprintKey collides with capture: ${collisions
+        .map((element) => element.id)
+        .join(", ")}`,
+    );
+  }
 }
 
 function run(): void {
@@ -133,8 +150,15 @@ function run(): void {
 
   for (let caseIndex = 0; caseIndex < N; caseIndex++) {
     const { capture, replay } = makePair(random);
+    const perturbed = addUnrelatedNode(replay, random, caseIndex);
+    const injectedId = `wa:0:${10_000 + caseIndex}`;
+    const injected = perturbed.elements.find((element) => element.id === injectedId);
+    if (!injected) {
+      throw new Error(`HARNESS FAILURE: injected node ${injectedId} was not created`);
+    }
+    assertUnmatchable(injected, capture);
     const before = reconcile(capture, replay).matched.length;
-    const after = reconcile(capture, addUnrelatedNode(replay, random, caseIndex)).matched.length;
+    const after = reconcile(capture, perturbed).matched.length;
     if (after < before) dropCount++;
   }
 
