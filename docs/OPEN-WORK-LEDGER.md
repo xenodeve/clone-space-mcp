@@ -26,7 +26,7 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | #9 P1 — element identity | ✅ | — | Injector + ตัวจับคู่ merged. Exit criterion met on the fixture: 63/63, 0 unresolved, all five hard cases |
 | #20 Fingerprint brittleness | ✅ | — | Key holds stable evidence only; ordinal and text rank. Frame key fixed with the injector |
 | #21 Plan hardening | ✅ | — | Plan amended. The eleven archive contracts it names must land in P2 |
-| #24 Safety mechanisms | 🟢 | — | Two core rules are in `CLAUDE.md`. **`bun run mutate` and the regression corpus are built** (#53, PR #55) — seven entries, each a defect that actually happened, the runner proven against an unappliable mutation and a wrong-test catch. Still open: the metamorphic check with its 32/400 baseline, which is a **metric not an assertion** and cannot be a corpus entry |
+| #24 Safety mechanisms | ✅ | — | **Closed.** The rule is in `CLAUDE.md`; `bun run mutate` and the regression corpus shipped (#53, 17 entries, all caught); `bun run metamorphic` shipped (#24, PR #73) and is deliberately outside every gate — it measured 78/400 against #24's historical 32/400, on a different corpus, and says so in its own output |
 | #8 MCP layering rule + inspector | 🟡 | P2 | Constraint recorded, no code. The inspector needs an archive to render |
 
 ## Track 2 — Pipeline
