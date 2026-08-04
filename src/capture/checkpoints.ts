@@ -43,14 +43,16 @@ function isCapabilityValue(value: unknown): boolean {
 }
 
 export function validateCapabilities(doc: unknown): { ok: true } | { ok: false } {
-  if (!isRecord(doc)) return { ok: false };
-  if (doc.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
-  if (!isRecord(doc.flags)) return { ok: false };
+  // Non-record JSON values have no schemaVersion, so the schema guard below already refuses them.
+  const capabilities = isRecord(doc) ? doc : {};
+  if (capabilities.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
+  // A non-record flags value cannot contain every required flag, so the required-key guard rejects it.
+  const flags = isRecord(capabilities.flags) ? capabilities.flags : {};
   for (const flag of REQUIRED_CAPABILITY_FLAGS) {
-    if (!(flag in doc.flags)) return { ok: false };
+    if (!(flag in flags)) return { ok: false };
   }
   for (const flag of REQUIRED_CAPABILITY_FLAGS) {
-    if (flag in doc.flags && !isCapabilityValue(doc.flags[flag])) return { ok: false };
+    if (flag in flags && !isCapabilityValue(flags[flag])) return { ok: false };
   }
   return { ok: true };
 }
@@ -63,22 +65,24 @@ function isCheckpoint(
   artifacts: unknown[];
   primaryTarget: { documentEpoch: string };
 } {
-  if (!isRecord(value)) return false;
-  if (typeof value.checkpointId !== "string" || value.checkpointId.length === 0) {
+  // A non-record JSON value normalizes to no checkpointId, so the next guard rejects it.
+  const checkpoint = isRecord(value) ? value : {};
+  if (typeof checkpoint.checkpointId !== "string" || checkpoint.checkpointId.length === 0) {
     return false;
   }
   if (
-    typeof value.openedAt !== "number" ||
-    !Number.isFinite(value.openedAt) ||
-    value.openedAt < 0
+    typeof checkpoint.openedAt !== "number" ||
+    !Number.isFinite(checkpoint.openedAt) ||
+    checkpoint.openedAt < 0
   ) {
     return false;
   }
-  if (!Array.isArray(value.artifacts)) return false;
-  if (!isRecord(value.primaryTarget)) return false;
+  if (!Array.isArray(checkpoint.artifacts)) return false;
+  // A non-record primaryTarget has no documentEpoch, so the epoch guard below already rejects it.
+  const primaryTarget = isRecord(checkpoint.primaryTarget) ? checkpoint.primaryTarget : {};
   if (
-    typeof value.primaryTarget.documentEpoch !== "string" ||
-    !DOCUMENT_EPOCH_PATTERN.test(value.primaryTarget.documentEpoch)
+    typeof primaryTarget.documentEpoch !== "string" ||
+    !DOCUMENT_EPOCH_PATTERN.test(primaryTarget.documentEpoch)
   ) {
     return false;
   }
@@ -122,16 +126,20 @@ async function isStagedRegularFile(root: string, association: RunAssociation): P
 }
 
 export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } {
-  if (!isRecord(doc)) return { ok: false };
-  if (doc.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
-  if (!Array.isArray(doc.checkpoints)) return { ok: false };
-  if (doc.checkpoints.length === 0) return { ok: false };
-  if (!isRunAssociation(doc.har)) return { ok: false };
-  if (!isRunAssociation(doc.capabilities)) return { ok: false };
+  // Non-record JSON values have no schemaVersion, so the schema guard below already refuses them.
+  const checkpointsDocument = isRecord(doc) ? doc : {};
+  if (checkpointsDocument.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { ok: false };
+  // No non-array JSON value can pass the non-empty and per-entry checks that follow.
+  const checkpoints = Array.isArray(checkpointsDocument.checkpoints)
+    ? checkpointsDocument.checkpoints
+    : [];
+  if (checkpoints.length === 0) return { ok: false };
+  if (!isRunAssociation(checkpointsDocument.har)) return { ok: false };
+  if (!isRunAssociation(checkpointsDocument.capabilities)) return { ok: false };
 
   let previousOpenedAt: number | undefined;
   const checkpointIds = new Set<string>();
-  for (const checkpoint of doc.checkpoints) {
+  for (const checkpoint of checkpoints) {
     if (!isCheckpoint(checkpoint)) return { ok: false };
     if (checkpointIds.has(checkpoint.checkpointId)) return { ok: false };
     checkpointIds.add(checkpoint.checkpointId);
@@ -148,56 +156,41 @@ export async function validateStagedArchive(
   stagingRoot: string,
 ): Promise<{ ok: true } | { ok: false }> {
   const checkpointsDoc = await readJsonFile(join(stagingRoot, "checkpoints.json"));
-  if (checkpointsDoc === undefined) return { ok: false };
+  // readJsonFile returns undefined for missing or invalid JSON; validateCheckpoints rejects it below.
   if (!validateCheckpoints(checkpointsDoc).ok) return { ok: false };
 
-  if (
-    !isRecord(checkpointsDoc) ||
-    !isRunAssociation(checkpointsDoc.har) ||
-    !isRunAssociation(checkpointsDoc.capabilities)
-  ) {
+  // validateCheckpoints already narrowed the shape; re-reading the record and associations cannot
+  // be the only reason for refusal, so use that established shape directly.
+  const stagedDocument = checkpointsDoc as Record<string, unknown>;
+  // Refuse missing, non-file, or escaping run-level associations; each must point to staged evidence.
+  if (!(await isStagedRegularFile(stagingRoot, stagedDocument.har as RunAssociation))) {
     return { ok: false };
   }
-  // Refuse missing, non-file, or escaping run-level associations; each must point to staged evidence.
-  if (!(await isStagedRegularFile(stagingRoot, checkpointsDoc.har))) return { ok: false };
-  if (!(await isStagedRegularFile(stagingRoot, checkpointsDoc.capabilities))) {
+  if (!(await isStagedRegularFile(stagingRoot, stagedDocument.capabilities as RunAssociation))) {
     return { ok: false };
   }
 
   const capabilitiesDoc = await readJsonFile(
-    join(stagingRoot, checkpointsDoc.capabilities.path),
+    join(stagingRoot, (stagedDocument.capabilities as RunAssociation).path),
   );
   if (capabilitiesDoc === undefined || !validateCapabilities(capabilitiesDoc).ok) {
     return { ok: false };
   }
   // A true or undetermined flag is a measurement outcome, not archive damage, so it must not refuse publication.
 
-  // validateCheckpoints already narrowed the shape; re-read through the same guards. No
-  // length comparison after the filter: validateCheckpoints returns ok only when every entry
-  // satisfies isCheckpoint, so the filter can never drop one and the check could never fail.
-  if (!isRecord(checkpointsDoc) || !Array.isArray(checkpointsDoc.checkpoints)) {
-    return { ok: false };
-  }
-  const checkpoints = checkpointsDoc.checkpoints.filter(isCheckpoint);
-
-  const finalCheckpoint = checkpoints[checkpoints.length - 1];
-  if (finalCheckpoint === undefined) return { ok: false };
+  // validateCheckpoints already narrowed the shape; no length comparison after the filter:
+  // every entry satisfies isCheckpoint, so the filter cannot drop one or become empty.
+  const checkpoints = (stagedDocument.checkpoints as unknown[]).filter(isCheckpoint);
+  const finalCheckpoint = checkpoints[checkpoints.length - 1]!;
 
   const environmentDoc = await readJsonFile(join(stagingRoot, "environment.json"));
-  if (environmentDoc === undefined) return { ok: false };
-  if (!isRecord(environmentDoc)) return { ok: false };
-  if (!isRecord(environmentDoc.checkpoint)) return { ok: false };
+  // Non-record or missing environment JSON normalizes to a binding with no fields; equality guards below refuse it.
+  const environment = isRecord(environmentDoc) ? environmentDoc : {};
+  // A non-record checkpoint has no binding fields; the type/equality guards below refuse it.
+  const binding = isRecord(environment.checkpoint) ? environment.checkpoint : {};
 
-  const binding = environmentDoc.checkpoint;
-  if (typeof binding.checkpointId !== "string") return { ok: false };
-  if (typeof binding.documentEpoch !== "string") return { ok: false };
-  if (
-    typeof binding.openedAt !== "number" ||
-    !Number.isFinite(binding.openedAt) ||
-    binding.openedAt < 0
-  ) {
-    return { ok: false };
-  }
+  // Binding field type checks are redundant for JSON values: final-checkpoint equality below
+  // rejects every value that cannot have the corresponding string or finite-number type.
 
   // Coherent final-checkpoint binding: environment must name the final checkpoint
   // with matching epoch and monotonic timestamp.

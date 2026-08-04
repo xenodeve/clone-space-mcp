@@ -182,6 +182,24 @@ test("rejects an empty checkpointId", () => {
   expect(result).toEqual({ ok: false });
 });
 
+test("rejects a checkpoint whose artifacts is not an array", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:6D7E8F901A2B3C4D5E6F7018293A4B5C" },
+        openedAt: 0,
+        artifacts: 42,
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
 test("rejects a negative openedAt", () => {
   const result = validateCheckpoints({
     schemaVersion: 1,
