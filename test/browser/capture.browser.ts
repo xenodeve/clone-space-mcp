@@ -246,7 +246,7 @@ test("associates the published checkpoints document with the run HAR", async () 
   assert.ok(existsSync(resolve(archiveRoot, "network.har")), "the associated HAR file is missing");
 });
 
-test("publishes a run-scoped capabilities document", async () => {
+test("publishes detected capabilities for the primary motion fixture", async () => {
   const harPath = await captureHar({
     browser,
     url: servers.primary.url,
@@ -266,10 +266,32 @@ test("publishes a run-scoped capabilities document", async () => {
       serviceWorkerDependent: false,
       webSocketDependent: false,
       closedShadowRootPresent: false,
-      sourcemapDeclared: false,
+      // The motion fixture's instrumented script deliberately declares a sourcemap.
+      sourcemapDeclared: true,
     },
   });
   assert.equal(statSync(capabilitiesPath).mode & 0o600, 0o600);
+});
+
+test("publishes true capabilities for the capability fixture", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.capability.url,
+    outDir: nextCaptureOutDir(),
+  });
+  const capabilities = JSON.parse(
+    readFileSync(resolve(dirname(harPath), "capabilities.json"), "utf8"),
+  );
+
+  assert.deepEqual(capabilities, {
+    schemaVersion: 1,
+    flags: {
+      serviceWorkerDependent: true,
+      webSocketDependent: true,
+      closedShadowRootPresent: true,
+      sourcemapDeclared: true,
+    },
+  });
 });
 
 test("publishes the requested and observed environment without non-allowlisted storage", async () => {

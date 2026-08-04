@@ -20,7 +20,19 @@ interface CaptureHarResponse {
 interface CaptureHarPage extends EnvironmentPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
   on(event: "response", handler: (response: CaptureHarResponse) => void): void;
+  on(event: "websocket", handler: () => void): void;
   evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
+}
+
+interface CaptureHarDomNode {
+  children?: CaptureHarDomNode[];
+  shadowRoots?: CaptureHarDomNode[];
+  contentDocument?: CaptureHarDomNode;
+  shadowRootType?: string;
+}
+
+interface CaptureHarServiceWorkerRegistrationEvent {
+  registrations?: Array<{ scopeURL?: string; isDeleted?: boolean }>;
 }
 
 /**
@@ -34,7 +46,11 @@ interface CaptureHarPage extends EnvironmentPage {
  * left off rather than enabled for notifications nothing subscribes to.
  */
 interface CaptureHarCdpSession {
-  send(method: "Page.getFrameTree"): Promise<{ frameTree: { frame: { loaderId: string } } }>;
+  send(method: string, params?: object): Promise<unknown>;
+  on(
+    event: "ServiceWorker.workerRegistrationUpdated",
+    handler: (event: CaptureHarServiceWorkerRegistrationEvent) => void,
+  ): void;
 }
 
 interface CaptureHarContext {
@@ -61,6 +77,17 @@ interface CaptureHarBrowser {
 
 const HAR_FILE_NAME = "network.har";
 const CAPABILITIES_FILE_NAME = "capabilities.json";
+type CapabilityValue = boolean | "undetermined";
+
+function hasClosedShadowRoot(node: CaptureHarDomNode): boolean {
+  if (node.shadowRootType === "closed") return true;
+  return [node.children, node.shadowRoots, node.contentDocument].some((descendants) => {
+    if (!descendants) return false;
+    return Array.isArray(descendants)
+      ? descendants.some((child) => hasClosedShadowRoot(child))
+      : hasClosedShadowRoot(descendants);
+  });
+}
 
 export interface CaptureHarOptions {
   browser: CaptureHarBrowser;
@@ -98,11 +125,45 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     });
     let environment: EnvironmentV1;
     let documentEpoch: string;
+    let capabilities: {
+      serviceWorkerDependent: CapabilityValue;
+      webSocketDependent: CapabilityValue;
+      closedShadowRootPresent: CapabilityValue;
+      sourcemapDeclared: CapabilityValue;
+    };
     try {
       const page = await context.newPage();
+      const cdp = await context.newCDPSession(page);
+      let serviceWorkerDependent = false;
+      // The listener and domain are installed before navigation. If either setup step fails,
+      // capture aborts instead of publishing an archive with incomplete ServiceWorker coverage;
+      // therefore this flag's no-positive undetermined state is unreachable.
+      cdp.on("ServiceWorker.workerRegistrationUpdated", (event) => {
+        if (
+          event.registrations?.some(
+            (registration) =>
+              !registration.isDeleted &&
+              registration.scopeURL !== undefined &&
+              new URL(registration.scopeURL).origin === new URL(options.url).origin,
+          )
+        ) {
+          serviceWorkerDependent = true;
+        }
+      });
+      await cdp.send("ServiceWorker.enable");
+
+      let webSocketDependent = false;
+      // page.on is installed before navigation and reports every WebSocket creation, including
+      // an upgrade that is refused; listener setup failure aborts capture, so undetermined is
+      // unreachable for this flag.
+      page.on("websocket", () => {
+        webSocketDependent = true;
+      });
+
       // Response bodies come from the browser's network stack, not the page, so
       // discovery is not subject to CORS and never issues a second script request.
       const discoveredMapUrls = new Set<string>();
+      let scriptBodyUnreadable = false;
       const pendingScriptReads: Promise<void>[] = [];
       page.on("response", (response) => {
         if (response.request().resourceType() !== "script") return;
@@ -115,7 +176,9 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
                 discoveredMapUrls.add(new URL(sourceMappingURL, response.url()).href);
               }
             })
-            .catch(() => {}),
+            .catch(() => {
+              scriptBodyUnreadable = true;
+            }),
         );
       });
 
@@ -160,8 +223,17 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // The checkpoint opens after the sweep and spans the environment collection, so the
       // epoch is read at open — the document that is live now, not the one the requested URL
       // asked for — and read again at close.
-      const cdp = await context.newCDPSession(page);
-      const loaderIdAtOpen = (await cdp.send("Page.getFrameTree")).frameTree.frame.loaderId;
+      const loaderIdAtOpen = (
+        (await cdp.send("Page.getFrameTree")) as {
+          frameTree: { frame: { loaderId: string } };
+        }
+      ).frameTree.frame.loaderId;
+      const domDocument = (await cdp.send("DOM.getDocument", { depth: -1, pierce: true })) as {
+        root: CaptureHarDomNode;
+      };
+      // DOM.getDocument either returns the complete pierced primary document or capture aborts,
+      // so there is no partial DOM coverage to publish as undetermined for this flag.
+      const closedShadowRootPresent = hasClosedShadowRoot(domDocument.root);
       environment = await collectEnvironment({
         page,
         url: options.url,
@@ -174,11 +246,21 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // document under an epoch naming another — an archive that reads as coherent while
       // describing a page that never existed, which is the failure §6.3 exists to detect.
       // ADR 0005: fail closed, so the archive looks incomplete rather than looking complete.
-      const loaderIdAtClose = (await cdp.send("Page.getFrameTree")).frameTree.frame.loaderId;
+      const loaderIdAtClose = (
+        (await cdp.send("Page.getFrameTree")) as {
+          frameTree: { frame: { loaderId: string } };
+        }
+      ).frameTree.frame.loaderId;
       if (loaderIdAtClose !== loaderIdAtOpen) {
         throw new Error("the primary document changed while the checkpoint was open");
       }
       documentEpoch = `epoch:${loaderIdAtOpen}`;
+      capabilities = {
+        serviceWorkerDependent,
+        webSocketDependent,
+        closedShadowRootPresent,
+        sourcemapDeclared: discoveredMapUrls.size > 0 ? true : scriptBodyUnreadable ? "undetermined" : false,
+      };
     } finally {
       await context.close();
     }
@@ -205,18 +287,12 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       )}\n`,
       { mode: 0o600 },
     );
-    // Issue #63 writes fixed false values; there is no detection in this slice. Issue #64 adds detection.
     await writeFile(
       resolve(stagingRoot, CAPABILITIES_FILE_NAME),
       `${JSON.stringify(
         {
           schemaVersion: 1,
-          flags: {
-            serviceWorkerDependent: false,
-            webSocketDependent: false,
-            closedShadowRootPresent: false,
-            sourcemapDeclared: false,
-          },
+          flags: capabilities,
         },
         null,
         2,
