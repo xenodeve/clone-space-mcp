@@ -18,7 +18,7 @@ describe("the second fixture site", () => {
     const response = await fetch(servers.capability.url);
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain('data-fixture-marker="capability-site-placeholder"');
+    expect(await response.text()).toContain('data-fixture-marker="capability-site"');
   });
 
   test("leaves the primary motion fixture reachable", async () => {

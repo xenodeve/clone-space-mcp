@@ -5,6 +5,25 @@
     <title>clone-space-mcp capability fixture</title>
   </head>
   <body>
-    <main data-fixture-marker="capability-site-placeholder">capability-site-placeholder</main>
+    <main data-fixture-marker="capability-site">
+      <section data-fixture-id="service-worker">service worker</section>
+      <section data-fixture-id="websocket">websocket</section>
+      <section data-fixture-id="closed-shadow-root" id="closed-shadow-host">closed shadow root</section>
+      <section data-fixture-id="sourcemap">declared sourcemap</section>
+    </main>
+
+    <script src="/instrumented.js"></script>
+    <script>
+      navigator.serviceWorker.register("/capability-worker.js");
+
+      const capabilitySocket = new WebSocket("ws://" + location.hostname + ":9/capability-refused");
+      capabilitySocket.addEventListener("error", () => {});
+
+      const host = document.querySelector("#closed-shadow-host");
+      const shadow = host.attachShadow({ mode: "closed" });
+      const content = document.createElement("span");
+      content.textContent = "closed-shadow-content";
+      shadow.append(content);
+    </script>
   </body>
 </html>

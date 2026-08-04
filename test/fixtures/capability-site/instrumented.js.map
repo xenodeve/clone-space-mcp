@@ -1,0 +1,8 @@
+{
+  "version": 3,
+  "file": "instrumented.js",
+  "sourceRoot": "",
+  "sources": ["instrumented.ts"],
+  "names": ["capabilityFixtureValue"],
+  "mappings": "AAAA,SAASA,sBAAsB;AACpB,OAAO,CAAC,GAAG,CAAC,sBAAsB,EAAE,CAAC"
+}

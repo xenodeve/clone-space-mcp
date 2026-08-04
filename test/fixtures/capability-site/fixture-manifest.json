@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "note": "The single source of truth for what this fixture declares. test/fixtures/capability-site.test.ts reads it, so a case removed from the page fails a test instead of silently shrinking the ground truth. Do not maintain a second copy of this list anywhere — link here instead.",
+
+  "declares": [
+    {
+      "id": "service-worker",
+      "mechanism": "service-worker",
+      "selector": "[data-fixture-id='service-worker']",
+      "expect": "The served page calls navigator.serviceWorker.register() with a real worker script served by this origin."
+    },
+    {
+      "id": "websocket",
+      "mechanism": "websocket",
+      "selector": "[data-fixture-id='websocket']",
+      "expect": "The served page constructs a WebSocket aimed at a refused port, so construction is observable even when upgrade fails."
+    },
+    {
+      "id": "closed-shadow-root",
+      "mechanism": "closed-shadow-root",
+      "selector": "[data-fixture-id='closed-shadow-root']",
+      "expect": "The served page attaches a closed shadow root and appends content inside it."
+    },
+    {
+      "id": "sourcemap",
+      "mechanism": "sourcemap",
+      "selector": "[data-fixture-id='sourcemap']",
+      "expect": "The served instrumented.js script publishes a sourceMappingURL whose map is served with mappings."
+    }
+  ]
+}

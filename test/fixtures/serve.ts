@@ -239,12 +239,12 @@ export async function startFixtureServers(): Promise<FixtureServers> {
     port: 0,
     async fetch(req) {
       const { pathname } = new URL(req.url);
-      if (pathname !== "/" && pathname !== "/index.html") {
-        return new Response("not found", { status: 404 });
-      }
-      return new Response(file(join(CAPABILITY, "index.html")), {
-        headers: { "content-type": CONTENT_TYPES[".html"]! },
-      });
+      const rel = decodeURIComponent(pathname).replace(/^\/+/, "") || "index.html";
+      if (rel.includes("..")) return new Response("forbidden", { status: 403 });
+
+      const asset = file(join(CAPABILITY, rel));
+      if (!(await asset.exists())) return new Response("not found", { status: 404 });
+      return new Response(asset, { headers: { "content-type": contentTypeFor(rel) } });
     },
   });
 
