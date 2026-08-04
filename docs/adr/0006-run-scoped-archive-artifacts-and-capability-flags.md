@@ -1,6 +1,6 @@
 # ADR 0006 — Run-scoped archive artifacts, and the §6.4 capability contract
 
-- **Status:** Pending — contract accepted; capture-side implementation not landed
+- **Status:** Accepted — contract via #60, implementation via #61–#64 (`3b27ceb`)
 - **Area:** Capture / archive integrity
 - **Related:** #59 (PRD), #60 (this decision), #29 (P2), plan §6.4, ADR 0003, ADR 0005
 

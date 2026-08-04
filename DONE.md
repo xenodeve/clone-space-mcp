@@ -6,6 +6,47 @@
 
 ---
 
+## P2 archive contract 6.4 — capability flags (2026-08-04, `/grill-me` + `/clink-brainstorm` + `/tdd`, #29 #59 #60 #61 #62 #63 #64 #65 #66 #67 #69 #70)
+
+**Goal:** make an archive say when `extract` will come back empty for a reason that is not
+absence of motion — a service worker, a WebSocket, a closed shadow root, or a missing sourcemap.
+
+**Shipped:** `capabilities.json`, run-scoped and carrying no checkpoint binding, associated in
+`checkpoints.json` as `capabilities: { path, scope: "run" }` beside the HAR. Four tri-state flags —
+`serviceWorkerDependent`, `webSocketDependent`, `closedShadowRootPresent`, `sourcemapDeclared` —
+detected from the live page, with fail-closed publish validation. A second fixture site exercises
+the TRUE side of all four; `motion-site` is untouched. ADR 0006 is Accepted.
+
+**Three design decisions were overturned during the grilling, each by evidence.** The service-worker
+flag was going to mean *a worker controls this page*; `controller` is false even when one registered,
+because capture always opens a fresh context — it would have been a permanent false negative that no
+test on a fresh context could catch. `noSourcemap` described the archive rather than the page and
+became `sourcemapDeclared`. And `capabilities.json` was going to carry a checkpoint binding until it
+became clear that three of its four fields are run-scoped, so binding them would assert a coherence a
+mid-sweep navigation breaks — the failure §6.3 exists to detect, reappearing in a new artifact.
+
+**The panel was wrong where it mattered, and only running Chromium showed it.** Three model families
+were asked what survives `serviceWorkers: 'block'`. Two asserted CDP `ServiceWorker` events would not
+fire; they fire in both modes (13 and 2). The third proposed falling back to the `/sw.js` network
+request; that is dead at zero requests either way. What the panel did converge on — rejecting an
+init-script wrapper around `navigator.serviceWorker.register` as page-observable, and the fail-closed
+list including *a flag being true must not refuse* — held up.
+
+**Found by a sweep, not by luck:** #63's acceptance criteria required proving every pre-existing
+guard still fails exactly the test named for it. Five fail nothing at all. Measured on `main` as well
+as the branch, identically, so it is a pre-existing gap rather than a regression — filed as **#68**.
+That is the sixth guard-that-cannot-fail this repo has found, and the first found by a check that ran
+because it was required rather than because someone thought to try.
+
+**Validation:** `bun run verify` exited 0 — 101 Bun tests, 26 Node browser tests, lint, typecheck and
+build. `bun run mutate` exits 0 with 16 caught and none surviving, up from 7. Every slice had an
+observed RED failing on its assertion, and every new guard is proven load-bearing by mutation. PRs
+#65, #66, #67, #69 and #70 merged; #60–#64 closed and §6.4 is checked on #29.
+
+**Next:** §6.5 request normalization. `serviceWorkers: 'block'` stays unset and stays an open
+question named in ADR 0006 — under it a page's captured execution never runs with a worker, so the
+flag would warn about a dependency the archive's bytes never exercised.
+
 ## `bun run mutate` and the regression corpus (2026-08-03, `/tdd`, #24 #53 #55)
 
 **Goal:** make the two rules `CLAUDE.md` already states — a green suite is not evidence the suite
