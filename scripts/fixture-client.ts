@@ -24,6 +24,7 @@ export interface FixtureOrigin {
 export interface FixtureServers {
   primary: FixtureOrigin;
   crossOrigin: FixtureOrigin;
+  capability: FixtureOrigin;
   stop(): Promise<void>;
 }
 
