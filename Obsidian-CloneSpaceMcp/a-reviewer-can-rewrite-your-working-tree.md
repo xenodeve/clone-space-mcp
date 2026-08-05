@@ -25,4 +25,6 @@ It did the sensible thing: **it ran `bun run mutate`.** `clink` gives codex bypa
 - **Check `git status` before and after any delegated round**, not only at commit time. Between those two points is the only place this is visible.
 - **A stopped MCP task is not a stopped process.** Confirm with the process list, and expect a `finally` to have been skipped when you kill one.
 
+**Update (#82):** the specific hazard here — a killed mutation run leaving a defect in `src/` — no longer exists. The corpus is applied to module source in memory, so nothing writes to the tree; see [[remove-the-write-dont-guard-it]]. **The rest of this note still holds**, because the general case does: a delegate running *any* command against your checkout while you measure makes the measurement unciteable, whether or not that command writes.
+
 This is the concurrency half of [[delegate-to-clink-including-verification]]. `CLAUDE.md` already keeps the git and PR commands with the orchestrator because the gate only sees what the orchestrator runs — this is the wider case: **anything that writes to the checkout belongs to the orchestrator**, gate or no gate. See also [[a-blocked-method-is-not-a-blocked-task]], which is the same measurement discipline pointed at a park rather than at a delegate.

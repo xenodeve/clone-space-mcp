@@ -56,13 +56,13 @@ describe("applyMutationText", () => {
   });
 
   /**
-   * `mutate.ts` prefixes its own `MUTATION NOT APPLIED: <id>` when it reports one of these, so a
-   * prefix here too produced the banner twice in the one line a human reads to diagnose a rotted
-   * anchor. The class carries that meaning; the message carries only the specifics.
+   * The hook tags these with `CLONE_SPACE_MUTATION_NOT_APPLIED` and `mutate.ts` prints its own
+   * `MUTATION NOT APPLIED: <id>` line, so a banner here as well produced it twice in the one line
+   * a human reads to diagnose a rotted anchor. This message carries only the specifics.
    */
-  test("does not repeat the banner its caller already prints", () => {
+  test("does not repeat the banner its callers already print", () => {
     expect(() => applyMutationText("unrelated\n", "absent", "x", "a.ts")).not.toThrow(
-      /MUTATION NOT APPLIED/,
+      /MUTATION NOT APPLIED|CLONE_SPACE_MUTATION_NOT_APPLIED/,
     );
   });
 });

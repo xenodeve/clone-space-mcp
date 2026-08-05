@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import {
   reconcile,
   type ElementFingerprint,
@@ -11,7 +10,7 @@ import {
   parseMode,
   resolveMeasurableMutation,
 } from "./metamorphic-cli.ts";
-import { withMutatedFile } from "./mutation-apply.ts";
+import { MUTATION_ENV } from "./mutation-hook.ts";
 import { MUTATIONS } from "./mutations.ts";
 import { repoRoot } from "./repo-root.ts";
 
@@ -199,63 +198,35 @@ function report(dropCount: number): void {
  * been run against a real bug, and this is how that run is made repeatable rather than a
  * one-off someone did by hand and described afterwards.
  */
-/**
- * The mechanism that does not depend on this process surviving.
- *
- * Every in-process guard — the `finally`, the signal handlers — is skipped by a hard kill, and a
- * hard kill is exactly what left a defect applied in `src/` during #78. Asking git is cheap, runs
- * outside that failure, and answers the only question that matters: is the file the one committed?
- */
-function assertCommittedState(file: string, when: string): void {
-  const git = Bun.spawnSync(["git", "status", "--porcelain", "--", file], { cwd: repoRoot });
-  const dirty = new TextDecoder().decode(git.stdout).trim();
-  if (git.exitCode !== 0) {
-    throw new Error(`could not check the state of ${file} ${when}: git exited ${git.exitCode}`);
-  }
-  if (dirty !== "") {
-    throw new Error(
-      `${file} does not match the commit ${when}:\n${dirty}\n` +
-        "Refusing to report a measurement taken against a tree in an unknown state. If a previous " +
-        "run was killed before it could restore, put the file back before measuring again.",
-    );
-  }
-}
-
 async function measureAgainst(mutationId: string): Promise<void> {
   const mutation = resolveMeasurableMutation(MUTATIONS, mutationId);
-  assertCommittedState(mutation.file, "before the measurement");
-
   const fixed = measure();
-  const restored = await withMutatedFile(
-    resolve(repoRoot, mutation.file),
-    mutation.find,
-    mutation.replace,
-    async () => {
-      // A child process, because this one imported the module being mutated long before the
-      // mutation was written; re-importing it here would return the cached, unmutated copy.
-      // `--emit-count` rather than reading the human report back: the report is written for a
-      // person and its wording is free to change, which would silently break this measurement.
-      const child = Bun.spawn([process.execPath, "scripts/metamorphic.ts", "--emit-count"], {
-        cwd: repoRoot,
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-        child.exited,
-      ]);
-      if (exitCode !== 0) {
-        throw new Error(`the run with the defect restored exited ${exitCode}:\n${stdout}\n${stderr}`);
-      }
 
-      return parseDropCount(stdout, N);
+  // A child process, because this one imported the module being mutated long before the mutation
+  // was selected; re-importing it here would return the cached, unmutated copy. The defect is
+  // applied by the preload hook **in memory** — nothing on disk changes, so there is no restore to
+  // get right and no window in which a kill can leave the tree wrong (#82).
+  //
+  // `--emit-count` rather than reading the human report back: the report is written for a person
+  // and its wording is free to change, which would silently break this measurement.
+  const child = Bun.spawn(
+    [process.execPath, "run", "--preload", "./scripts/mutation-preload.ts", "scripts/metamorphic.ts", "--emit-count"],
+    {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, [MUTATION_ENV]: mutation.id },
     },
   );
-
-  // After the restore and before a single number is printed: a measurement published from a tree
-  // that was not put back is the failure this whole path exists to refuse.
-  assertCommittedState(mutation.file, "after the measurement");
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(`the run with the defect restored exited ${exitCode}:\n${stdout}\n${stderr}`);
+  }
+  const restored = parseDropCount(stdout, N);
 
   console.log("METAMORPHIC DISCRIMINATION: measured against a defect that actually happened");
   console.log(`seed: 0x${SEED.toString(16).padStart(8, "0")}`);

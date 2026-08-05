@@ -90,9 +90,12 @@ Re-run it with:
 bun run metamorphic -- --against fingerprint-key-gates-on-ordinal-and-text
 ```
 
-The defect is applied to `src/identity/fingerprint.ts`, measured in a child process, and restored in
-a `finally`. An anchor that no longer matches throws before anything is written, because a mutation
-that silently fails to apply would report "no discrimination" from unmutated code.
+The defect is applied to `src/identity/fingerprint.ts` **in memory**, by a `Bun.plugin` `onLoad`
+hook registered through `--preload` in the child that takes the measurement (#82). The tracked file
+is never written, so *"the working tree is unchanged after a measurement"* is true by construction
+rather than defended by a restore. An anchor that no longer matches throws inside the child and is
+reported as `MUTATION NOT APPLIED`, because a mutation that silently fails to apply would report
+"no discrimination" from unmutated code.
 
 **Only the corpus entries this harness actually executes are accepted** — today `reconcile.ts` and
 `fingerprint.ts`, as an explicit set rather than a `src/identity/` prefix, since `inject.ts` is
@@ -100,13 +103,17 @@ inside that prefix and is imported by nothing here. Pointing it at a capture-sid
 rewrite a file the run never reads and print two equal counts, indistinguishable in the output from
 the metric genuinely failing to see a defect.
 
-**The guard that does not depend on this process surviving is a `git status --porcelain` check on
-the target file, before the measurement and again before a single number is printed.** In-process
-guards were measured and found narrower than they look: on Windows neither `Bun.Subprocess.kill()`
-nor `process.kill(pid, "SIGINT")` runs a `SIGINT`/`SIGTERM` handler, so the **programmatic kill that
-actually left a defect applied during #78 is no more covered than `SIGKILL`**. The handlers are kept
-for a console Ctrl-C and are not the mechanism. The restore is also refused, loudly and with a
-non-zero exit, rather than forced, if the file changed underneath the run.
+**There is no restore, and therefore nothing for a kill to skip.** The first version of this
+measurement wrote the defect into the tracked file and defended it — a `finally`, signal handlers,
+an ownership check, a `git status` guard. That apparatus was retired by #82 once the in-memory hook
+was shown to work in both runtimes, and the reason it had to go is worth keeping: the in-process
+half of it was measured and found narrower than it looked. On Windows neither
+`Bun.Subprocess.kill()` nor `process.kill(pid, "SIGINT")` runs a `SIGINT`/`SIGTERM` handler, so the
+**programmatic kill that actually left a defect applied during #78 was never covered at all** —
+while the code and this report both said it was.
+
+A guarantee that has to be defended by handlers is a guarantee that fails in exactly the case
+nobody rehearsed. Removing the write removes the case.
 
 ## Why this is a metric, not an assertion
 
