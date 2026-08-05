@@ -41,19 +41,92 @@ That attribute is absent from the real capture and original replay corpus, so th
 unmatchable by `fingerprintKey`. The harness asserts that its key collides with no element in
 `capture` before reconciling; a collision is a harness failure with a non-zero exit.
 
+### Discrimination against #20 (measured 2026-08-05, issue #78)
+
+The corrected transform was, until this measurement, an **unproven mechanism** by this repo's own
+rule: the 32/400 against 135/400 that justified building the check belonged to the transform #76
+showed was wrong, and could not be carried across. #78 recorded that the direction was genuinely
+open, and planned for the corrected check turning out honest but useless.
+
+It did not. Same seed, same 400 cases, with #20's fix reverted by the corpus entry
+`fingerprint-key-gates-on-ordinal-and-text`:
+
+| | Count |
+|---|---:|
+| Fixed code | **2/400** |
+| #20 restored (`fingerprintKey` gates on ordinal and text hash) | **179/400** |
+
+**Read those as two counts, not as a ratio.** `179 / 2` is 89.5, and an earlier draft of this
+section led with that number. It is not a statistic: on a floor of 2, one case either way moves the
+multiplier by tens, so almost all of its precision is denominator noise. The finding is that the
+counts differ by two orders of magnitude, and nothing finer than that is supported.
+
+### By what mechanism, stated so it is not oversold
+
+The rise is **mediated entirely by the ordinal shift the harness itself introduces**, and that is
+not a flaw in the measurement — it is #20's failure path:
+
+1. `scripts/metamorphic.ts:116-121` increments `siblingOrdinal` for every same-parent, same-tag
+   sibling at or after the insertion point. That is what inserting a node into a page does.
+2. With the defect restored, `fingerprintKey` has `siblingOrdinal` back as an **equality**
+   component, so each shifted sibling's key stops matching its capture counterpart.
+3. `reconcile` pools candidates by that key (`src/identity/reconcile.ts:102`), so those elements
+   lose their bucket and the match count drops.
+
+So this measures *"an unrelated insertion elsewhere in the page destroys matches"* — the exact
+sentence #20 was filed for, and the one `test/identity/reconcile.test.ts:121` pins. **It is not a
+second, independent signal**, and the number should not be read as the metric having discovered
+something the unit test did not.
+
+What it does establish is the narrower thing #78 asked for: after #76 retracted the old transform,
+**the corrected harness still responds to a real defect**, so it is no longer an unproven mechanism.
+That claim needed a measurement; the existence of the unit test could not supply it.
+
+**This is still not a gate**, for the reason in the next section.
+
+Re-run it with:
+
+```text
+bun run metamorphic -- --against fingerprint-key-gates-on-ordinal-and-text
+```
+
+The defect is applied to `src/identity/fingerprint.ts`, measured in a child process, and restored in
+a `finally`. An anchor that no longer matches throws before anything is written, because a mutation
+that silently fails to apply would report "no discrimination" from unmutated code.
+
+**Only the corpus entries this harness actually executes are accepted** — today `reconcile.ts` and
+`fingerprint.ts`, as an explicit set rather than a `src/identity/` prefix, since `inject.ts` is
+inside that prefix and is imported by nothing here. Pointing it at a capture-side entry would
+rewrite a file the run never reads and print two equal counts, indistinguishable in the output from
+the metric genuinely failing to see a defect.
+
+**The guard that does not depend on this process surviving is a `git status --porcelain` check on
+the target file, before the measurement and again before a single number is printed.** In-process
+guards were measured and found narrower than they look: on Windows neither `Bun.Subprocess.kill()`
+nor `process.kill(pid, "SIGINT")` runs a `SIGINT`/`SIGTERM` handler, so the **programmatic kill that
+actually left a defect applied during #78 is no more covered than `SIGKILL`**. The handlers are kept
+for a console Ctrl-C and are not the mechanism. The restore is also refused, loudly and with a
+non-zero exit, rather than forced, if the file changed underneath the run.
+
 ## Why this is a metric, not an assertion
 
 The metamorphic check is deliberately not part of `bun test`, `bun run verify`, or the mutation
 corpus. Correct `reconcile` code can legitimately lose matches after an unrelated node is added:
 the extra candidate can expose a genuinely ambiguous element, which should be reported unresolved
-rather than guessed. A non-zero count is therefore expected and legitimate. Drift from 32/400 is
-information for a human about the corrected generator and reconciler; it is not a gate.
+rather than guessed. A non-zero count is therefore expected and legitimate.
+
+The comparable figure is **a prior run of this harness at this seed**, not #24's 32/400, which came
+from the transform retracted above. Drift against that prior run is information for a human; it is
+not a gate. The 2-against-179 contrast does not change this: it shows the metric can see a defect
+of #20's kind, not that every drop it counts is a defect.
 
 ## Re-run
 
 ```text
 bun run metamorphic
+bun run metamorphic -- --against <mutation-id>
 ```
 
-The command prints the seed, case count, observed drop count, historical baseline, and delta. The
-seeded PRNG makes this corpus reproducible without using `Math.random()`.
+The first prints the seed, case count, observed drop count, historical baseline, and delta. The
+second re-runs the same cases with a corpus defect restored and prints the separation. The seeded
+PRNG makes this corpus reproducible without using `Math.random()`.

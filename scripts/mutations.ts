@@ -191,4 +191,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "ignores dependency events delivered after capabilities are observed",
   },
+  {
+    id: "fingerprint-key-gates-on-ordinal-and-text",
+    why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
+    file: "src/identity/fingerprint.ts",
+    find: 'return [el.frameKey, el.tag, attrs].join("|");',
+    replace: 'return [el.frameKey, el.tag, attrs, el.siblingOrdinal, el.textHash ?? ""].join("|");',
+    suite: "bun",
+    expect: "one unrelated node inserted above does not lose an element with a unique attribute",
+  },
 ];
