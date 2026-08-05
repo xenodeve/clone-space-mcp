@@ -6,6 +6,42 @@
 
 ---
 
+## The mutation corpus stopped writing to the working tree (2026-08-05, `/tdd`, #82)
+
+**Goal:** stop defending a write that did not need to exist.
+
+**#81 ended with five guards around one write** — a restore in a `finally`, an ownership check, a
+read-back, `SIGINT`/`SIGTERM` handlers, and a `git status` check before and after. Each was added in
+response to something that had actually gone wrong. The stack was still the wrong answer.
+
+**The signal handlers were the tell.** They were added *because* a killed process left a defect
+applied in `src/capture/record.ts`, and then measured: on this platform neither
+`Bun.Subprocess.kill()` nor `process.kill(pid, "SIGINT")` runs them. The kill that caused the
+incident was programmatic, so **the guard written for it never covered it**, while the code and the
+report both said it did.
+
+**The defect is now applied in memory** — `Bun.plugin` `onLoad` via `--preload`, Node
+`registerHooks` via `--import` — so the tracked file is never written and all five guards are gone,
+along with `withMutatedFile`, `restoreIfOurs` and the test file that existed only to hold them up.
+
+**What the move gave away, and the gates caught it.** Writing to disk failed *before the suite
+started*, whatever the suite imported; a load hook only fires if something loads the file, so an
+entry whose target no test imports would have come back `SURVIVED`. Bought back with a **positive**
+token the hook prints when it rewrites, whose absence the runner reads as NOT APPLIED. `/scrutinize`
+found it with a probe, and it was latent rather than live.
+
+**And a claim in the branch that nothing backed:** the Node hook said `--import` reaching
+`node --test`'s per-file children was *"measured, not assumed"* — true, but only in a scratch probe.
+The runtime tests ran `bun run` and a bare `node <file>` while the runner uses `bun test --preload`
+and `node --test --import`. Both now run the runner's own commands through shared flag constants.
+
+**Validation:** the measurement is unchanged at **2/400 against 179/400**, which is what makes
+"equivalent" a finding rather than a hope. `bun run mutate` exits 0 — 21 CAUGHT and no other status,
+including all five browser entries through the Node hook, with the tree never written.
+`bun run verify` exits 0 — 150 Bun, 26 Node browser, lint, typecheck, build.
+
+---
+
 ## The metamorphic check, measured against the bug it was built for (2026-08-05, `/tdd`, #78)
 
 **Goal:** stop the corrected metamorphic check being an unproven mechanism.
