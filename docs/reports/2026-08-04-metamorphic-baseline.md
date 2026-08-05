@@ -94,11 +94,19 @@ The defect is applied to `src/identity/fingerprint.ts`, measured in a child proc
 a `finally`. An anchor that no longer matches throws before anything is written, because a mutation
 that silently fails to apply would report "no discrimination" from unmutated code.
 
-**Only corpus entries under `src/identity/` are accepted.** This harness executes nothing else, so
-pointing it at one of the capture-side entries would rewrite a file the run never reads and print
-two equal counts — indistinguishable, in the output, from the metric genuinely failing to see a
-defect. The restore is also refused rather than forced if the file changed underneath the run, and
-`SIGINT`/`SIGTERM` restore synchronously; `SIGKILL` cannot be covered from inside the process.
+**Only the corpus entries this harness actually executes are accepted** — today `reconcile.ts` and
+`fingerprint.ts`, as an explicit set rather than a `src/identity/` prefix, since `inject.ts` is
+inside that prefix and is imported by nothing here. Pointing it at a capture-side entry would
+rewrite a file the run never reads and print two equal counts, indistinguishable in the output from
+the metric genuinely failing to see a defect.
+
+**The guard that does not depend on this process surviving is a `git status --porcelain` check on
+the target file, before the measurement and again before a single number is printed.** In-process
+guards were measured and found narrower than they look: on Windows neither `Bun.Subprocess.kill()`
+nor `process.kill(pid, "SIGINT")` runs a `SIGINT`/`SIGTERM` handler, so the **programmatic kill that
+actually left a defect applied during #78 is no more covered than `SIGKILL`**. The handlers are kept
+for a console Ctrl-C and are not the mechanism. The restore is also refused, loudly and with a
+non-zero exit, rather than forced, if the file changed underneath the run.
 
 ## Why this is a metric, not an assertion
 

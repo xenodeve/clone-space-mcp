@@ -28,8 +28,9 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | #21 Plan hardening | ✅ | — | Plan amended. The eleven archive contracts it names must land in P2 |
 | #24 Safety mechanisms | ✅ | — | **Closed.** The rule is in `CLAUDE.md`; `bun run mutate` and the regression corpus shipped (#53, now **21 entries**, all caught); `bun run metamorphic` shipped (#24, PR #73) and is deliberately outside every gate. Its first figure, 78/400, was **retracted** by #76 — the transform measured a duplicate, not an unrelated node. Corrected baseline **2/400**, and #78 measured it against a real defect: **179/400 with #20 restored**, so the mechanism is no longer unproven. Read as two counts, not a ratio — the floor is too small to divide by |
 | #75 `sourcemapDeclared` lied in two directions | ✅ | — | Ordering, misclassification and the observation boundary, all found by `/code-review` + `/scrutinize` run *after* the batch merged. The fixture now loads a script during the sweep |
-| #76 The metamorphic transform measured a duplicate | ✅ | — | The injected node carries a reserved attribute absent from both snapshots; the harness asserts no `fingerprintKey` collision before reconciling |
+| #76 The metamorphic transform measured a duplicate | ✅ | — | The injected node carries a reserved attribute absent from both identity snapshots; the harness asserts no `fingerprintKey` collision before reconciling |
 | #8 MCP layering rule + inspector | 🟡 | P2 | Constraint recorded, no code. The inspector needs an archive to render |
+| #82 Apply corpus defects in memory, not on disk | 🟢 | — | Raised by `/scrutinize` on #81. `--preload` + `Bun.plugin` makes "the tracked file is never written" true by construction instead of defended by handlers — and #81 **measured** those handlers not firing for a programmatic kill. Touches `mutate.ts` too, so it is a slice of its own |
 
 ## Track 2 — Pipeline
 

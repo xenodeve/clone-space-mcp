@@ -9,8 +9,24 @@ const N = 400;
  * something other than a count is a way to publish a fabricated measurement.
  */
 describe("parseDropCount", () => {
-  test("accepts a plain integer inside the case range", () => {
-    expect(parseDropCount("179\n", N)).toBe(179);
+  test("accepts a framed count inside the case range", () => {
+    expect(parseDropCount("DROP_COUNT=179\n", N)).toBe(179);
+  });
+
+  /**
+   * The reason the count is framed at all: anything else the child's stdout carries — a Bun
+   * warning, a stray log from an imported module — must not be mistaken for the measurement.
+   */
+  test("ignores unrelated noise on the same stream", () => {
+    expect(parseDropCount("warning: something\nDROP_COUNT=179\n", N)).toBe(179);
+  });
+
+  test("refuses more than one count rather than picking one, and says which condition fired", () => {
+    expect(() => parseDropCount("DROP_COUNT=1\nDROP_COUNT=2\n", N)).toThrow(/printed 2 drop counts/);
+  });
+
+  test("refuses a bare integer with no frame", () => {
+    expect(() => parseDropCount("179\n", N)).toThrow(/no drop count/);
   });
 
   /**
@@ -21,16 +37,17 @@ describe("parseDropCount", () => {
   test("refuses empty output rather than reading it as zero", () => {
     expect(() => parseDropCount("", N)).toThrow(/no drop count/);
     expect(() => parseDropCount("   \n", N)).toThrow(/no drop count/);
+    expect(() => parseDropCount("DROP_COUNT=\n", N)).toThrow(/no drop count/);
   });
 
   test("refuses anything that is not a bare non-negative integer", () => {
-    expect(() => parseDropCount("179 cases\n", N)).toThrow(/no drop count/);
-    expect(() => parseDropCount("-1\n", N)).toThrow(/no drop count/);
-    expect(() => parseDropCount("17.9\n", N)).toThrow(/no drop count/);
+    expect(() => parseDropCount("DROP_COUNT=179 cases\n", N)).toThrow(/no drop count/);
+    expect(() => parseDropCount("DROP_COUNT=-1\n", N)).toThrow(/no drop count/);
+    expect(() => parseDropCount("DROP_COUNT=17.9\n", N)).toThrow(/no drop count/);
   });
 
   test("refuses a count larger than the number of cases", () => {
-    expect(() => parseDropCount(`${N + 1}\n`, N)).toThrow(/out of range/);
+    expect(() => parseDropCount(`DROP_COUNT=${N + 1}\n`, N)).toThrow(/out of range/);
   });
 });
 
@@ -54,6 +71,30 @@ describe("resolveMeasurableMutation", () => {
     expect(() => resolveMeasurableMutation(MUTATIONS, "publish-validation-unwired")).toThrow(
       /only exercises src\/identity/,
     );
+  });
+
+  /**
+   * `src/identity/inject.ts` sits under the prefix an earlier version gated on, and this harness
+   * imports nothing from it — so a prefix rule would have admitted a mutation that gets applied
+   * faithfully and measured by nothing.
+   */
+  test("the measured set is the files the harness imports, not everything under src/identity", () => {
+    expect(() =>
+      resolveMeasurableMutation(
+        [
+          {
+            id: "hypothetical-inject-defect",
+            why: "not a real entry — this asserts the rule, not the corpus",
+            file: "src/identity/inject.ts",
+            find: "a",
+            replace: "b",
+            suite: "bun",
+            expect: "nothing",
+          },
+        ],
+        "hypothetical-inject-defect",
+      ),
+    ).toThrow(/only exercises/);
   });
 });
 

@@ -1,16 +1,19 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import {
   reconcile,
   type ElementFingerprint,
   type IdentitySnapshot,
 } from "../src/identity/reconcile.ts";
 import { fingerprintKey } from "../src/identity/fingerprint.ts";
-import { parseDropCount, parseMode, resolveMeasurableMutation } from "./metamorphic-cli.ts";
+import {
+  DROP_COUNT_PREFIX,
+  parseDropCount,
+  parseMode,
+  resolveMeasurableMutation,
+} from "./metamorphic-cli.ts";
 import { withMutatedFile } from "./mutation-apply.ts";
 import { MUTATIONS } from "./mutations.ts";
-
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import { repoRoot } from "./repo-root.ts";
 
 const N = 400;
 const BASELINE = 32;
@@ -196,8 +199,32 @@ function report(dropCount: number): void {
  * been run against a real bug, and this is how that run is made repeatable rather than a
  * one-off someone did by hand and described afterwards.
  */
+/**
+ * The mechanism that does not depend on this process surviving.
+ *
+ * Every in-process guard — the `finally`, the signal handlers — is skipped by a hard kill, and a
+ * hard kill is exactly what left a defect applied in `src/` during #78. Asking git is cheap, runs
+ * outside that failure, and answers the only question that matters: is the file the one committed?
+ */
+function assertCommittedState(file: string, when: string): void {
+  const git = Bun.spawnSync(["git", "status", "--porcelain", "--", file], { cwd: repoRoot });
+  const dirty = new TextDecoder().decode(git.stdout).trim();
+  if (git.exitCode !== 0) {
+    throw new Error(`could not check the state of ${file} ${when}: git exited ${git.exitCode}`);
+  }
+  if (dirty !== "") {
+    throw new Error(
+      `${file} does not match the commit ${when}:\n${dirty}\n` +
+        "Refusing to report a measurement taken against a tree in an unknown state. If a previous " +
+        "run was killed before it could restore, put the file back before measuring again.",
+    );
+  }
+}
+
 async function measureAgainst(mutationId: string): Promise<void> {
   const mutation = resolveMeasurableMutation(MUTATIONS, mutationId);
+  assertCommittedState(mutation.file, "before the measurement");
+
   const fixed = measure();
   const restored = await withMutatedFile(
     resolve(repoRoot, mutation.file),
@@ -226,6 +253,10 @@ async function measureAgainst(mutationId: string): Promise<void> {
     },
   );
 
+  // After the restore and before a single number is printed: a measurement published from a tree
+  // that was not put back is the failure this whole path exists to refuse.
+  assertCommittedState(mutation.file, "after the measurement");
+
   console.log("METAMORPHIC DISCRIMINATION: measured against a defect that actually happened");
   console.log(`seed: 0x${SEED.toString(16).padStart(8, "0")}`);
   console.log(`N: ${N}`);
@@ -243,7 +274,7 @@ async function measureAgainst(mutationId: string): Promise<void> {
 try {
   const mode = parseMode(process.argv);
   // The machine-readable contract the `--against` parent depends on: the count and nothing else.
-  if (mode.kind === "emit-count") console.log(measure());
+  if (mode.kind === "emit-count") console.log(`${DROP_COUNT_PREFIX}${measure()}`);
   else if (mode.kind === "report") report(measure());
   else await measureAgainst(mode.mutationId);
 } catch (error) {

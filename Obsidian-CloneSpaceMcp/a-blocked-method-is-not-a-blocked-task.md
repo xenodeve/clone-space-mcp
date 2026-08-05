@@ -18,7 +18,7 @@ return [el.frameKey, el.tag, attrs].join("|");                                  
 return [el.frameKey, el.tag, attrs, el.siblingOrdinal, el.textHash ?? ""].join("|");  // the defect
 ```
 
-A text find/replace with a `finally` that writes the original back reproduces the state and undoes it, and `scripts/mutate.ts` had been doing exactly that for twenty other defects since #53. The measurement ran unattended: **2/400 fixed, 179/400 with the defect restored, 89.5× separation.**
+A text find/replace with a `finally` that writes the original back reproduces the state and undoes it, and `scripts/mutate.ts` had been doing exactly that for twenty other defects since #53. The measurement ran unattended: **2/400 fixed, 179/400 with the defect restored** — two counts, deliberately not a ratio, because on a floor of 2 a single case moves the multiplier by tens.
 
 ## The error, stated so it is act-on-able
 

@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+import { countOccurrences } from "../../scripts/mutation-apply.ts";
 import { MUTATIONS } from "../../scripts/mutations.ts";
-
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+import { repoRoot } from "../../scripts/repo-root.ts";
 
 /**
  * #20 is the only defect in this corpus that a *measurement* depends on, not just a test:
@@ -46,12 +45,14 @@ describe("the #20 fingerprint defect is in the corpus", () => {
     // Counted, not `includes`. A second copy of the anchor — in a comment, a string, a sibling
     // function — makes `mutate.ts` refuse at run time, so a membership test would pass while the
     // corpus entry was already unusable.
-    const fixed = source.split(mutation!.find).length - 1;
-    const defectApplied = source.split(mutation!.replace).length - 1;
+    // `countOccurrences` rather than a second counting rule here: this test exists to notice a
+    // rotted anchor, and it can only do that if it counts the way the applier counts.
+    const fixed = countOccurrences(source, mutation!.find);
+    const defectApplied = countOccurrences(source, mutation!.replace);
 
     // Exactly one occurrence, across both forms together. Zero means the anchor rotted; two means
     // `mutate.ts` will refuse the entry; one of each is impossible and would mean the file is not
     // in either known state.
-    expect({ fixed, defectApplied, total: fixed + defectApplied }).toMatchObject({ total: 1 });
+    expect(fixed + defectApplied).toBe(1);
   });
 });

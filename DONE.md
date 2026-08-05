@@ -46,7 +46,18 @@ harness never executes, `--against --emit-count` silently emitting the baseline,
 `find` equals its `replace` reporting CAUGHT while mutating nothing. A change whose whole subject is
 *"do not publish a measurement you cannot trust"* had shipped five ways to publish one.
 
-**Validation:** `bun run verify` exits 0 — 129 Bun, 26 Node browser, lint, typecheck, build.
+**Then `/simplify`, `/code-review` and `/scrutinize` found more, including two the change had
+claimed the opposite of.** `mutate.ts` assigned `process.exitCode` unconditionally at the end, so it
+**erased the non-zero exit the new restore-refusal sets** — the alarm was wired to a line that
+overwrote it. And the `SIGINT`/`SIGTERM` restore was measured, not assumed: on Windows neither
+`Bun.Subprocess.kill()` nor `process.kill(pid, "SIGINT")` runs the handler, so **the programmatic
+kill that actually caused the incident above was never covered**, while the code comment and the
+report both said it was. The mechanism is now a `git status --porcelain` check on the target file,
+before the measurement and again before any number is printed — it runs outside the process whose
+death is the failure. #82 records the deeper fix: apply the defect in memory via `--preload`, so the
+tracked file is never written at all.
+
+**Validation:** `bun run verify` exits 0 — 135 Bun, 26 Node browser, lint, typecheck, build.
 `bun run mutate` exits 0 — 21 CAUGHT and no other status. `git status --porcelain src/` empty after
 every `--against` run.
 

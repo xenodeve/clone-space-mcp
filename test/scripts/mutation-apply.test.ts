@@ -20,22 +20,27 @@ describe("applyMutationText", () => {
         source,
         '[el.frameKey, el.tag, attrs]',
         '[el.frameKey, el.tag, attrs, el.siblingOrdinal]',
+        'src/identity/fingerprint.ts',
       ),
     ).toBe('return [el.frameKey, el.tag, attrs, el.siblingOrdinal].join("|");\n');
   });
 
   test("refuses an anchor that matches nothing, and says so", () => {
     // The CRLF case specifically: the anchor is written with \n, the file has \r\n.
-    expect(() => applyMutationText("const a = 1;\r\nconst b = 2;\r\n", "const a = 1;\nconst b = 2;", "x")).toThrow(
+    expect(() =>
+      applyMutationText("const a = 1;\r\nconst b = 2;\r\n", "const a = 1;\nconst b = 2;", "x", "a.ts"),
+    ).toThrow(
       /occurs 0 times/,
     );
   });
 
   test("refuses an anchor that matches more than once", () => {
-    expect(() => applyMutationText("drop();\ndrop();\n", "drop();", "keep();")).toThrow(/occurs 2 times/);
+    expect(() => applyMutationText("drop();\ndrop();\n", "drop();", "keep();", "a.ts")).toThrow(
+      /occurs 2 times/,
+    );
   });
 
-  test("names the file in the failure when one is given, so the report says which anchor rotted", () => {
+  test("names the file in the failure, so the report says which anchor rotted", () => {
     expect(() => applyMutationText("unrelated\n", "absent", "x", "src/identity/fingerprint.ts")).toThrow(
       /src\/identity\/fingerprint\.ts/,
     );
@@ -47,6 +52,17 @@ describe("applyMutationText", () => {
    * no-op as a rotted anchor, wearing a different disguise.
    */
   test("refuses a replacement that changes nothing", () => {
-    expect(() => applyMutationText("keep();\n", "keep();", "keep();")).toThrow(/changes nothing/);
+    expect(() => applyMutationText("keep();\n", "keep();", "keep();", "a.ts")).toThrow(/changes nothing/);
+  });
+
+  /**
+   * `mutate.ts` prefixes its own `MUTATION NOT APPLIED: <id>` when it reports one of these, so a
+   * prefix here too produced the banner twice in the one line a human reads to diagnose a rotted
+   * anchor. The class carries that meaning; the message carries only the specifics.
+   */
+  test("does not repeat the banner its caller already prints", () => {
+    expect(() => applyMutationText("unrelated\n", "absent", "x", "a.ts")).not.toThrow(
+      /MUTATION NOT APPLIED/,
+    );
   });
 });

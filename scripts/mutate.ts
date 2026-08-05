@@ -1,12 +1,10 @@
 // Deliberately outside bun run verify: this runs the whole suite once per mutation.
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { delimiter, join, resolve } from "node:path";
 import { MutationNotAppliedError, withMutatedFile } from "./mutation-apply.ts";
 import { MUTATIONS, type Mutation } from "./mutations.ts";
-
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import { repoRoot } from "./repo-root.ts";
 
 interface SuiteResult {
   exitCode: number;
@@ -73,10 +71,10 @@ async function applyMutation(mutation: Mutation): Promise<MutationResult> {
   const path = resolve(repoRoot, mutation.file);
 
   try {
-    return await withMutatedFile(path, mutation.find, mutation.replace, async () => {
+    return await withMutatedFile<MutationResult>(path, mutation.find, mutation.replace, async () => {
       if (interrupted) {
         console.log(`INTERRUPTED: ${mutation.id}`);
-        return { id: mutation.id, status: "FAILED" } as const;
+        return { id: mutation.id, status: "FAILED" };
       }
 
       let suite: SuiteResult;
@@ -84,20 +82,20 @@ async function applyMutation(mutation: Mutation): Promise<MutationResult> {
         suite = await runSuite(mutation);
       } catch (error) {
         console.log(`SUITE FAILED TO RUN: ${mutation.id} — ${String(error)}`);
-        return { id: mutation.id, status: "FAILED" } as const;
+        return { id: mutation.id, status: "FAILED" };
       }
 
       if (suite.exitCode === 0) {
         console.log(`SURVIVED: ${mutation.id}`);
-        return { id: mutation.id, status: "SURVIVED" } as const;
+        return { id: mutation.id, status: "SURVIVED" };
       }
       if (suite.output.includes(mutation.expect)) {
         console.log(`CAUGHT: ${mutation.id}`);
-        return { id: mutation.id, status: "CAUGHT" } as const;
+        return { id: mutation.id, status: "CAUGHT" };
       }
 
       console.log(`CAUGHT BY THE WRONG TEST: ${mutation.id} — expected "${mutation.expect}"`);
-      return { id: mutation.id, status: "FAILED" } as const;
+      return { id: mutation.id, status: "FAILED" };
     });
   } catch (error) {
     // Only a stale corpus is reported this way. Anything else is a real failure of this runner
@@ -122,4 +120,9 @@ for (const result of results) {
   console.log(`| ${result.id} | ${result.status} |`);
 }
 
-process.exitCode = results.length === MUTATIONS.length && results.every(({ status }) => status === "CAUGHT") ? 0 : 1;
+// Escalate only. Assigning 0 here would erase a non-zero code set elsewhere in the run — notably
+// the one `restoreIfOurs` sets when it refuses to put a file back, which is the alarm this runner
+// most needs to survive to the exit code.
+if (!(results.length === MUTATIONS.length && results.every(({ status }) => status === "CAUGHT"))) {
+  process.exitCode = 1;
+}

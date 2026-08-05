@@ -66,13 +66,34 @@ describe("withMutatedFile", () => {
   test("does not overwrite a file that something else changed while the body ran", async () => {
     const { path, cleanup } = await scratchFile();
     const FOREIGN = "someone else wrote this\n";
+    const priorExitCode = process.exitCode;
     try {
       await withMutatedFile(path, FIND, REPLACE, async () => {
         await writeFile(path, FOREIGN, "utf8");
       });
 
       expect(await readFile(path, "utf8")).toBe(FOREIGN);
+      // Refusing quietly would let a run publish a result while leaving a file nobody put back.
+      expect(process.exitCode).toBe(1);
     } finally {
+      // `?? 0` because assigning `undefined` does not clear it, and a leaked 1 makes the whole
+      // suite exit non-zero with every test passing.
+      process.exitCode = priorExitCode ?? 0;
+      await cleanup();
+    }
+  });
+
+  test("a clean run leaves the exit code alone", async () => {
+    const { path, cleanup } = await scratchFile();
+    const priorExitCode = process.exitCode;
+    try {
+      await withMutatedFile(path, FIND, REPLACE, async () => undefined);
+
+      expect(process.exitCode ?? 0).toBe(priorExitCode ?? 0);
+    } finally {
+      // `?? 0` because assigning `undefined` does not clear it, and a leaked 1 makes the whole
+      // suite exit non-zero with every test passing.
+      process.exitCode = priorExitCode ?? 0;
       await cleanup();
     }
   });
