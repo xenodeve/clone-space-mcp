@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 
 /**
@@ -32,7 +33,12 @@ export function applyMutationText(content: string, find: string, replace: string
     );
   }
 
-  return content.replace(find, replace);
+  const mutated = content.replace(find, replace);
+  if (mutated === content) {
+    const where = file === undefined ? "" : ` in ${file}`;
+    throw new MutationNotAppliedError(`MUTATION NOT APPLIED${where} — the replacement changes nothing`);
+  }
+  return mutated;
 }
 
 /**
@@ -51,15 +57,44 @@ export async function withMutatedFile<T>(
   const original = await readFile(path, "utf8");
   const mutated = applyMutationText(original, find, replace, path);
 
-  await writeFile(path, mutated, "utf8");
+  // A signal skips `finally` entirely, which is exactly how a killed run left a defect sitting in
+  // `src/` on #78. Synchronous, because an async write does not finish inside a signal handler.
+  // SIGKILL is still unreachable from here, and no in-process design closes that.
+  const restoreOnSignal = (): void => {
+    try {
+      writeFileSync(path, original, "utf8");
+    } catch {
+      // Dying anyway; there is nothing better available at this point.
+    }
+    process.exit(130);
+  };
+  process.on("SIGINT", restoreOnSignal);
+  process.on("SIGTERM", restoreOnSignal);
+
+  // Whether *our* write completed. It is the only way to tell our own half-written file (restore
+  // it) from a file something else has since taken over (leave it alone) — the two look the same.
+  let mutationLanded = false;
   try {
+    await writeFile(path, mutated, "utf8");
     // Read back before running anything. A write that reports success but does not land leaves
     // the work measuring unmutated code, which reads as "the defect made no difference".
     if ((await readFile(path, "utf8")) !== mutated) {
       throw new MutationNotAppliedError(`MUTATION NOT APPLIED in ${path} — the file on disk did not change`);
     }
+    mutationLanded = true;
     return await body();
   } finally {
-    await writeFile(path, original, "utf8");
+    process.off("SIGINT", restoreOnSignal);
+    process.off("SIGTERM", restoreOnSignal);
+
+    if (!mutationLanded) {
+      await writeFile(path, original, "utf8");
+    } else if ((await readFile(path, "utf8").catch(() => undefined)) === mutated) {
+      await writeFile(path, original, "utf8");
+    } else {
+      // Restoring here would write *our* idea of the original over someone else's work, and on
+      // #78 that is how a second runner put the first runner's mutation back on disk.
+      console.error(`RESTORE SKIPPED: ${path} changed while it was mutated — left as found`);
+    }
   }
 }

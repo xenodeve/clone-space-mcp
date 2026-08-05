@@ -39,7 +39,14 @@ named it; killed, it skipped that runner's `finally` and left a mutation applied
 re-run on a quiet tree — including a 21/21 that had already been written down. Recorded as
 `a-reviewer-can-rewrite-your-working-tree`.
 
-**Validation:** `bun run verify` exits 0 — 115 Bun, 26 Node browser, lint, typecheck, build.
+**A correctness lens then found five defects this change had introduced** — the first `writeFile`
+outside its `try` (a regression against the inline version it replaced), `Number("") === 0` turning
+an empty child stdout into a published `0/400`, `--against` accepting capture-side corpus ids the
+harness never executes, `--against --emit-count` silently emitting the baseline, and an entry whose
+`find` equals its `replace` reporting CAUGHT while mutating nothing. A change whose whole subject is
+*"do not publish a measurement you cannot trust"* had shipped five ways to publish one.
+
+**Validation:** `bun run verify` exits 0 — 129 Bun, 26 Node browser, lint, typecheck, build.
 `bun run mutate` exits 0 — 21 CAUGHT and no other status. `git status --porcelain src/` empty after
 every `--against` run.
 

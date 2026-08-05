@@ -6,6 +6,7 @@ import {
   type IdentitySnapshot,
 } from "../src/identity/reconcile.ts";
 import { fingerprintKey } from "../src/identity/fingerprint.ts";
+import { parseDropCount, parseMode, resolveMeasurableMutation } from "./metamorphic-cli.ts";
 import { withMutatedFile } from "./mutation-apply.ts";
 import { MUTATIONS } from "./mutations.ts";
 
@@ -196,11 +197,7 @@ function report(dropCount: number): void {
  * one-off someone did by hand and described afterwards.
  */
 async function measureAgainst(mutationId: string): Promise<void> {
-  const mutation = MUTATIONS.find(({ id }) => id === mutationId);
-  if (!mutation) {
-    throw new Error(`unknown mutation id "${mutationId}" — the ids live in scripts/mutations.ts`);
-  }
-
+  const mutation = resolveMeasurableMutation(MUTATIONS, mutationId);
   const fixed = measure();
   const restored = await withMutatedFile(
     resolve(repoRoot, mutation.file),
@@ -225,11 +222,7 @@ async function measureAgainst(mutationId: string): Promise<void> {
         throw new Error(`the run with the defect restored exited ${exitCode}:\n${stdout}\n${stderr}`);
       }
 
-      const count = Number(stdout.trim());
-      if (!Number.isInteger(count)) {
-        throw new Error(`the run with the defect restored printed no drop count:\n${stdout}`);
-      }
-      return count;
+      return parseDropCount(stdout, N);
     },
   );
 
@@ -247,21 +240,12 @@ async function measureAgainst(mutationId: string): Promise<void> {
   console.log("a result to record, not a failure. This stays a metric and never a gate.");
 }
 
-const againstIndex = process.argv.indexOf("--against");
-
 try {
-  if (process.argv.includes("--emit-count")) {
-    // The machine-readable contract the `--against` parent depends on: the count and nothing else.
-    console.log(measure());
-  } else if (againstIndex === -1) {
-    report(measure());
-  } else {
-    const requested = process.argv[againstIndex + 1];
-    if (requested === undefined) {
-      throw new Error("--against needs a mutation id from scripts/mutations.ts");
-    }
-    await measureAgainst(requested);
-  }
+  const mode = parseMode(process.argv);
+  // The machine-readable contract the `--against` parent depends on: the count and nothing else.
+  if (mode.kind === "emit-count") console.log(measure());
+  else if (mode.kind === "report") report(measure());
+  else await measureAgainst(mode.mutationId);
 } catch (error) {
   console.error("metamorphic harness failed:", error);
   process.exitCode = 1;

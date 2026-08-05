@@ -43,10 +43,15 @@ describe("the #20 fingerprint defect is in the corpus", () => {
    */
   test("its anchor has not rotted — the source is either fixed or carrying the defect, never both", () => {
     const source = readFileSync(resolve(repoRoot, mutation!.file), "utf8");
-    const fixed = source.includes(mutation!.find);
-    const defectApplied = source.includes(mutation!.replace);
+    // Counted, not `includes`. A second copy of the anchor — in a comment, a string, a sibling
+    // function — makes `mutate.ts` refuse at run time, so a membership test would pass while the
+    // corpus entry was already unusable.
+    const fixed = source.split(mutation!.find).length - 1;
+    const defectApplied = source.split(mutation!.replace).length - 1;
 
-    expect(fixed || defectApplied).toBe(true);
-    expect(fixed && defectApplied).toBe(false);
+    // Exactly one occurrence, across both forms together. Zero means the anchor rotted; two means
+    // `mutate.ts` will refuse the entry; one of each is impossible and would mean the file is not
+    // in either known state.
+    expect({ fixed, defectApplied, total: fixed + defectApplied }).toMatchObject({ total: 1 });
   });
 });

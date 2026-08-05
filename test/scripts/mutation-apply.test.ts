@@ -40,4 +40,13 @@ describe("applyMutationText", () => {
       /src\/identity\/fingerprint\.ts/,
     );
   });
+
+  /**
+   * A corpus entry whose `replace` equals its `find` produces a file identical to the original.
+   * The run then reports CAUGHT or SURVIVED about code that was never mutated — the same silent
+   * no-op as a rotted anchor, wearing a different disguise.
+   */
+  test("refuses a replacement that changes nothing", () => {
+    expect(() => applyMutationText("keep();\n", "keep();", "keep();")).toThrow(/changes nothing/);
+  });
 });

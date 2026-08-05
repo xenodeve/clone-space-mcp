@@ -94,6 +94,12 @@ The defect is applied to `src/identity/fingerprint.ts`, measured in a child proc
 a `finally`. An anchor that no longer matches throws before anything is written, because a mutation
 that silently fails to apply would report "no discrimination" from unmutated code.
 
+**Only corpus entries under `src/identity/` are accepted.** This harness executes nothing else, so
+pointing it at one of the capture-side entries would rewrite a file the run never reads and print
+two equal counts — indistinguishable, in the output, from the metric genuinely failing to see a
+defect. The restore is also refused rather than forced if the file changed underneath the run, and
+`SIGINT`/`SIGTERM` restore synchronously; `SIGKILL` cannot be covered from inside the process.
+
 ## Why this is a metric, not an assertion
 
 The metamorphic check is deliberately not part of `bun test`, `bun run verify`, or the mutation

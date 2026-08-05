@@ -57,6 +57,26 @@ describe("withMutatedFile", () => {
     }
   });
 
+  /**
+   * The concurrency case, and it is not hypothetical — on #78 a delegated reviewer ran the
+   * mutation runner against this same checkout while another run was in flight. If the restore
+   * writes blindly, the second caller puts the *first* caller's mutation back on disk and the
+   * defect survives the run that was supposed to remove it. Refusing is the loud outcome.
+   */
+  test("does not overwrite a file that something else changed while the body ran", async () => {
+    const { path, cleanup } = await scratchFile();
+    const FOREIGN = "someone else wrote this\n";
+    try {
+      await withMutatedFile(path, FIND, REPLACE, async () => {
+        await writeFile(path, FOREIGN, "utf8");
+      });
+
+      expect(await readFile(path, "utf8")).toBe(FOREIGN);
+    } finally {
+      await cleanup();
+    }
+  });
+
   test("an anchor that does not match leaves the file untouched and never runs the body", async () => {
     const { path, cleanup } = await scratchFile();
     let bodyRan = false;
