@@ -4,9 +4,11 @@
 // which runs under `node --test`. Both go through `mutateModuleSource`, so the two runtimes apply
 // byte-identical text through the identical loud-on-mismatch rule.
 //
-// `--import` reaches the children `node --test` spawns per file — measured, not assumed, because a
-// hook that never registers in the child is silent: the suite passes and the mutation reads as a
-// defect that made no difference.
+// `--import` reaches the children `node --test` spawns per file. That is pinned by a test rather
+// than asserted here — see "node --test --import reaches every per-file child it spawns" in
+// `test/scripts/mutation-hook-runtime.test.ts`, which runs two fixture files and requires both to
+// see the mutated module. A hook that never registers in the child is otherwise silent: the suite
+// passes and the mutation reads as a defect that made no difference.
 import { registerHooks } from "node:module";
 import { mutateModuleSource } from "./mutation-hook.ts";
 

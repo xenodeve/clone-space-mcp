@@ -29,7 +29,7 @@ The tell is the shape of the sentence: *"it needs `git reset`"*, *"it needs the 
 ## How to apply
 
 - **Before parking on a blocked tool, name the state the tool was for.** Then ask whether the repo already has a mechanism that reaches it — here the mutation corpus, which existed and was built for precisely this.
-- **Reversibility is the property that matters, not the tool.** A change applied and undone in a `finally`, verified with `git status --porcelain` afterwards, is *safer* than a `git reset`, not a worse substitute for it. The probe that proved the restore worked also proved it left no diff.
+- **Reversibility is the property that matters, not the tool.** A change applied and undone in a `finally` was *safer* than a `git reset`, not a worse substitute for it. **#82 then went one better and removed the write entirely** — the defect is applied to module source as the runtime loads it, so there is nothing to undo; see [[remove-the-write-dont-guard-it]]. The lesson generalises in that direction: after asking *what state does this need*, ask *where can that state exist without persisting*.
 - **Re-derive a park from the issue text, never from a previous message.** This park survived two handoffs and a compaction because each retelling carried the conclusion and not the reasoning — the same laundering failure `t4-dev-workflow` describes for verdicts.
 
 See [[equivalent-but-simpler-needs-evidence]] — the mirror image: there a design claim was accepted without a probe, here a blocker was accepted without one. Both are claims about behaviour, and both cost a probe to settle.

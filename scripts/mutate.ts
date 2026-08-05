@@ -5,7 +5,7 @@
 // in a `finally`, signal handlers, an ownership check — is gone, because the failure it defended
 // against cannot happen rather than being detected after the fact.
 import { classifySuiteResult } from "./classify-suite.ts";
-import { MUTATION_ENV } from "./mutation-hook.ts";
+import { BUN_MUTATION_FLAGS, MUTATION_ENV, NODE_MUTATION_FLAGS } from "./mutation-hook.ts";
 import { MUTATIONS, type Mutation } from "./mutations.ts";
 import { repoRoot } from "./repo-root.ts";
 
@@ -35,8 +35,8 @@ async function runSuite(mutation: Mutation): Promise<SuiteResult> {
   // itself does not: both entry points call `mutateModuleSource`, so both apply identical text.
   const command =
     mutation.suite === "bun"
-      ? [process.execPath, "test", "--preload", "./scripts/mutation-preload.ts"]
-      : ["node", "--import", "./scripts/mutation-node-hook.ts", "--test", "test/browser/**/*.browser.ts"];
+      ? [process.execPath, "test", ...BUN_MUTATION_FLAGS]
+      : ["node", ...NODE_MUTATION_FLAGS, "--test", "test/browser/**/*.browser.ts"];
 
   const child = Bun.spawn(command, {
     cwd: repoRoot,
@@ -58,11 +58,6 @@ async function runSuite(mutation: Mutation): Promise<SuiteResult> {
 }
 
 async function runMutation(mutation: Mutation): Promise<MutationResult> {
-  if (interrupted) {
-    console.log(`INTERRUPTED: ${mutation.id}`);
-    return { id: mutation.id, status: "FAILED" };
-  }
-
   let suite: SuiteResult;
   try {
     suite = await runSuite(mutation);
@@ -90,7 +85,10 @@ async function runMutation(mutation: Mutation): Promise<MutationResult> {
 const results: MutationResult[] = [];
 for (const mutation of MUTATIONS) {
   results.push(await runMutation(mutation));
-  if (interrupted) break;
+  if (interrupted) {
+    console.log(`INTERRUPTED after ${mutation.id} — the remaining entries were not run`);
+    break;
+  }
 }
 
 console.log("");

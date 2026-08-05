@@ -30,9 +30,17 @@ process.kill(pid,"SIGINT")       exitCode=1    signalCode=null    handlerRan=fal
 
 ## What replaced it
 
-`Bun.plugin`'s `onLoad` via `--preload`, and Node's `registerHooks` via `--import`, rewrite the module **source as the runtime loads it**. The file is never written. `--import` reaches the children `node --test` spawns per file, which was measured rather than assumed, because a hook that silently fails to register turns every browser mutation into a false green.
+`Bun.plugin`'s `onLoad` via `--preload`, and Node's `registerHooks` via `--import`, rewrite the module **source as the runtime loads it**. The file is never written.
+
+**Both runtime claims are pinned by tests that run the runner's own commands**, not an approximation of them — `bun test --preload …` and `node --test --import …`, the second over two fixture files so it shows the hook registers in each per-file child `node --test` spawns. The first version of that test used `bun run` and a bare `node <file>` instead, which would have stayed green while every real mutation reported SURVIVED.
 
 The restore, the ownership check, the read-back, the signal handlers and the git guard were **deleted**, not kept as belt-and-braces. The measurement was re-run and landed on the same 2/400 against 179/400, which is what makes "equivalent" a finding rather than a hope.
+
+## What the move cost, and how it was bought back
+
+Writing to disk gave one guarantee for free: a rotted anchor failed **before the suite started**, whatever the suite imported. A load hook only fires if something loads the file, so an entry whose target no test imports would have come back `SURVIVED` — a plausible-looking verdict on a defect that was never applied. `/scrutinize` found this; it was latent rather than live, because all four target files happen to be imported today.
+
+The fix is five lines: the hook prints a **positive** token when it rewrites, and the runner treats its absence as NOT APPLIED. **Look for what the old design gave you for nothing before you delete it** — the guarantee was not in the guards that were removed, it was in the write itself.
 
 ## How to apply
 

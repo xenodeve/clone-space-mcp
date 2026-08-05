@@ -18,6 +18,20 @@ export const MUTATION_ENV = "CLONE_SPACE_MUTATION";
  */
 export const NOT_APPLIED_TOKEN = "CLONE_SPACE_MUTATION_NOT_APPLIED";
 
+/**
+ * Printed by the hook when it **did** rewrite the module.
+ *
+ * Writing the defect to disk used to fail before the suite started, whatever the suite imported.
+ * A load hook only fires if something loads the file — so without this, a corpus entry whose
+ * target no module imports would come back `SURVIVED`, which is a perfectly reasonable-looking
+ * result produced by a defect that was never applied. The runner requires the positive signal.
+ */
+export const APPLIED_TOKEN = "CLONE_SPACE_MUTATION_APPLIED";
+
+/** The flags each runtime needs to register the hook. Shared so a caller cannot use a stale pair. */
+export const BUN_MUTATION_FLAGS = ["--preload", "./scripts/mutation-preload.ts"] as const;
+export const NODE_MUTATION_FLAGS = ["--import", "./scripts/mutation-node-hook.ts"] as const;
+
 function normalize(pathOrUrl: string): string {
   const path = pathOrUrl.startsWith("file:") ? fileURLToPath(pathOrUrl) : pathOrUrl;
   return resolve(path).replaceAll("\\", "/");
@@ -30,18 +44,8 @@ function normalize(pathOrUrl: string): string {
  * must not match, and getting that wrong is silent — the hook fires on the wrong file, or never
  * fires, and either way the run measures something other than what it reports.
  */
-export function mutationForModule(
-  mutations: readonly Mutation[],
-  id: string,
-  modulePathOrUrl: string,
-  root: string,
-): Mutation | undefined {
-  const mutation = mutations.find((candidate) => candidate.id === id);
-  if (!mutation) {
-    throw new Error(`unknown mutation id "${id}" — the ids live in scripts/mutations.ts`);
-  }
-
-  return normalize(modulePathOrUrl) === normalize(resolve(root, mutation.file)) ? mutation : undefined;
+export function targetsModule(mutation: Mutation, modulePathOrUrl: string, root: string): boolean {
+  return normalize(modulePathOrUrl) === normalize(resolve(root, mutation.file));
 }
 
 /** The corpus entry this process was started to apply, if any. */
@@ -64,16 +68,17 @@ export function activeMutation(): Mutation | undefined {
  * not the target, which both hooks read as "leave it alone".
  */
 export function mutateModuleSource(modulePathOrUrl: string, source: string): string | undefined {
-  const id = process.env[MUTATION_ENV];
-  if (id === undefined || id === "") return undefined;
-
-  const mutation = mutationForModule(MUTATIONS, id, modulePathOrUrl, repoRoot);
-  if (!mutation) return undefined;
+  const selected = activeMutation();
+  if (selected === undefined) return undefined;
+  if (!targetsModule(selected, modulePathOrUrl, repoRoot)) return undefined;
 
   // Throws on a rotted anchor rather than returning the source unchanged. A hook that quietly
   // declines to mutate is indistinguishable, downstream, from a defect that made no difference.
   try {
-    return applyMutationText(source, mutation.find, mutation.replace, mutation.file);
+    const mutated = applyMutationText(source, selected.find, selected.replace, selected.file);
+    // The runner reads this out of the child's output and treats its absence as "not applied".
+    console.log(APPLIED_TOKEN);
+    return mutated;
   } catch (error) {
     // Tagged, because the runner reads this out of a child's merged output where every other line
     // is the suite's own. An untagged message is one the runner has to guess at.

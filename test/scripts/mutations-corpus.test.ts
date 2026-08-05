@@ -32,27 +32,18 @@ describe("the #20 fingerprint defect is in the corpus", () => {
   });
 
   /**
-   * Deliberately not "the anchor matches the file exactly once". `scripts/mutate.ts` rewrites
-   * this very file while it runs this entry, so a run of `bun run mutate` would fail this
-   * test and pollute its own verdict — measured, not assumed: with the mutation applied the
-   * earlier version of this test exited 1 with `MUTATION NOT APPLIED — occurs 0 times`.
-   *
-   * Both states are legitimate. What is not legitimate is neither, which is the anchor
-   * having rotted, and that is what this guards.
+   * Since #82 nothing writes the defect to disk, so the file is always in its fixed state and this
+   * can assert exactly that. It replaces a looser "fixed **or** carrying the defect" form, which
+   * was a concession to `scripts/mutate.ts` rewriting the file underneath its own run — a
+   * situation that no longer exists, so the concession went with it.
    */
-  test("its anchor has not rotted — the source is either fixed or carrying the defect, never both", () => {
+  test("its anchor still matches the source exactly once", () => {
     const source = readFileSync(resolve(repoRoot, mutation!.file), "utf8");
-    // Counted, not `includes`. A second copy of the anchor — in a comment, a string, a sibling
-    // function — makes `mutate.ts` refuse at run time, so a membership test would pass while the
-    // corpus entry was already unusable.
-    // `countOccurrences` rather than a second counting rule here: this test exists to notice a
-    // rotted anchor, and it can only do that if it counts the way the applier counts.
-    const fixed = countOccurrences(source, mutation!.find);
-    const defectApplied = countOccurrences(source, mutation!.replace);
 
-    // Exactly one occurrence, across both forms together. Zero means the anchor rotted; two means
-    // `mutate.ts` will refuse the entry; one of each is impossible and would mean the file is not
-    // in either known state.
-    expect(fixed + defectApplied).toBe(1);
+    // Counted, not `includes`. A second copy of the anchor — in a comment, a string, a sibling
+    // function — makes the hook refuse at run time, so a membership test would pass while the
+    // corpus entry was already unusable. `countOccurrences` specifically, so this counts the way
+    // the applier counts rather than inventing a second rule.
+    expect(countOccurrences(source, mutation!.find)).toBe(1);
   });
 });

@@ -30,7 +30,7 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | #75 `sourcemapDeclared` lied in two directions | ✅ | — | Ordering, misclassification and the observation boundary, all found by `/code-review` + `/scrutinize` run *after* the batch merged. The fixture now loads a script during the sweep |
 | #76 The metamorphic transform measured a duplicate | ✅ | — | The injected node carries a reserved attribute absent from both identity snapshots; the harness asserts no `fingerprintKey` collision before reconciling |
 | #8 MCP layering rule + inspector | 🟡 | P2 | Constraint recorded, no code. The inspector needs an archive to render |
-| #82 Apply corpus defects in memory, not on disk | 🟢 | — | Raised by `/scrutinize` on #81. `--preload` + `Bun.plugin` makes "the tracked file is never written" true by construction instead of defended by handlers — and #81 **measured** those handlers not firing for a programmatic kill. Touches `mutate.ts` too, so it is a slice of its own |
+| #82 Apply corpus defects in memory, not on disk | ✅ | — | **Shipped.** `--preload` + `Bun.plugin` for the bun entries, `--import` + `registerHooks` for the browser ones; the tracked file is never written, and five guards plus `withMutatedFile` were deleted. The measurement is unchanged at 2/400 against 179/400 and `bun run mutate` is 21 CAUGHT. What the move gave away — a rotted anchor only signals if something loads the file — is bought back with a positive token |
 
 ## Track 2 — Pipeline
 

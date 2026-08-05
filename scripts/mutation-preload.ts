@@ -4,24 +4,29 @@
 // written, so "the working tree is unchanged after a mutation run" is true by construction rather
 // than defended by a restore that a hard kill can skip (#82, after #78 measured that skip).
 import { plugin } from "bun";
-import { basename } from "node:path";
+import { extname } from "node:path";
 import { activeMutation, mutateModuleSource } from "./mutation-hook.ts";
 
 const mutation = activeMutation();
 
 if (mutation !== undefined) {
-  // Filtered to the one file rather than every `.ts`: an `onLoad` over the whole module graph
-  // would put this plugin in front of every import in the process for no reason.
-  const target = new RegExp(`${basename(mutation.file).replaceAll(".", "\\.")}$`);
+  if (extname(mutation.file) !== ".ts") {
+    throw new Error(`this hook only knows how to load .ts, and ${mutation.file} is not`);
+  }
+
+  // Built from the whole repo-relative path, not the basename: the basename form also matched
+  // `my-record.ts`, so unrelated modules were pulled through this plugin for no reason. Both
+  // separators, because the path Bun hands `onLoad` is native.
+  const target = new RegExp(`[/\\\\]${mutation.file.replaceAll("/", "[/\\\\\\\\]").replaceAll(".", "\\.")}$`);
 
   plugin({
     name: "clone-space-corpus-defect",
     setup(build) {
       build.onLoad({ filter: target }, async (args) => {
         const source = await Bun.file(args.path).text();
-        const mutated = mutateModuleSource(args.path, source);
-        // Same basename, different file — hand back the original rather than skipping the load.
-        return { contents: mutated ?? source, loader: "ts" };
+        // Returning `undefined` to pass through is not an option — measured: Bun reports
+        // "Unhandled error between tests". So the original is handed back explicitly.
+        return { contents: mutateModuleSource(args.path, source) ?? source, loader: "ts" };
       });
     },
   });

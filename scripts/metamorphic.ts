@@ -10,7 +10,7 @@ import {
   parseMode,
   resolveMeasurableMutation,
 } from "./metamorphic-cli.ts";
-import { MUTATION_ENV } from "./mutation-hook.ts";
+import { BUN_MUTATION_FLAGS, MUTATION_ENV } from "./mutation-hook.ts";
 import { MUTATIONS } from "./mutations.ts";
 import { repoRoot } from "./repo-root.ts";
 
@@ -210,7 +210,7 @@ async function measureAgainst(mutationId: string): Promise<void> {
   // `--emit-count` rather than reading the human report back: the report is written for a person
   // and its wording is free to change, which would silently break this measurement.
   const child = Bun.spawn(
-    [process.execPath, "run", "--preload", "./scripts/mutation-preload.ts", "scripts/metamorphic.ts", "--emit-count"],
+    [process.execPath, "run", ...BUN_MUTATION_FLAGS, "scripts/metamorphic.ts", "--emit-count"],
     {
       cwd: repoRoot,
       stdout: "pipe",
