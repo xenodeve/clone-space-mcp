@@ -26,7 +26,9 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | #9 P1 — element identity | ✅ | — | Injector + ตัวจับคู่ merged. Exit criterion met on the fixture: 63/63, 0 unresolved, all five hard cases |
 | #20 Fingerprint brittleness | ✅ | — | Key holds stable evidence only; ordinal and text rank. Frame key fixed with the injector |
 | #21 Plan hardening | ✅ | — | Plan amended. The eleven archive contracts it names must land in P2 |
-| #24 Safety mechanisms | ✅ | — | **Closed.** The rule is in `CLAUDE.md`; `bun run mutate` and the regression corpus shipped (#53, 17 entries, all caught); `bun run metamorphic` shipped (#24, PR #73) and is deliberately outside every gate — it measured 78/400 against #24's historical 32/400, on a different corpus, and says so in its own output |
+| #24 Safety mechanisms | ✅ | — | **Closed.** The rule is in `CLAUDE.md`; `bun run mutate` and the regression corpus shipped (#53, now **21 entries**, all caught); `bun run metamorphic` shipped (#24, PR #73) and is deliberately outside every gate. Its first figure, 78/400, was **retracted** by #76 — the transform measured a duplicate, not an unrelated node. Corrected baseline **2/400**, and #78 measured it against a real defect: **179/400 with #20 restored**, so the mechanism is no longer unproven. Read as two counts, not a ratio — the floor is too small to divide by |
+| #75 `sourcemapDeclared` lied in two directions | ✅ | — | Ordering, misclassification and the observation boundary, all found by `/code-review` + `/scrutinize` run *after* the batch merged. The fixture now loads a script during the sweep |
+| #76 The metamorphic transform measured a duplicate | ✅ | — | The injected node carries a reserved attribute absent from both snapshots; the harness asserts no `fingerprintKey` collision before reconciling |
 | #8 MCP layering rule + inspector | 🟡 | P2 | Constraint recorded, no code. The inspector needs an archive to render |
 
 ## Track 2 — Pipeline

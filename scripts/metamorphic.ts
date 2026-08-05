@@ -1,9 +1,15 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   reconcile,
   type ElementFingerprint,
   type IdentitySnapshot,
 } from "../src/identity/reconcile.ts";
 import { fingerprintKey } from "../src/identity/fingerprint.ts";
+import { withMutatedFile } from "./mutation-apply.ts";
+import { MUTATIONS } from "./mutations.ts";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const N = 400;
 const BASELINE = 32;
@@ -144,7 +150,7 @@ function assertUnmatchable(injected: ElementFingerprint, capture: IdentitySnapsh
   }
 }
 
-function run(): void {
+function measure(): number {
   const random = new SeededRandom(SEED);
   let dropCount = 0;
 
@@ -162,6 +168,10 @@ function run(): void {
     if (after < before) dropCount++;
   }
 
+  return dropCount;
+}
+
+function report(dropCount: number): void {
   const delta = dropCount - BASELINE;
   const deltaLabel = delta >= 0 ? `+${delta}` : `${delta}`;
   console.log("METAMORPHIC CHECK: baseline metric for reconcile (not an assertion)");
@@ -179,8 +189,79 @@ function run(): void {
   console.log("A non-zero count is expected and legitimate; drift is information for a human, not a gate.");
 }
 
+/**
+ * Measure the same 400 cases twice: once against the current code, once with a defect that
+ * actually happened put back. `CLAUDE.md` treats a safety mechanism as unproven until it has
+ * been run against a real bug, and this is how that run is made repeatable rather than a
+ * one-off someone did by hand and described afterwards.
+ */
+async function measureAgainst(mutationId: string): Promise<void> {
+  const mutation = MUTATIONS.find(({ id }) => id === mutationId);
+  if (!mutation) {
+    throw new Error(`unknown mutation id "${mutationId}" — the ids live in scripts/mutations.ts`);
+  }
+
+  const fixed = measure();
+  const restored = await withMutatedFile(
+    resolve(repoRoot, mutation.file),
+    mutation.find,
+    mutation.replace,
+    async () => {
+      // A child process, because this one imported the module being mutated long before the
+      // mutation was written; re-importing it here would return the cached, unmutated copy.
+      // `--emit-count` rather than reading the human report back: the report is written for a
+      // person and its wording is free to change, which would silently break this measurement.
+      const child = Bun.spawn([process.execPath, "scripts/metamorphic.ts", "--emit-count"], {
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      if (exitCode !== 0) {
+        throw new Error(`the run with the defect restored exited ${exitCode}:\n${stdout}\n${stderr}`);
+      }
+
+      const count = Number(stdout.trim());
+      if (!Number.isInteger(count)) {
+        throw new Error(`the run with the defect restored printed no drop count:\n${stdout}`);
+      }
+      return count;
+    },
+  );
+
+  console.log("METAMORPHIC DISCRIMINATION: measured against a defect that actually happened");
+  console.log(`seed: 0x${SEED.toString(16).padStart(8, "0")}`);
+  console.log(`N: ${N}`);
+  console.log(`mutation: ${mutation.id}`);
+  console.log(`fixed code: ${fixed}/${N}`);
+  console.log(`defect restored: ${restored}/${N}`);
+  // Deliberately no ratio. With a floor this low a single case moves restored/fixed by tens,
+  // so the multiplier reads as a precise statistic while being almost entirely denominator
+  // noise. The two absolute counts are the finding; anything derived from them is not.
+  console.log("Read the two counts, not a ratio between them: the fixed floor is too small to");
+  console.log("divide by. Counts that barely differ mean this check cannot see that defect —");
+  console.log("a result to record, not a failure. This stays a metric and never a gate.");
+}
+
+const againstIndex = process.argv.indexOf("--against");
+
 try {
-  run();
+  if (process.argv.includes("--emit-count")) {
+    // The machine-readable contract the `--against` parent depends on: the count and nothing else.
+    console.log(measure());
+  } else if (againstIndex === -1) {
+    report(measure());
+  } else {
+    const requested = process.argv[againstIndex + 1];
+    if (requested === undefined) {
+      throw new Error("--against needs a mutation id from scripts/mutations.ts");
+    }
+    await measureAgainst(requested);
+  }
 } catch (error) {
   console.error("metamorphic harness failed:", error);
   process.exitCode = 1;

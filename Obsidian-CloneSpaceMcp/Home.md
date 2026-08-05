@@ -9,6 +9,8 @@
 - [[review-lanes-have-different-blind-spots]] — measured on #47: three reviews on one model family missed what another family found in one pass; two calls to the same model are one voice
 - [[equivalent-but-simpler-needs-evidence]] — "same properties, smaller change" is a claim about runtime behaviour; on #47 a four-line probe refuted it, four commits too late
 - [[an-existence-check-is-three-checks]] — `stat` succeeding is not "a file inside this directory"; the hardened form already existed in the repo and was rewritten weakly beside it
+- [[a-blocked-method-is-not-a-blocked-task]] — #78 was parked as "needs the developer" because reverting a merged fix was assumed to need `git reset`; the state was reproducible in-process and the park was wrong
+- [[a-reviewer-can-rewrite-your-working-tree]] — a clink reviewer ran `bun run mutate` because the prompt named it; killing it skipped the `finally` and left a defect applied in `src/`
 
 ## project — ongoing goals / constraints not derivable from the code
 - [[replay-reexecutes-original-js]] — the architectural commitment the whole project rests on, and the approach it rejects
