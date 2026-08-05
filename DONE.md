@@ -6,6 +6,45 @@
 
 ---
 
+## The metamorphic check, measured against the bug it was built for (2026-08-05, `/tdd`, #78)
+
+**Goal:** stop the corrected metamorphic check being an unproven mechanism.
+
+**It was unproven and the repo's own rule said so.** #76 corrected the transform, and in doing so
+retired the evidence that justified building the check: 32/400 against 135/400 belonged to the
+transform #76 showed was wrong. Measured properly at the same seed — **2/400 with the fix in place,
+179/400 with #20 restored.**
+
+**No ratio is reported, and the first draft led with one.** `179 / 2` is 89.5, but on a floor of 2 a
+single case moves that multiplier by tens. The script and the report now print two counts and say
+why there is no third number. An outsider review lens made this point; it was right.
+
+**What produces the rise, stated so it is not oversold.** `addUnrelatedNode` bumps `siblingOrdinal`
+for same-tag siblings, the restored key gates on that field, and `reconcile` pools by that key. It is
+**#20's own failure path, not a second signal** — the narrower claim it earns is the one #78 asked
+for: the corrected harness responds to a real defect.
+
+**The park was wrong, and that is the reusable part.** #78 had been written up as needing the
+developer, because reverting a merged fix reads as `git reset --hard`. #20's fix is **one line**, so
+the defect is a find/replace of the kind `scripts/mutations.ts` has held since #53 — no git at all.
+Recorded as `a-blocked-method-is-not-a-blocked-task`.
+
+**A defect this change introduced and removed.** The corpus guard first asserted the anchor matches
+the on-disk source exactly once, which `mutate.ts` falsifies while running that very entry —
+reproduced at exit 1 with `occurs 0 times`, now `"fixed, or carrying the defect, never both"`.
+
+**An incident worth the note.** A delegated `codex` reviewer ran `bun run mutate` because the prompt
+named it; killed, it skipped that runner's `finally` and left a mutation applied in
+`src/capture/record.ts`. The tree was restored to `HEAD` and every measurement from that window was
+re-run on a quiet tree — including a 21/21 that had already been written down. Recorded as
+`a-reviewer-can-rewrite-your-working-tree`.
+
+**Validation:** `bun run verify` exits 0 — 115 Bun, 26 Node browser, lint, typecheck, build.
+`bun run mutate` exits 0 — 21 CAUGHT and no other status. `git status --porcelain src/` empty after
+every `--against` run.
+
+---
+
 ## What the skipped gates were hiding (2026-08-05, `/code-review` + `/scrutinize` + `/tdd`, #75 #76 #77 #78 #79)
 
 **Goal:** run the review gates that were skipped across seven merged slices, and fix what they found.
