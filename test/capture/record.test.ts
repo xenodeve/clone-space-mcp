@@ -71,7 +71,7 @@ test("captureHar configures and drives a browser context", async () => {
         },
         async evaluate<Result>() {
           evaluation += 1;
-          if (evaluation === 1) return undefined as Result;
+          if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
           return {
             origin: "https://example.com",
             viewport: { width: 1280, height: 720 },
@@ -144,6 +144,7 @@ test("captureHar configures and drives a browser context", async () => {
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      termination: { path: "termination.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
@@ -500,7 +501,7 @@ test("captureHar publishes environment.json v1 with distinct surfaces and empty 
         },
         async evaluate<Result>() {
           evaluation += 1;
-          if (evaluation === 1) return undefined as Result;
+          if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
           return {
             origin: "https://example.com",
             viewport: { width: 1280, height: 720 },
@@ -642,7 +643,7 @@ test("captureHar publishes only explicitly allowlisted primary-origin storage", 
             },
             async evaluate<Result>() {
               evaluation += 1;
-              if (evaluation === 1) return undefined as Result;
+              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -723,7 +724,7 @@ test("captureHar rejects duplicate storage allowlist keys without publishing an 
             },
             async evaluate<Result>() {
               evaluation += 1;
-              if (evaluation === 1) return undefined as Result;
+              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -789,7 +790,7 @@ test("captureHar refuses to publish when the primary document changes while the 
             },
             async evaluate<Result>() {
               evaluation += 1;
-              if (evaluation === 1) return undefined as Result;
+              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -853,7 +854,7 @@ test("captureHar publishes the document epoch built from the CDP loaderId", asyn
             },
             async evaluate<Result>() {
               evaluation += 1;
-              if (evaluation === 1) return undefined as Result;
+              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -920,7 +921,7 @@ test("captureHar refuses to publish when a HAR attachment corrupts a staged side
             },
             async evaluate<Result>() {
               evaluation += 1;
-              if (evaluation === 1) return undefined as Result;
+              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -983,6 +984,16 @@ const ENV_EVALUATE_RESULT = {
   fontFaces: { entries: [], truncated: false },
 } as const;
 
+/** The sweep evaluate's return shape (first evaluate call). 2 checkpoints: below the
+ * quiet-window threshold (3) so the default outcome is "complete", not "quiet-window". */
+const SWEEP_EVALUATE_RESULT = {
+  sweepCheckpoints: 2,
+  scrolls: 4,
+  wallClockMs: 1200,
+  height: 2400,
+  quietWindow: false,
+} as const;
+
 /**
  * A fake browser whose `close()` writes the given HAR, so tests can drive the producer-side
  * ambiguity check and the policy publication without launching Chromium.
@@ -1007,7 +1018,7 @@ function makeHarFakeBrowser(har: unknown) {
         },
         async evaluate<Result>() {
           evaluation += 1;
-          if (evaluation === 1) return undefined as Result;
+          if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
           return ENV_EVALUATE_RESULT as Result;
         },
       };
@@ -1197,6 +1208,48 @@ test("a tampered published artifact is detected by the commit validator", async 
     writeFileSync(envPath, original + "\n// tampered");
     const result = await validateCommit(commitDoc, outDir);
     expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("captureHar publishes termination.json recording why capture stopped", async () => {
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-termination-")), "archive");
+  const outDir = root;
+  try {
+    await captureHar({
+      browser: makeHarFakeBrowser({ log: { entries: [] } }),
+      url: "https://example.com/page",
+      outDir,
+    });
+    const termination = JSON.parse(readFileSync(join(outDir, "termination.json"), "utf8"));
+    expect(termination.schemaVersion).toBe(1);
+    expect(termination.outcome).toBe("complete");
+    expect(termination.stats).toMatchObject({
+      sweepCheckpoints: 2,
+      scrolls: 4,
+      wallClockMs: 1200,
+      height: 2400,
+    });
+    expect(termination.budgets.wallClockMs).toBeGreaterThan(0);
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("captureHar records budget-exceeded when the wall-clock cap is crossed", async () => {
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-termination-budget-")), "archive");
+  const outDir = root;
+  try {
+    await captureHar({
+      browser: makeHarFakeBrowser({ log: { entries: [] } }),
+      url: "https://example.com/page",
+      outDir,
+      budgets: { wallClockMs: 100 },
+    });
+    const termination = JSON.parse(readFileSync(join(outDir, "termination.json"), "utf8"));
+    expect(termination.outcome).toBe("incomplete");
+    expect(termination.reason).toBe("budget-exceeded");
   } finally {
     rmSync(dirname(root), { recursive: true, force: true });
   }

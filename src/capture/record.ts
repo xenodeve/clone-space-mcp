@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
@@ -14,6 +14,14 @@ import {
   buildCommit,
   COMMIT_FILE_NAME,
 } from "./commit.ts";
+import {
+  defaultBudgets,
+  evaluateBudget,
+  QUIET_WINDOW_CHECKPOINTS,
+  TERMINATION_FILE_NAME,
+  terminationOutcome,
+  type Budgets,
+} from "./budget.ts";
 import {
   defaultRequestNormalization,
   findAmbiguousNormalizedRequests,
@@ -33,7 +41,7 @@ interface CaptureHarPage extends EnvironmentPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
   on(event: "response", handler: (response: CaptureHarResponse) => void): void;
   on(event: "websocket", handler: () => void): void;
-  evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
+  evaluate<Result, Arg>(pageFunction: (arg: Arg) => Result | Promise<Result>, arg?: Arg): Promise<Result>;
 }
 
 interface CaptureHarDomNode {
@@ -101,6 +109,16 @@ function hasClosedShadowRoot(node: CaptureHarDomNode): boolean {
   });
 }
 
+function countDomNodes(node: CaptureHarDomNode): number {
+  let count = 1;
+  for (const descendants of [node.children, node.shadowRoots]) {
+    if (!descendants) continue;
+    for (const child of descendants) count += countDomNodes(child);
+  }
+  if (node.contentDocument) count += countDomNodes(node.contentDocument);
+  return count;
+}
+
 export interface CaptureHarOptions {
   browser: CaptureHarBrowser;
   url: string;
@@ -110,6 +128,8 @@ export interface CaptureHarOptions {
   storageAllowlist?: StorageAllowlist;
   /** Explicit volatile-query-key policy (ADR 0007). Defaults to an empty list. */
   volatileQueryKeys?: readonly string[];
+  /** Capture termination budgets (§6.10). Defaults to the documented set. */
+  budgets?: Partial<Budgets>;
 }
 
 async function assertEmptyOutputDirectory(path: string): Promise<void> {
@@ -126,6 +146,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
   new URL(options.url);
   // Canonicalize the policy before any browser or staging side effect; throws on empty/duplicate keys.
   const volatileKeys = normalizePolicyKeys(options.volatileQueryKeys);
+  const sweepBudgets: Budgets = { ...defaultBudgets(), ...options.budgets };
   const archiveRoot = resolve(options.outDir);
   const archiveParent = dirname(archiveRoot);
   await mkdir(archiveParent, { recursive: true });
@@ -141,6 +162,14 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     });
     let environment: EnvironmentV1;
     let documentEpoch: string;
+    let sweepStats: {
+      sweepCheckpoints: number;
+      scrolls: number;
+      wallClockMs: number;
+      height: number;
+      quietWindow: boolean;
+    };
+    let nodeCount = 0;
     let capabilities: {
       serviceWorkerDependent: CapabilityValue;
       webSocketDependent: CapabilityValue;
@@ -210,7 +239,8 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       });
 
       await page.goto(options.url, { waitUntil: "load" });
-      await page.evaluate(async () => {
+      sweepStats = await page.evaluate(async (args: { budgets: Budgets; quietWindowCheckpoints: number }) => {
+        const { budgets, quietWindowCheckpoints } = args;
         const waitForCheckpoint = async () => {
           await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
           await new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame()));
@@ -220,14 +250,31 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         let previousScrollY = -1;
         let previousHeight = -1;
         let emptyCheckpoints = 0;
+        let scrolls = 0;
+        const startedAt = performance.now();
 
-        while (emptyCheckpoints < 3) {
+        const stopReason = (): "quiet-window" | "budget-exceeded" | null => {
+          if (emptyCheckpoints >= quietWindowCheckpoints) return "quiet-window";
+          const elapsed = performance.now() - startedAt;
+          const height = document.documentElement.scrollHeight;
+          if (
+            (budgets.wallClockMs > 0 && elapsed > budgets.wallClockMs) ||
+            (budgets.maxHeight > 0 && height > budgets.maxHeight) ||
+            (budgets.maxEvents > 0 && scrolls > budgets.maxEvents)
+          ) {
+            return "budget-exceeded";
+          }
+          return null;
+        };
+
+        while (stopReason() === null) {
           const viewportHeight = Math.max(window.innerHeight, 1);
           const scrollHeight = document.documentElement.scrollHeight;
           const maxScrollY = Math.max(scrollHeight - viewportHeight, 0);
           const nextScrollY = Math.min(window.scrollY + viewportHeight * 0.8, maxScrollY);
 
           window.scrollTo(0, nextScrollY);
+          scrolls += 1;
           await waitForCheckpoint();
 
           const currentScrollY = window.scrollY;
@@ -241,7 +288,15 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           previousScrollY = currentScrollY;
           previousHeight = currentHeight;
         }
-      });
+
+        return {
+          sweepCheckpoints: emptyCheckpoints,
+          scrolls,
+          wallClockMs: Math.round(performance.now() - startedAt),
+          height: document.documentElement.scrollHeight,
+          quietWindow: emptyCheckpoints >= quietWindowCheckpoints,
+        };
+      }, { budgets: sweepBudgets, quietWindowCheckpoints: QUIET_WINDOW_CHECKPOINTS });
       let drainedScriptReads = 0;
       while (drainedScriptReads < pendingScriptReads.length) {
         const batch = pendingScriptReads.slice(drainedScriptReads);
@@ -265,6 +320,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // DOM.getDocument either returns the complete pierced primary document or capture aborts,
       // so there is no partial DOM coverage to publish as undetermined for this flag.
       const closedShadowRootPresent = hasClosedShadowRoot(domDocument.root);
+      nodeCount = countDomNodes(domDocument.root);
       environment = await collectEnvironment({
         page,
         url: options.url,
@@ -351,6 +407,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           har: { path: HAR_FILE_NAME, scope: "run" },
           capabilities: { path: CAPABILITIES_FILE_NAME, scope: "run" },
           requestNormalization: { path: REQUEST_NORMALIZATION_FILE_NAME, scope: "run" },
+          termination: { path: TERMINATION_FILE_NAME, scope: "run" },
           commit: { path: COMMIT_FILE_NAME, scope: "run" },
           checkpoints: [finalCheckpoint],
         },
@@ -360,6 +417,34 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       { mode: 0o600 },
     );
     await redactHarArchive(stagingHarPath);
+    // §6.10 termination: combine the in-page sweep stats with the post-redaction HAR size and the
+    // checkpoint DOM node count, then record why capture stopped so a truncated capture is
+    // distinguishable from a complete one.
+    const harBytes = (await stat(stagingHarPath)).size;
+    const terminationStats = {
+      sweepCheckpoints: sweepStats.sweepCheckpoints,
+      scrolls: sweepStats.scrolls,
+      wallClockMs: sweepStats.wallClockMs,
+      bytes: harBytes,
+      nodes: nodeCount,
+      height: sweepStats.height,
+    };
+    const terminationDecision = evaluateBudget(sweepBudgets, terminationStats);
+    const terminationOutcomeValue = terminationOutcome(terminationDecision);
+    await writeFile(
+      resolve(stagingRoot, TERMINATION_FILE_NAME),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          ...terminationOutcomeValue,
+          budgets: sweepBudgets,
+          stats: terminationStats,
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
     // The producer check: no two distinct archived raw URLs may collapse under the policy for
     // the same method — replay must never be forced to choose between different responses.
     const redactedHar = JSON.parse(await readFile(stagingHarPath, "utf8")) as {

@@ -141,6 +141,7 @@ export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } 
   if (!isRunAssociation(checkpointsDocument.har)) return { ok: false };
   if (!isRunAssociation(checkpointsDocument.capabilities)) return { ok: false };
   if (!isRunAssociation(checkpointsDocument.requestNormalization)) return { ok: false };
+  if (!isRunAssociation(checkpointsDocument.termination)) return { ok: false };
   if (!isRunAssociation(checkpointsDocument.commit)) return { ok: false };
 
   let previousOpenedAt: number | undefined;

@@ -11,6 +11,7 @@ test("accepts a well-formed document with non-decreasing timestamps", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -36,6 +37,7 @@ test("rejects a document missing the run-level HAR association", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -56,6 +58,7 @@ test("rejects a document whose HAR scope is not run", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -76,6 +79,7 @@ test("rejects a document whose HAR path is empty", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -96,6 +100,7 @@ test("rejects a document whose schemaVersion is not the supported major", () => 
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -116,6 +121,7 @@ test("rejects a document missing a required field", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         primaryTarget: { documentEpoch: "epoch:0718293A4B5C6D7E8F901A2B3C4D5E6F" },
@@ -135,6 +141,7 @@ test("rejects a run whose monotonic timestamps decrease between two checkpoints"
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -161,6 +168,7 @@ test("rejects duplicate checkpointId values within one run", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -187,6 +195,7 @@ test("rejects an empty checkpointId", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "",
@@ -207,6 +216,7 @@ test("rejects a checkpoint whose artifacts is not an array", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -227,6 +237,7 @@ test("rejects a negative openedAt", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -256,6 +267,7 @@ test("rejects an empty documentEpoch", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -278,6 +290,7 @@ test("rejects a documentEpoch that carries the captured page URL", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -298,6 +311,7 @@ test("rejects a documentEpoch too short to be an opaque document token", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -319,6 +333,7 @@ test("accepts an opaque document token as the epoch", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -339,6 +354,7 @@ test("rejects a har.path that escapes the archive", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -359,6 +375,7 @@ test("rejects an absolute har.path", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -379,6 +396,7 @@ test("rejects a har.path with an interior parent segment", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -399,6 +417,7 @@ test("accepts a har.path in a subdirectory of the archive", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -419,6 +438,7 @@ test("rejects a document with no checkpoints", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [],
   });
 
@@ -432,6 +452,7 @@ test("accepts a run-scoped capabilities association", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -451,6 +472,7 @@ test("rejects a document missing the run-level capabilities association", () => 
     har: { path: "network.har", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -471,6 +493,7 @@ test("rejects a document whose capabilities scope is not run", () => {
     capabilities: { path: "capabilities.json", scope: "checkpoint" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -491,6 +514,7 @@ test("rejects a capabilities association with an archive escape", () => {
     capabilities: { path: "../capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -566,6 +590,7 @@ test("accepts a run-scoped request-normalization association", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -584,6 +609,8 @@ test("rejects a document missing the run-level request-normalization association
     schemaVersion: 1,
     har: { path: "network.har", scope: "run" },
     capabilities: { path: "capabilities.json", scope: "run" },
+    commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -642,6 +669,7 @@ test("accepts a run-scoped commit association", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -661,6 +689,7 @@ test("rejects a document missing the run-level commit association", () => {
     har: { path: "network.har", scope: "run" },
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -681,6 +710,7 @@ test("rejects a document whose commit scope is not run", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "checkpoint" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -701,10 +731,73 @@ test("rejects a commit association with an archive escape", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "../commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
         primaryTarget: { documentEpoch: "epoch:3456789ABCDEF0123456789ABCDEF012" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a document missing the run-level termination association", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
+    requestNormalization: { path: "request-normalization.json", scope: "run" },
+    commit: { path: "commit.json", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:456789ABCDEF0123456789ABCDEF0123" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a document whose termination scope is not run", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
+    requestNormalization: { path: "request-normalization.json", scope: "run" },
+    commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "checkpoint" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:56789ABCDEF0123456789ABCDEF01234" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+test("rejects a termination association with an archive escape", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
+    requestNormalization: { path: "request-normalization.json", scope: "run" },
+    commit: { path: "commit.json", scope: "run" },
+    termination: { path: "../termination.json", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:6789ABCDEF0123456789ABCDEF012345" },
         openedAt: 0,
         artifacts: [],
       },

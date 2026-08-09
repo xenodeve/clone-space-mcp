@@ -254,4 +254,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "captureHar publishes a commit marker that verifies the archive bytes",
   },
+  {
+    id: "termination-association-required",
+    why: "Issue #104 — dropping the required termination run association from checkpoints validation let an archive publish without recording why capture stopped.",
+    file: "src/capture/checkpoints.ts",
+    find: 'if (!isRunAssociation(checkpointsDocument.termination)) return { ok: false };',
+    replace: "if (false) return { ok: false };",
+    suite: "bun",
+    expect: "rejects a document missing the run-level termination association",
+  },
+  {
+    id: "termination-not-recorded",
+    why: "Issue #104 — dropping the termination write let a capture publish without a record of its outcome, making a truncated capture indistinguishable from a complete one.",
+    file: "src/capture/record.ts",
+    find: "const terminationDecision = evaluateBudget(sweepBudgets, terminationStats);",
+    replace: "const terminationDecision = { stop: false } as const;",
+    suite: "bun",
+    expect: "captureHar records budget-exceeded when the wall-clock cap is crossed",
+  },
 ];
