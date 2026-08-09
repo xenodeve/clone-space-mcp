@@ -13,7 +13,7 @@ re-deriving it. A decision that overturns an earlier one marks the old ADR **Sup
 | [0004](0004-separate-environment-evidence-from-replay-configuration.md) | Separate environment evidence from replay configuration | Capture / replay / security | Accepted — implemented by #42 |
 | [0005](0005-checkpoint-coherence-for-archive-artifacts.md) | Checkpoint coherence for archive artifacts | Capture / archive integrity | Accepted — contract via #45, implementation via #47 |
 | [0006](0006-run-scoped-archive-artifacts-and-capability-flags.md) | Run-scoped archive artifacts, and the §6.4 capability contract | Capture / archive integrity | Accepted — contract via #60, implementation via #61–#64 |
-| [0007](0007-normalized-har-fallback-for-logically-identical-requests.md) | Normalized HAR fallback for logically identical requests | Capture / replay / archive contract | Accepted — proved by the #85 probe |
+| [0007](0007-normalized-har-fallback-for-logically-identical-requests.md) | Normalized HAR fallback for logically identical requests | Capture / replay / archive contract | Accepted — implemented by #85–#93 |
 
 ## Decisions that will need an ADR before the code lands
 

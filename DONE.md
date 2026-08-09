@@ -6,6 +6,24 @@
 
 ---
 
+## §6.5 request normalization shipped end-to-end (2026-08-09, AFK batch, #84 #85 #86 #87 #90 #91 #92 #93)
+
+**Goal:** make a logically identical request (fresh nonce/timestamp) replayable from the archive, and never let replay guess between distinct archived responses.
+
+**The consumer contract was proved first, then built.** The #85 probe measured, against pinned Playwright 1.62 with the live origin stopped, that `route.fallback({ url })` registered after `routeFromHAR(..., { notFound: "abort", update: false })` serves the archived body — and that `not-in-archive`, `redacted-post-body` and `ambiguous-normalized-match` all abort with the network unreachable. That became ADR 0007 before any production code existed, so the archive schema commits to a measured mechanism rather than an assumed one.
+
+**The archive records a policy, not a duplicate index.** `request-normalization.json` (V1) carries only the caller's explicit, default-empty `volatileKeys` list. `network.har` remains the single request source; replay derives its normalized index in memory. The pure operations (`normalizePolicyKeys`, `normalizeRequestUrl`, `requestKey`, `findAmbiguousNormalizedRequests`) are unit-tested, and URL normalization edits only the query segment so host/port/path/encoding are never canonicalized (PRD out-of-scope).
+
+**Ambiguity fails closed at both ends.** Distinct archived raw URLs that collapse under the policy for the same method refuse publication — once in the producer (after redaction) and again independently in the staged validator, so a tampered policy cannot bypass the producer. Both guards are mutation-proven (the staged containment test was strengthened so only the containment check can refuse a valid escaped policy).
+
+**A discovered shadowing, not a scope change.** The new staged re-check reads the HAR, which refuses a directory association too — making `isStagedRegularFile`'s `isFile()` guard fail nothing (its mutation reported SURVIVED). Per the mechanism rule (#68), the guard was deleted and its obsolete corpus entry removed; directory refusals still hold via the downstream reads.
+
+**Validation:** `bun run verify` — lint 0, typecheck 0, 189 Bun tests, 30 browser tests, build. `bun run mutate` — 25/25 CAUGHT, none SURVIVED/NOT APPLIED. The #85 probe re-runs green. Fixture ground truth: a positive page (one `_t` request, raw evidence preserved, pure normalizer removes only `_t`) and an ambiguous page (two collapsing requests, refused in Chromium, no archive, clean retry).
+
+**PRs:** #94 (docs + #89), #95, #96, #97, #98, #99, #100. **Next:** §6.6 (versioned `TargetRef` union).
+
+---
+
 ## The mutation corpus stopped writing to the working tree (2026-08-05, `/tdd`, #82)
 
 **Goal:** stop defending a write that did not need to exist.
