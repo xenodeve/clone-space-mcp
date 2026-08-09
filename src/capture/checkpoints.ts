@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import {
   findAmbiguousNormalizedRequests,
@@ -122,6 +122,9 @@ function isStrictlyWithin(root: string, candidate: string): boolean {
 async function isStagedRegularFile(root: string, association: RunAssociation): Promise<boolean> {
   try {
     const path = join(root, association.path);
+    // The isFile check is load-bearing for associations that are NOT read afterwards
+    // (termination.json): a directory at that path would otherwise pass containment.
+    if (!(await lstat(path)).isFile()) return false;
     const [resolvedRoot, resolvedPath] = await Promise.all([realpath(root), realpath(path)]);
     return isStrictlyWithin(resolvedRoot, resolvedPath);
   } catch {
@@ -179,6 +182,11 @@ export async function validateStagedArchive(
   if (
     !(await isStagedRegularFile(stagingRoot, stagedDocument.requestNormalization as RunAssociation))
   ) {
+    return { ok: false };
+  }
+  // termination.json is written before validation (unlike commit.json, which is written after
+  // because it must hash the validated bytes), so it can and must be a staged regular file here.
+  if (!(await isStagedRegularFile(stagingRoot, stagedDocument.termination as RunAssociation))) {
     return { ok: false };
   }
 

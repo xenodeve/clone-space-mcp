@@ -249,9 +249,15 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
 
         let previousScrollY = -1;
         let previousHeight = -1;
+        let previousNodeCount = -1;
         let emptyCheckpoints = 0;
         let scrolls = 0;
         const startedAt = performance.now();
+
+        // A cheap DOM-activity signal: top-level body children count. Catches live pages that
+        // append/remove content in place (chat, ticker, feed) without growing scrollHeight,
+        // which a full querySelectorAll traversal would be too heavy to check per checkpoint.
+        const domNodeCount = () => document.body.childElementCount;
 
         const stopReason = (): "quiet-window" | "budget-exceeded" | null => {
           if (emptyCheckpoints >= quietWindowCheckpoints) return "quiet-window";
@@ -279,7 +285,12 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
 
           const currentScrollY = window.scrollY;
           const currentHeight = document.documentElement.scrollHeight;
-          if (currentScrollY === previousScrollY && currentHeight === previousHeight) {
+          const currentNodeCount = domNodeCount();
+          const quiet = currentScrollY === previousScrollY && currentHeight === previousHeight;
+          const domIdle = currentNodeCount === previousNodeCount;
+          // A live page that mutates in place (chat, ticker) without growing the document must
+          // not look "settled": reset the quiet window when the DOM changed during the checkpoint.
+          if (quiet && domIdle) {
             emptyCheckpoints += 1;
           } else {
             emptyCheckpoints = 0;
@@ -287,6 +298,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
 
           previousScrollY = currentScrollY;
           previousHeight = currentHeight;
+          previousNodeCount = currentNodeCount;
         }
 
         return {
