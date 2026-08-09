@@ -10,6 +10,10 @@ import {
 } from "./environment.ts";
 import { validateStagedArchive } from "./checkpoints.ts";
 import { redactHarArchive } from "./redact.ts";
+import {
+  defaultRequestNormalization,
+  REQUEST_NORMALIZATION_FILE_NAME,
+} from "./request-normalization.ts";
 
 interface CaptureHarResponse {
   url(): string;
@@ -316,12 +320,18 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       { mode: 0o600 },
     );
     await writeFile(
+      resolve(stagingRoot, REQUEST_NORMALIZATION_FILE_NAME),
+      `${JSON.stringify(defaultRequestNormalization(), null, 2)}\n`,
+      { mode: 0o600 },
+    );
+    await writeFile(
       resolve(stagingRoot, "checkpoints.json"),
       `${JSON.stringify(
         {
           schemaVersion: 1,
           har: { path: HAR_FILE_NAME, scope: "run" },
           capabilities: { path: CAPABILITIES_FILE_NAME, scope: "run" },
+          requestNormalization: { path: REQUEST_NORMALIZATION_FILE_NAME, scope: "run" },
           checkpoints: [finalCheckpoint],
         },
         null,
