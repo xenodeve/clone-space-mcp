@@ -1,5 +1,6 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
+import { validateRequestNormalization } from "./request-normalization.ts";
 
 const SUPPORTED_SCHEMA_VERSION = 1;
 const REQUIRED_CAPABILITY_FLAGS = [
@@ -136,6 +137,7 @@ export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } 
   if (checkpoints.length === 0) return { ok: false };
   if (!isRunAssociation(checkpointsDocument.har)) return { ok: false };
   if (!isRunAssociation(checkpointsDocument.capabilities)) return { ok: false };
+  if (!isRunAssociation(checkpointsDocument.requestNormalization)) return { ok: false };
 
   let previousOpenedAt: number | undefined;
   const checkpointIds = new Set<string>();
@@ -169,6 +171,11 @@ export async function validateStagedArchive(
   if (!(await isStagedRegularFile(stagingRoot, stagedDocument.capabilities as RunAssociation))) {
     return { ok: false };
   }
+  if (
+    !(await isStagedRegularFile(stagingRoot, stagedDocument.requestNormalization as RunAssociation))
+  ) {
+    return { ok: false };
+  }
 
   const capabilitiesDoc = await readJsonFile(
     join(stagingRoot, (stagedDocument.capabilities as RunAssociation).path),
@@ -177,6 +184,13 @@ export async function validateStagedArchive(
     return { ok: false };
   }
   // A true or undetermined flag is a measurement outcome, not archive damage, so it must not refuse publication.
+
+  const requestNormalizationDoc = await readJsonFile(
+    join(stagingRoot, (stagedDocument.requestNormalization as RunAssociation).path),
+  );
+  if (requestNormalizationDoc === undefined || !validateRequestNormalization(requestNormalizationDoc).ok) {
+    return { ok: false };
+  }
 
   // validateCheckpoints already narrowed the shape; no length comparison after the filter:
   // every entry satisfies isCheckpoint, so the filter cannot drop one or become empty.

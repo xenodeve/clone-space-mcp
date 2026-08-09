@@ -133,6 +133,25 @@ test("captureHar configures and drives a browser context", async () => {
       path: "capabilities.json",
       scope: "run",
     });
+    expect(JSON.parse(readFileSync(join(outDir, "request-normalization.json"), "utf8"))).toEqual({
+      schemaVersion: 1,
+      query: { volatileKeys: [], keyMatch: "case-insensitive-exact" },
+    });
+    expect(statSync(join(outDir, "request-normalization.json")).mode & 0o600).toBe(0o600);
+    expect(JSON.parse(readFileSync(join(outDir, "checkpoints.json"), "utf8"))).toEqual({
+      schemaVersion: 1,
+      har: { path: "network.har", scope: "run" },
+      capabilities: { path: "capabilities.json", scope: "run" },
+      requestNormalization: { path: "request-normalization.json", scope: "run" },
+      checkpoints: [
+        {
+          checkpointId: "cp:0",
+          primaryTarget: { documentEpoch: "epoch:A1B2C3D4E5F60718293A4B5C6D7E8F90" },
+          openedAt: expect.any(Number),
+          artifacts: [],
+        },
+      ],
+    });
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
