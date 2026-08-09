@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
 
 function fakeCdpSession(loaderId: string) {
@@ -965,5 +965,199 @@ test("captureHar refuses to publish when a HAR attachment corrupts a staged side
     expect(readdirSync(root)).toEqual([]);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+const ENV_EVALUATE_RESULT = {
+  origin: "https://example.com",
+  viewport: { width: 1280, height: 720 },
+  devicePixelRatio: 1,
+  locale: "en-US",
+  locales: ["en-US"],
+  timezoneId: "UTC",
+  reducedMotion: "no-preference",
+  colorScheme: "light",
+  userAgent: "FixtureAgent/1.0",
+  fontFaces: { entries: [], truncated: false },
+} as const;
+
+/**
+ * A fake browser whose `close()` writes the given HAR, so tests can drive the producer-side
+ * ambiguity check and the policy publication without launching Chromium.
+ */
+function makeHarFakeBrowser(har: unknown) {
+  let harPath: string;
+  const context = {
+    request: { async get() {} },
+    newCDPSession: fakeCdpSession("A1B2C3D4E5F60718293A4B5C6D7E8F90"),
+    async newPage() {
+      let pageUrl = "";
+      let evaluation = 0;
+      return {
+        localStorage: { async items() { return []; } },
+        sessionStorage: { async items() { return []; } },
+        async goto(url: string) {
+          pageUrl = url;
+        },
+        on() {},
+        url() {
+          return pageUrl;
+        },
+        async evaluate<Result>() {
+          evaluation += 1;
+          if (evaluation === 1) return undefined as Result;
+          return ENV_EVALUATE_RESULT as Result;
+        },
+      };
+    },
+    async close() {
+      writeFileSync(harPath, JSON.stringify(har));
+    },
+  };
+  return {
+    version() {
+      return "Chromium/140.0.0.0";
+    },
+    async newContext(options: { recordHar: { path: string } }) {
+      harPath = options.recordHar.path;
+      return context;
+    },
+  };
+}
+
+test("captureHar publishes the canonical explicit volatile-key policy", async () => {
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-policy-")), "archive");
+  const outDir = root;
+  try {
+    await captureHar({
+      browser: makeHarFakeBrowser({ log: { entries: [] } }),
+      url: "https://example.com/page",
+      outDir,
+      volatileQueryKeys: ["_T", "Nonce", "ts"],
+    });
+    const policy = JSON.parse(readFileSync(join(outDir, "request-normalization.json"), "utf8"));
+    expect(policy.query.volatileKeys).toEqual(["_t", "nonce", "ts"]);
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("captureHar refuses when the policy collapses two distinct archived requests", async () => {
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-ambiguous-")), "archive");
+  const outDir = root;
+  try {
+    await expect(
+      captureHar({
+        browser: makeHarFakeBrowser({
+          log: {
+            entries: [
+              { request: { url: "https://example.com/dup?_t=aaa", method: "GET" } },
+              { request: { url: "https://example.com/dup?_t=bbb", method: "GET" } },
+            ],
+          },
+        }),
+        url: "https://example.com/page",
+        outDir,
+        volatileQueryKeys: ["_t"],
+      }),
+    ).rejects.toThrow(/collapses \d+ distinct archived request/);
+    expect(readdirSync(dirname(root))).toEqual([]);
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("captureHar refuses duplicate volatile keys before opening the browser", async () => {
+  let browserCalled = false;
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-dup-keys-")), "archive");
+  try {
+    await expect(
+      captureHar({
+        browser: {
+          version() {
+            return "Chromium/140.0.0.0";
+          },
+          async newContext() {
+            browserCalled = true;
+            throw new Error("browser must not be called");
+          },
+        },
+        url: "https://example.com/page",
+        outDir: root,
+        volatileQueryKeys: ["_t", "_T"],
+      }),
+    ).rejects.toThrow(/duplicate volatile query key: _t/);
+    expect(browserCalled).toBe(false);
+    expect(readdirSync(dirname(root))).toEqual([]);
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("captureHar refuses an empty volatile key before opening the browser", async () => {
+  let browserCalled = false;
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-empty-key-")), "archive");
+  try {
+    await expect(
+      captureHar({
+        browser: {
+          version() {
+            return "Chromium/140.0.0.0";
+          },
+          async newContext() {
+            browserCalled = true;
+            throw new Error("browser must not be called");
+          },
+        },
+        url: "https://example.com/page",
+        outDir: root,
+        volatileQueryKeys: [""],
+      }),
+    ).rejects.toThrow(/empty volatile query key/);
+    expect(browserCalled).toBe(false);
+    expect(readdirSync(dirname(root))).toEqual([]);
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("captureHar accepts one distinct raw URL per normalized group", async () => {
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-accept-")), "archive");
+  const outDir = root;
+  try {
+    await captureHar({
+      browser: makeHarFakeBrowser({
+        log: {
+          entries: [
+            { request: { url: "https://example.com/api?_t=111&a=1", method: "GET" } },
+            { request: { url: "https://example.com/static/app.js", method: "GET" } },
+          ],
+        },
+      }),
+      url: "https://example.com/page",
+      outDir,
+      volatileQueryKeys: ["_t"],
+    });
+    expect(existsSync(join(outDir, "request-normalization.json"))).toBe(true);
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("captureHar leaves network.har bytes unchanged by policy publication", async () => {
+  const har = { log: { entries: [] } };
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-har-bytes-")), "archive");
+  const outDir = root;
+  try {
+    await captureHar({
+      browser: makeHarFakeBrowser(har),
+      url: "https://example.com/page",
+      outDir,
+      volatileQueryKeys: ["_t"],
+    });
+    const published = JSON.parse(readFileSync(join(outDir, "network.har"), "utf8"));
+    expect(published).toEqual(har);
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
   }
 });

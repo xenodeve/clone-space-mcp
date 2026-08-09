@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
@@ -12,7 +12,11 @@ import { validateStagedArchive } from "./checkpoints.ts";
 import { redactHarArchive } from "./redact.ts";
 import {
   defaultRequestNormalization,
+  findAmbiguousNormalizedRequests,
+  normalizePolicyKeys,
   REQUEST_NORMALIZATION_FILE_NAME,
+  type HarRequestEntry,
+  type RequestNormalizationV1,
 } from "./request-normalization.ts";
 
 interface CaptureHarResponse {
@@ -100,6 +104,8 @@ export interface CaptureHarOptions {
   environment?: Partial<ReplayContext>;
   browserChannel?: string;
   storageAllowlist?: StorageAllowlist;
+  /** Explicit volatile-query-key policy (ADR 0007). Defaults to an empty list. */
+  volatileQueryKeys?: readonly string[];
 }
 
 async function assertEmptyOutputDirectory(path: string): Promise<void> {
@@ -114,6 +120,8 @@ async function assertEmptyOutputDirectory(path: string): Promise<void> {
 
 export async function captureHar(options: CaptureHarOptions): Promise<string> {
   new URL(options.url);
+  // Canonicalize the policy before any browser or staging side effect; throws on empty/duplicate keys.
+  const volatileKeys = normalizePolicyKeys(options.volatileQueryKeys);
   const archiveRoot = resolve(options.outDir);
   const archiveParent = dirname(archiveRoot);
   await mkdir(archiveParent, { recursive: true });
@@ -321,7 +329,14 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     );
     await writeFile(
       resolve(stagingRoot, REQUEST_NORMALIZATION_FILE_NAME),
-      `${JSON.stringify(defaultRequestNormalization(), null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          ...defaultRequestNormalization(),
+          query: { volatileKeys, keyMatch: "case-insensitive-exact" },
+        } satisfies RequestNormalizationV1,
+        null,
+        2,
+      )}\n`,
       { mode: 0o600 },
     );
     await writeFile(
@@ -340,6 +355,22 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       { mode: 0o600 },
     );
     await redactHarArchive(stagingHarPath);
+    // The producer check: no two distinct archived raw URLs may collapse under the policy for
+    // the same method — replay must never be forced to choose between different responses.
+    const redactedHar = JSON.parse(await readFile(stagingHarPath, "utf8")) as {
+      log?: { entries?: HarRequestEntry[] };
+    };
+    const harEntries = redactedHar.log?.entries;
+    if (harEntries === undefined) {
+      throw new Error("capture: redacted HAR has no log.entries");
+    }
+    const ambiguous = findAmbiguousNormalizedRequests(harEntries, volatileKeys);
+    if (ambiguous.length > 0) {
+      throw new Error(
+        `capture: the volatile-key policy collapses ${ambiguous.length} distinct archived request(s) into one normalized match; ` +
+          "refusing to publish an archive replay would have to guess between them",
+      );
+    }
     const staged = await validateStagedArchive(stagingRoot);
     if (!staged.ok) {
       throw new Error("staged archive failed checkpoint coherence validation");

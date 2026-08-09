@@ -1,6 +1,10 @@
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
-import { validateRequestNormalization } from "./request-normalization.ts";
+import {
+  findAmbiguousNormalizedRequests,
+  type HarRequestEntry,
+  validateRequestNormalization,
+} from "./request-normalization.ts";
 
 const SUPPORTED_SCHEMA_VERSION = 1;
 const REQUIRED_CAPABILITY_FLAGS = [
@@ -118,7 +122,6 @@ function isStrictlyWithin(root: string, candidate: string): boolean {
 async function isStagedRegularFile(root: string, association: RunAssociation): Promise<boolean> {
   try {
     const path = join(root, association.path);
-    if (!(await lstat(path)).isFile()) return false;
     const [resolvedRoot, resolvedPath] = await Promise.all([realpath(root), realpath(path)]);
     return isStrictlyWithin(resolvedRoot, resolvedPath);
   } catch {
@@ -189,6 +192,32 @@ export async function validateStagedArchive(
     join(stagingRoot, (stagedDocument.requestNormalization as RunAssociation).path),
   );
   if (requestNormalizationDoc === undefined || !validateRequestNormalization(requestNormalizationDoc).ok) {
+    return { ok: false };
+  }
+  const requestNormalization = isRecord(requestNormalizationDoc) ? requestNormalizationDoc : {};
+  const query = isRecord(requestNormalization.query) ? requestNormalization.query : {};
+  const volatileKeys = Array.isArray(query.volatileKeys) ? query.volatileKeys : [];
+
+  // Independent re-check (producer and validator share the pure function but neither trusts the
+  // other): a persisted or tampered policy must not collapse distinct archived requests.
+  const harRaw = await readFile(
+    join(stagingRoot, (stagedDocument.har as RunAssociation).path),
+    "utf8",
+  ).catch(() => undefined);
+  if (harRaw === undefined) return { ok: false };
+  let harEntries: HarRequestEntry[];
+  try {
+    const har = JSON.parse(harRaw) as { log?: { entries?: unknown } };
+    if (!Array.isArray(har.log?.entries)) return { ok: false };
+    harEntries = har.log.entries as HarRequestEntry[];
+  } catch {
+    return { ok: false };
+  }
+  try {
+    if (findAmbiguousNormalizedRequests(harEntries, volatileKeys as string[]).length > 0) {
+      return { ok: false };
+    }
+  } catch {
     return { ok: false };
   }
 
