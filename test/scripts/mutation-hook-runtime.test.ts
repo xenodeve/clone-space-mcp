@@ -118,9 +118,11 @@ describe("the mutation hooks reach a real runtime", () => {
       DEFECT,
     );
 
-    // Both fixtures assert the *mutated* key, so two passes means the hook fired in both children.
-    expect(output).toContain("# pass 2");
-    expect(output).toContain("# fail 0");
+    // One token and one passing test name per child prove the hook reached both files without
+    // depending on Node's default reporter format.
+    expect(output.split(APPLIED_TOKEN).length - 1).toBe(2);
+    expect(output).toContain("first child sees the mutated fingerprint key");
+    expect(output).toContain("second child sees the mutated fingerprint key");
     expect(exitCode).toBe(0);
   });
 
