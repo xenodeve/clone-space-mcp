@@ -87,7 +87,9 @@ PII, or embedded token. A capture remains sensitive evidence and must be handled
 - **Positive:** attachment paths cannot redirect redaction or permission changes outside the archive
   root.
 - **Negative:** strict HAR replay cannot match an original POST body or an original signed/query URL
-  after redaction. Contract §6.5 must define request normalization before such requests can replay.
+  after redaction. Revised PRD #84 gives query normalization an explicit, default-empty policy and
+  keeps redacted POST bodies fail-closed and unsupported in v1; #85 must prove that consumer contract
+  against pinned Playwright before ADR 0007 accepts it.
 - **Negative:** WebSocket frames are intentionally unavailable for replay. Contract §6.4 must mark
   the archive WebSocket-dependent instead of allowing an empty replay to look successful.
 - **Negative / limit:** response evidence may itself be sensitive. Users must not interpret
