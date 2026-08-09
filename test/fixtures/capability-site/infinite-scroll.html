@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>clone-space-mcp infinite-scroll termination fixture</title>
+    <style>
+      .spacer {
+        height: 120vh;
+        background: linear-gradient(#ddd, #fff);
+        margin: 1rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main data-fixture-marker="infinite-scroll">
+      <section data-fixture-id="infinite-scroll">infinite scroll</section>
+    </main>
+
+    <script>
+      // Append a full-viewport block to document.body continuously, so the document keeps
+      // growing while capture runs and the sweep can never reach a quiet window — only a
+      // termination budget can stop it.
+      let appended = 0;
+      const grow = () => {
+        const spacer = document.createElement("div");
+        spacer.style.height = "120vh";
+        spacer.style.background = "linear-gradient(#ddd, #fff)";
+        spacer.style.margin = "1rem 0";
+        document.body.append(spacer);
+        appended += 1;
+        window.__appended = appended;
+      };
+      setInterval(grow, 200);
+      window.__appended = 0;
+    </script>
+  </body>
+</html>

@@ -610,3 +610,26 @@ test("refuses an ambiguous capture in Chromium and leaves no published archive",
   });
   assert.ok(existsSync(join(dirname(positiveHar), "request-normalization.json")), "positive retry failed to publish");
 });
+
+test("an infinite-scroll page terminates via the wall-clock budget, not forever", async () => {
+  const url = new URL("/infinite-scroll.html", servers.capability.url);
+  const harPath = await captureHar({
+    browser,
+    url: url.href,
+    outDir: nextCaptureOutDir(),
+    budgets: { wallClockMs: 1500 },
+  });
+
+  const termination = JSON.parse(
+    readFileSync(join(dirname(harPath), "termination.json"), "utf8"),
+  ) as {
+    outcome: string;
+    reason?: string;
+    stats: { scrolls: number; wallClockMs: number };
+    budgets: { wallClockMs: number };
+  };
+  assert.equal(termination.outcome, "incomplete", "the infinite page must be recorded incomplete");
+  assert.equal(termination.reason, "budget-exceeded", "the budget must be the recorded reason");
+  assert.equal(termination.budgets.wallClockMs, 1500);
+  assert.ok(termination.stats.scrolls > 0, "the sweep must have scrolled");
+});
