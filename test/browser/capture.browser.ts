@@ -581,3 +581,32 @@ test("captures the volatile-key policy and preserves the raw request evidence", 
     "normalization must remove only the allowlisted _t parameter",
   );
 });
+
+test("refuses an ambiguous capture in Chromium and leaves no published archive", async () => {
+  const ambiguousUrl = new URL("/request-normalization-ambiguity.html", servers.capability.url);
+  const outDir = nextCaptureOutDir();
+
+  await assert.rejects(
+    captureHar({
+      browser,
+      url: ambiguousUrl.href,
+      outDir,
+      volatileQueryKeys: ["_t"],
+    }),
+    /collapses \d+ distinct archived request/,
+    "the ambiguous capture must refuse with the ambiguity error",
+  );
+
+  // No archive was published; captureHar's failure path removed the private staging.
+  assert.ok(!existsSync(outDir), "ambiguous capture published an archive");
+
+  // A subsequent positive capture in the same test process must succeed (no stale state leaks).
+  const positiveUrl = new URL("/request-normalization.html", servers.capability.url);
+  const positiveHar = await captureHar({
+    browser,
+    url: positiveUrl.href,
+    outDir: nextCaptureOutDir(),
+    volatileQueryKeys: ["_t"],
+  });
+  assert.ok(existsSync(join(dirname(positiveHar), "request-normalization.json")), "positive retry failed to publish");
+});

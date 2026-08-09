@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>clone-space-mcp request-normalization ambiguity fixture</title>
+  </head>
+  <body>
+    <main data-fixture-marker="request-normalization-ambiguity">
+      <section data-fixture-id="ambiguous-requests">ambiguous requests</section>
+    </main>
+
+    <script>
+      // Two awaited requests to the same endpoint, differing only in the volatile `_t` value.
+      // Under a `_t` policy they collapse to one normalized URL — capture must refuse to publish.
+      const fire = (value) =>
+        fetch("/request-normalization-endpoint?tag=ambiguous&_t=" + value).then((response) => response.text());
+
+      Promise.all([fire("first"), fire("second")]).then(() => {
+        window.__requestDone = true;
+      });
+    </script>
+  </body>
+</html>
