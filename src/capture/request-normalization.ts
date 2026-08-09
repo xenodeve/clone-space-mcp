@@ -5,10 +5,9 @@
  * request index in memory. The HAR remains the single source of request entries and response
  * bodies — this artifact never duplicates URL, method, body, count or collision metadata.
  *
- * This module owns the V1 schema, its pure validator, and the pure key/URL operations (#90):
- * policy-key canonicalization, URL normalization against an explicit allowlist, and a
- * collision-safe request key. S4 (#91) wires explicit caller keys and the ambiguity check
- * against the HAR.
+ * This module owns the V1 schema, its validator, the pure key/URL operations (#90), and the
+ * ambiguity grouping (#91). S4 (#91) wires explicit caller keys through capture and refuses
+ * publication when distinct archived requests collapse under the policy.
  */
 
 export const REQUEST_NORMALIZATION_FILE_NAME = "request-normalization.json";
@@ -18,7 +17,7 @@ const SUPPORTED_SCHEMA_VERSION = 1;
 export type RequestNormalizationV1 = {
   schemaVersion: 1;
   query: {
-    volatileKeys: [];
+    volatileKeys: string[];
     keyMatch: "case-insensitive-exact";
   };
 };
@@ -128,10 +127,53 @@ export function validateRequestNormalization(doc: unknown): { ok: true } | { ok:
   // A non-record query cannot carry volatileKeys or keyMatch, so the guards below refuse it.
   const query = isRecord(policy.query) ? policy.query : {};
   if (!Array.isArray(query.volatileKeys)) return { ok: false };
-  // S2 publishes only the empty default. A non-empty key list is not yet implementable here —
-  // the key-canonicalization and ambiguity rules land in #90/#91, so this validator refuses it
-  // rather than accepting a policy replay could not consume consistently.
-  if (query.volatileKeys.length !== 0) return { ok: false };
+  // Keys are published in canonical form (lowercase, sorted, no empties/duplicates — #90).
+  for (const key of query.volatileKeys) {
+    if (typeof key !== "string" || key.length === 0) return { ok: false };
+  }
   if (query.keyMatch !== "case-insensitive-exact") return { ok: false };
   return { ok: true };
+}
+
+export type HarRequestEntry = {
+  _resourceType?: unknown;
+  request?: { url?: unknown; method?: unknown };
+};
+
+/**
+ * Group the archived requests by exact method + normalized URL and return every group whose
+ * raw URLs are not all identical — the ambiguity contract (#84): replay must never be forced
+ * to choose between distinct archived responses. WebSocket entries are ignored: `routeFromHAR`
+ * does not intercept them and §6.4 records WebSocket dependence separately.
+ *
+ * Fails closed on a malformed entry or an invalid URL so a policy that replay cannot consume
+ * consistently is refused at publication.
+ */
+export function findAmbiguousNormalizedRequests(
+  entries: HarRequestEntry[],
+  volatileKeys: readonly string[],
+): string[] {
+  const keys = normalizePolicyKeys(volatileKeys);
+  const groups = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    // `_resourceType` lives on the HAR entry. A WebSocket entry is ignored entirely — even one
+    // without a request object — because `routeFromHAR` does not intercept WebSockets and §6.4
+    // records their dependence separately.
+    if (entry._resourceType === "websocket") continue;
+    const request = entry.request;
+    if (request === undefined) {
+      throw new Error("request normalization: malformed HAR request entry");
+    }
+    if (typeof request.url !== "string" || typeof request.method !== "string") {
+      throw new Error("request normalization: malformed HAR request entry");
+    }
+    const normalized = normalizeRequestUrl(request.url, keys);
+    const key = requestKey(request.method, normalized);
+    const rawUrls = groups.get(key) ?? new Set<string>();
+    rawUrls.add(request.url);
+    groups.set(key, rawUrls);
+  }
+  return [...groups.entries()]
+    .filter(([, rawUrls]) => rawUrls.size > 1)
+    .map(([key]) => key);
 }

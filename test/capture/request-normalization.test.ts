@@ -45,12 +45,27 @@ test("rejects a non-array volatileKeys", () => {
   ).toEqual({ ok: false });
 });
 
-test("rejects a non-empty volatileKeys list in S2 (explicit policy lands in #90/#91)", () => {
+test("accepts a non-empty volatileKeys list in canonical form (explicit policy from #91)", () => {
   const doc = {
     ...defaultRequestNormalization(),
-    query: { volatileKeys: ["_t"], keyMatch: "case-insensitive-exact" as const },
+    query: { volatileKeys: ["_t", "nonce"], keyMatch: "case-insensitive-exact" as const },
   };
-  expect(validateRequestNormalization(doc)).toEqual({ ok: false });
+  expect(validateRequestNormalization(doc)).toEqual({ ok: true });
+});
+
+test("rejects a volatileKeys list containing an empty or non-string key", () => {
+  expect(
+    validateRequestNormalization({
+      schemaVersion: 1,
+      query: { volatileKeys: [""], keyMatch: "case-insensitive-exact" },
+    }),
+  ).toEqual({ ok: false });
+  expect(
+    validateRequestNormalization({
+      schemaVersion: 1,
+      query: { volatileKeys: [42], keyMatch: "case-insensitive-exact" },
+    }),
+  ).toEqual({ ok: false });
 });
 
 test("rejects an unsupported keyMatch", () => {

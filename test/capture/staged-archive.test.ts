@@ -54,7 +54,7 @@ function writeCoherentStaging(root: string, capabilities: unknown = {
       },
     ],
   });
-  writeFileSync(join(root, "network.har"), "");
+  writeFileSync(join(root, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
   writeJson(root, "request-normalization.json", {
     schemaVersion: 1,
     query: { volatileKeys: [], keyMatch: "case-insensitive-exact" },
@@ -90,7 +90,7 @@ test("accepts a coherent staging directory", async () => {
         },
       ],
     });
-    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeFileSync(join(stagingRoot, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -131,7 +131,7 @@ test("refuses when the binding names the final checkpoint but a different docume
         },
       ],
     });
-    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeFileSync(join(stagingRoot, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -168,7 +168,7 @@ test("refuses when the binding names the final checkpoint but a different opened
         },
       ],
     });
-    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeFileSync(join(stagingRoot, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -227,7 +227,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
         },
       ],
     });
-    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeFileSync(join(stagingRoot, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -264,7 +264,7 @@ test("refuses when environment.json has no coherent final-checkpoint binding", a
         },
       ],
     });
-    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeFileSync(join(stagingRoot, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
     });
@@ -294,7 +294,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
         },
       ],
     });
-    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeFileSync(join(stagingRoot, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -342,7 +342,7 @@ test("refuses when the binding names a real checkpoint that is not the final one
         },
       ],
     });
-    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeFileSync(join(stagingRoot, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -415,7 +415,7 @@ test("accepts a coherent staging directory whose HAR is present", async () => {
         },
       ],
     });
-    writeFileSync(join(stagingRoot, "network.har"), "");
+    writeFileSync(join(stagingRoot, "network.har"), `${JSON.stringify({ log: { entries: [] } })}\n`);
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
       checkpoint: {
@@ -863,10 +863,22 @@ test("refuses when request-normalization.json has an unsupported schema version"
   }
 });
 
-test("refuses when request-normalization.json carries a non-empty volatile key list", async () => {
+test("refuses when the policy collapses distinct archived requests (ambiguity)", async () => {
   const stagingRoot = makeStagingRoot();
   try {
     writeCoherentStaging(stagingRoot);
+    // Two distinct raw URLs differ only in the allowlisted key.
+    writeFileSync(
+      join(stagingRoot, "network.har"),
+      `${JSON.stringify({
+        log: {
+          entries: [
+            { request: { url: "https://example.com/dup?_t=aaa", method: "GET" } },
+            { request: { url: "https://example.com/dup?_t=bbb", method: "GET" } },
+          ],
+        },
+      })}\n`,
+    );
     writeJson(stagingRoot, "request-normalization.json", {
       schemaVersion: 1,
       query: { volatileKeys: ["_t"], keyMatch: "case-insensitive-exact" },
