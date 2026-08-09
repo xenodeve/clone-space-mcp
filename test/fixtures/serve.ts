@@ -235,10 +235,22 @@ export async function startFixtureServers(): Promise<FixtureServers> {
     },
   });
 
+  const observedRequests: Array<{ method: string; url: string }> = [];
+
   const capability = Bun.serve({
     port: 0,
     async fetch(req) {
       const { pathname } = new URL(req.url);
+      // Record the exact method and request URL for the §6.5 request-normalization ground truth.
+      // The test reads this through a debug route and asserts the HAR matches what the server saw.
+      if (pathname === "/request-normalization-endpoint") {
+        observedRequests.push({ method: req.method, url: req.url });
+        return new Response("ok", { headers: { "content-type": "text/plain" } });
+      }
+      if (pathname === "/__observed-request-urls") {
+        // Return a snapshot, not the live array — callers must not observe later mutation.
+        return Response.json(observedRequests.slice());
+      }
       const rel = decodeURIComponent(pathname).replace(/^\/+/, "") || "index.html";
       if (rel.includes("..")) return new Response("forbidden", { status: 403 });
 

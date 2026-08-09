@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>clone-space-mcp request-normalization fixture</title>
+  </head>
+  <body>
+    <main data-fixture-marker="request-normalization">
+      <section data-fixture-id="volatile-request">volatile request</section>
+    </main>
+
+    <script>
+      // Exactly one awaited request with one volatile key (_t) and one stable key (tag).
+      fetch("/request-normalization-endpoint?tag=capture&_t=" + Date.now())
+        .then((response) => response.text())
+        .then(() => {
+          window.__requestDone = true;
+        });
+    </script>
+  </body>
+</html>
