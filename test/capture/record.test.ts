@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
+import { validateCommit } from "../../src/capture/commit.ts";
 
 function fakeCdpSession(loaderId: string) {
   return async () => ({
@@ -143,6 +144,7 @@ test("captureHar configures and drives a browser context", async () => {
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -1157,6 +1159,44 @@ test("captureHar leaves network.har bytes unchanged by policy publication", asyn
     });
     const published = JSON.parse(readFileSync(join(outDir, "network.har"), "utf8"));
     expect(published).toEqual(har);
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("captureHar publishes a commit marker that verifies the archive bytes", async () => {
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-commit-")), "archive");
+  const outDir = root;
+  try {
+    await captureHar({
+      browser: makeHarFakeBrowser({ log: { entries: [] } }),
+      url: "https://example.com/page",
+      outDir,
+    });
+    const commitDoc = JSON.parse(readFileSync(join(outDir, "commit.json"), "utf8"));
+    const result = await validateCommit(commitDoc, outDir);
+    expect(result).toEqual({ ok: true });
+  } finally {
+    rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+test("a tampered published artifact is detected by the commit validator", async () => {
+  const root = join(mkdtempSync(join(tmpdir(), "clone-space-record-tamper-")), "archive");
+  const outDir = root;
+  try {
+    await captureHar({
+      browser: makeHarFakeBrowser({ log: { entries: [] } }),
+      url: "https://example.com/page",
+      outDir,
+    });
+    const commitDoc = JSON.parse(readFileSync(join(outDir, "commit.json"), "utf8"));
+    // Mutate the environment artifact after commit.
+    const envPath = join(outDir, "environment.json");
+    const original = readFileSync(envPath, "utf8");
+    writeFileSync(envPath, original + "\n// tampered");
+    const result = await validateCommit(commitDoc, outDir);
+    expect(result).toEqual({ ok: false });
   } finally {
     rmSync(dirname(root), { recursive: true, force: true });
   }

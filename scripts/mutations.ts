@@ -236,4 +236,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "refuses when the policy collapses distinct archived requests (ambiguity)",
   },
+  {
+    id: "commit-association-required",
+    why: "Issue #103 — dropping the required commit run association from checkpoints validation let an archive publish without a commit marker.",
+    file: "src/capture/checkpoints.ts",
+    find: 'if (!isRunAssociation(checkpointsDocument.commit)) return { ok: false };',
+    replace: "if (false) return { ok: false };",
+    suite: "bun",
+    expect: "rejects a document missing the run-level commit association",
+  },
+  {
+    id: "commit-marker-not-written",
+    why: "Issue #103 — dropping the commit write let a capture publish without a marker a reader could verify against.",
+    file: "src/capture/record.ts",
+    find: "const commit = await buildCommit(stagingRoot, finalCheckpoint.checkpointId);",
+    replace: "const commit = { schemaVersion: 0, producer: { name: \"x\", version: \"0\" }, createdAt: 0, artifacts: [], checkpointId: \"\" };",
+    suite: "bun",
+    expect: "captureHar publishes a commit marker that verifies the archive bytes",
+  },
 ];
