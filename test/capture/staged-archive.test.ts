@@ -45,6 +45,7 @@ function writeCoherentStaging(root: string, capabilities: unknown = {
     har: { path: "network.har", scope: "run" },
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
+    commit: { path: "commit.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -81,6 +82,7 @@ test("accepts a coherent staging directory", async () => {
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -122,6 +124,7 @@ test("refuses when the binding names the final checkpoint but a different docume
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -159,6 +162,7 @@ test("refuses when the binding names the final checkpoint but a different opened
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -218,6 +222,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -255,6 +260,7 @@ test("refuses when environment.json has no coherent final-checkpoint binding", a
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -285,6 +291,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -327,6 +334,7 @@ test("refuses when the binding names a real checkpoint that is not the final one
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -370,6 +378,7 @@ test("refuses when the HAR named by the association is not present", async () =>
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -406,6 +415,7 @@ test("accepts a coherent staging directory whose HAR is present", async () => {
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -443,6 +453,7 @@ test("refuses when the HAR association names the staging root itself", async () 
       har: { path: ".", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -479,6 +490,7 @@ test("refuses when the HAR association names a directory", async () => {
       har: { path: "network.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -517,6 +529,7 @@ test("refuses when the HAR association resolves outside the staging root", async
       har: { path: "link/outside.har", scope: "run" },
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
+      commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",

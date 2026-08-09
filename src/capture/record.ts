@@ -11,6 +11,10 @@ import {
 import { validateStagedArchive } from "./checkpoints.ts";
 import { redactHarArchive } from "./redact.ts";
 import {
+  buildCommit,
+  COMMIT_FILE_NAME,
+} from "./commit.ts";
+import {
   defaultRequestNormalization,
   findAmbiguousNormalizedRequests,
   normalizePolicyKeys,
@@ -347,6 +351,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           har: { path: HAR_FILE_NAME, scope: "run" },
           capabilities: { path: CAPABILITIES_FILE_NAME, scope: "run" },
           requestNormalization: { path: REQUEST_NORMALIZATION_FILE_NAME, scope: "run" },
+          commit: { path: COMMIT_FILE_NAME, scope: "run" },
           checkpoints: [finalCheckpoint],
         },
         null,
@@ -375,6 +380,14 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     if (!staged.ok) {
       throw new Error("staged archive failed checkpoint coherence validation");
     }
+    // The commit marker is written last, after validation passed and every artifact is present,
+    // hashing the exact bytes that were validated so a reader can verify them independently.
+    const commit = await buildCommit(stagingRoot, finalCheckpoint.checkpointId);
+    await writeFile(
+      resolve(stagingRoot, COMMIT_FILE_NAME),
+      `${JSON.stringify(commit, null, 2)}\n`,
+      { mode: 0o600 },
+    );
     await assertEmptyOutputDirectory(archiveRoot);
     try {
       await rmdir(archiveRoot);
