@@ -151,4 +151,19 @@ describe("the served page genuinely exercises every capability", () => {
       url: expect.stringContaining("/request-normalization-endpoint?tag=probe&_t=fixture"),
     });
   });
+
+  test("the request-normalization-ambiguity page declares two collapsing volatile-key requests", async () => {
+    const pageUrl = new URL("/request-normalization-ambiguity.html", servers.capability.url);
+    const pageResponse = await fetch(pageUrl);
+    expect(pageResponse.status).toBe(200);
+    const page = await pageResponse.text();
+    expect(page).toContain("data-fixture-marker=\"request-normalization-ambiguity\"");
+    expect(page).toContain('/request-normalization-endpoint?tag=ambiguous&_t="');
+
+    // The script fires two awaited requests differing only in the volatile value.
+    expect(page).toContain('fetch("/request-normalization-endpoint?tag=ambiguous&_t="');
+    expect(page).toContain('fire("first")');
+    expect(page).toContain('fire("second")');
+    expect(page).toContain("Promise.all([fire(\"first\"), fire(\"second\")])");
+  });
 });
