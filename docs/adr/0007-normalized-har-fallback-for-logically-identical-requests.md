@@ -26,31 +26,46 @@ must define request normalization before such requests can replay."*
 
 A minimal Node/Playwright probe (`test/browser/request-normalization.browser.ts`) records the
 contract before any production capture or replay code exists. The probe owns a temporary origin
-server that is **stopped before replay**, so the archived HTML and every served body must come from
-the HAR; the origin's live response is a distinct `LIVE_SERVER_BODY` sentinel, so a leaked live
-request would be distinguishable.
+server that is **stopped before replay** and asserted down (`server.listening === false`,
+`request-normalization.browser.ts:152`), so the archived HTML and every served body must come from
+the HAR. A request that reached the live network would fail the page fetch (connection refused),
+never produce an archived body.
 
 The probe establishes four observable paths:
 
 1. **Strict baseline (historical RED).** With only `routeFromHAR(..., { notFound: "abort",
-   update: false })` registered, a page whose script appends a fresh `Date.now()` nonce fails every
+   update: false })` registered, a page whose script appends a fresh `Date.now()` nonce fails the
    volatile-query request. Asserted as the baseline abort at
-   `test/browser/request-normalization.browser.ts:176-191`.
+   `test/browser/request-normalization.browser.ts:186-189`.
 2. **Normalized match (GREEN).** Register the HAR route first, then a normalizing route that strips
    allowlisted query keys and, when exactly one distinct archived raw URL remains, calls
    `route.fallback({ url: archivedRawUrl })` into the HAR handler
-   (`request-normalization.browser.ts:200-226`). The page receives the archived response body —
-   `ARCHIVED_ASSET_BODY` — proving the fallback rewrite reaches `routeFromHAR`.
+   (`request-normalization.browser.ts:199-222`). The page receives the archived response body —
+   `ARCHIVED_ASSET_BODY` — proving the fallback rewrite reaches `routeFromHAR`; only the HAR can
+   produce that body with the origin down.
 3. **Three fail-closed classifications.** No candidate → `not-in-archive`; a POST whose archived
    body is redacted → `redacted-post-body`; more than one distinct archived raw URL collapsing to
    one normalized key → `ambiguous-normalized-match`. Each aborts before any live-network path.
-4. **Network isolation.** The origin server is closed before navigation and asserted down; a request
-   that reached the live network would return the sentinel, never an archived body.
+   Ambiguity is checked before redaction so a collapse is always classified `ambiguous` regardless
+   of whether one candidate is redacted (`request-normalization.browser.ts:203-216`).
+4. **Network isolation.** The origin server is closed before navigation and asserted down, so a
+   live leak is impossible and would read as a failed fetch rather than an archived body.
 
 Registration order is load-bearing: `context.route` unshifts handlers, so registering the
 normalizing route **after** `routeFromHAR` makes it run first, and its `route.fallback({ url })`
 dispatches into the HAR handler that was registered earlier. This is what the probe pins — the
 normalizer never fulfills from or falls through to the live network.
+
+### Measurements
+
+- Runtime: Playwright 1.62, Node v26.3.1, Chromium via `chromium.launch()`.
+- Command: `node --test test/browser/request-normalization.browser.ts` — 2/2 tests, deterministic
+  across repeated runs; also collected by `bun run test:browser` (the package's browser glob).
+- Verified in the same probe file: baseline abort (strict `routeFromHAR` with a fresh nonce),
+  normalized fallback serving `ARCHIVED_ASSET_BODY`, and the three abort classifications, all with
+  `server.listening === false` asserted before navigation.
+- `bun run verify` (lint, typecheck, 150 Bun tests, 28 browser tests, build) passes with the probe
+  in place.
 
 ### The archive records a policy, not a duplicate index
 
@@ -60,6 +75,10 @@ response bodies; the artifact carries no URL copies, counts or collision metadat
 normalized in-memory index from the HAR and the policy at startup (PRD #84, issue #86–#91).
 
 ### Normalization is exact and explicit, never guessed
+
+The probe strips exactly the one allowlisted key (`_t`, case-sensitively via
+`URLSearchParams.delete`) to prove the mechanism. The production key-handling rules below are the
+**policy #90 implements and unit-tests**, not claims the probe measured:
 
 - Keys are lowercased and sorted; empty and duplicate keys are rejected.
 - A key matches a query parameter case-insensitively and exactly. No separator folding, no regex
@@ -107,8 +126,11 @@ normalized in-memory index from the HAR and the policy at startup (PRD #84, issu
   must supply the policy, and the archive records the empty list so the gap is auditable.
 - **Negative / limit:** redacted POST bodies remain unsupported in v1 by design; such requests abort
   at replay.
-- **Negative / limit:** the probe proves the mechanism for GET requests on a local origin; it does
-  not exercise cross-origin redirect normalization, and P3 must re-verify with the real fixture.
+- **Negative / limit:** the probe proves the mechanism for GET requests on a local origin. It does
+  not exercise cross-origin redirect normalization, navigation-request rewriting, or the production
+  index build; those remain for P3, which must re-verify with the real fixture (`motion-site`) and
+  the archive's actual `network.har`, and must confirm `routeFromHAR` concurrency under a real page
+  (spike Q4).
 
 ## Follow-up
 

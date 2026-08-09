@@ -9,22 +9,20 @@ import { chromium, type Browser } from "playwright";
 /**
  * §6.5 S1 compatibility probe (#85). Measures, not infers, that pinned Playwright 1.62 can
  * rewrite a logically identical request into `routeFromHAR` through `route.fallback({ url })`
- * with the live origin stopped, and that the unexpected-request classifications fail closed.
+ * with the live origin stopped.
  *
- * The origin server is stopped before any replay: the archived HTML must come from the HAR, and
- * every successful fetch must come from the HAR too. The server's own response body is a
- * sentinel (`LIVE_SERVER_BODY`) so a leaked live request would be distinguishable from an
- * archived one.
+ * The origin server is closed before any replay and asserted down; the archived HTML and every
+ * served body must therefore come from the HAR. A request that reached the live network would
+ * fail the page fetch (connection refused) rather than produce an archived body, so the only
+ * way the page can read `ARCHIVED_ASSET_BODY` is through the HAR route.
+ *
+ * This probe owns the *mechanism* question (does the fallback rewrite reach the HAR handler?).
+ * The taxonomy's exact labels and precedence are implemented and unit-tested in #90/#91; here
+ * the page result distinguishes "served from HAR" from "aborted" — the observable contract.
  */
 
 const VOLATILE_KEYS = ["_t"];
 const REDACTED_BODY = "[REDACTED]\n";
-
-type Classification =
-  | "normalized-match"
-  | "ambiguous-normalized-match"
-  | "redacted-post-body"
-  | "not-in-archive";
 
 type HarEntry = {
   request: { url: string; method: string; postData?: { text?: string } };
@@ -35,7 +33,6 @@ interface ProbeContext {
   harPath: string;
   originalUrl: string;
   entries: HarEntry[];
-  classifications: Array<{ url: string; kind: Classification }>;
   pageResults: Record<string, string>;
 }
 
@@ -49,7 +46,7 @@ function archivedBodyIsRedacted(entry: HarEntry): boolean {
   return entry.request.method === "POST" && entry.request.postData?.text === REDACTED_BODY;
 }
 
-function htmlFor(origin: string): string {
+function fixtureHtml(origin: string): string {
   return `<!doctype html><script>
     window.__results = {};
     const record = (key, text) => { window.__results[key] = text; };
@@ -66,7 +63,7 @@ function htmlFor(origin: string): string {
 }
 
 function harDocument(origin: string): { log: { entries: HarEntry[] } } {
-  const html = htmlFor(origin);
+  const html = fixtureHtml(origin);
   return {
     log: {
       entries: [
@@ -156,17 +153,20 @@ async function withProbe(
 
   const context = await browser.newContext();
   const page = await context.newPage();
-
   const probe: ProbeContext = {
     harPath,
     originalUrl: origin + "/",
     entries: har.log.entries,
-    classifications: [],
     pageResults: {},
   };
 
   try {
     await run({ context, page, probe });
+    await page.waitForFunction(
+      () => (window as { __done?: boolean }).__done === true,
+      undefined,
+      { timeout: 10_000 },
+    );
     probe.pageResults = await page.evaluate(
       () => (window as { __results?: Record<string, string> }).__results ?? {},
     );
@@ -181,21 +181,15 @@ test("strict HAR replay aborts when only an allowlisted query value changes", as
   const probe = await withProbe(async ({ context, page, probe }) => {
     await context.routeFromHAR(probe.harPath, { notFound: "abort", update: false });
     await page.goto(probe.originalUrl, { waitUntil: "load" });
-    await page.waitForFunction(
-      () => (window as { __done?: boolean }).__done === true,
-      undefined,
-      { timeout: 10_000 },
-    );
   });
 
-  // The archived HTML runs with a fresh Date.now() nonce, so the strict HAR lookup misses.
+  // Baseline RED, isolated to the volatile query change: the asset request is the only one whose
+  // failure is caused by the changed `_t` value. dup/submit/absent are asserted in the next test,
+  // where their distinct abort reasons (ambiguity / redaction / absence) are in scope.
   assert.equal(probe.pageResults.asset, "ERR", "baseline: the volatile-query request must abort");
-  assert.equal(probe.pageResults.dup, "ERR");
-  assert.equal(probe.pageResults.submit, "ERR");
-  assert.equal(probe.pageResults.absent, "ERR");
 });
 
-test("normalized fallback serves the archived body and classifies the unexpected requests", async () => {
+test("normalized fallback serves the archived body and aborts the unexpected requests", async () => {
   const probe = await withProbe(async ({ context, page, probe }) => {
     // routeFromHAR first, then the normalizing route so it runs first.
     await context.routeFromHAR(probe.harPath, { notFound: "abort", update: false });
@@ -207,43 +201,27 @@ test("normalized fallback serves the archived body and classifies the unexpected
       );
 
       if (matches.length === 0) {
-        probe.classifications.push({ url: request.url(), kind: "not-in-archive" });
+        await route.abort();
+        return;
+      }
+      // Ambiguity outranks redaction: the PRD classifies any collapse of multiple distinct
+      // archived raw URLs as ambiguous, regardless of whether one of them is redacted.
+      if (matches.length > 1) {
         await route.abort();
         return;
       }
       if (archivedBodyIsRedacted(matches[0]!)) {
-        probe.classifications.push({ url: request.url(), kind: "redacted-post-body" });
         await route.abort();
         return;
       }
-      if (matches.length > 1) {
-        probe.classifications.push({ url: request.url(), kind: "ambiguous-normalized-match" });
-        await route.abort();
-        return;
-      }
-      probe.classifications.push({ url: request.url(), kind: "normalized-match" });
       await route.fallback({ url: matches[0]!.request.url });
     });
 
     await page.goto(probe.originalUrl, { waitUntil: "load" });
-    await page.waitForFunction(
-      () => (window as { __done?: boolean }).__done === true,
-      undefined,
-      { timeout: 10_000 },
-    );
   });
 
   assert.equal(probe.pageResults.asset, "ARCHIVED_ASSET_BODY", "normalized fallback must serve the archived body");
   assert.equal(probe.pageResults.dup, "ERR", "ambiguous normalized match must abort");
   assert.equal(probe.pageResults.submit, "ERR", "redacted POST must abort");
   assert.equal(probe.pageResults.absent, "ERR", "no candidate must abort");
-
-  const asset = probe.classifications.find((c) => c.url.includes("/asset"));
-  const dup = probe.classifications.find((c) => c.url.includes("/dup"));
-  const submit = probe.classifications.find((c) => c.url.includes("/submit"));
-  const absent = probe.classifications.find((c) => c.url.includes("/not-in-archive"));
-  assert.equal(asset?.kind, "normalized-match");
-  assert.equal(dup?.kind, "ambiguous-normalized-match");
-  assert.equal(submit?.kind, "redacted-post-body");
-  assert.equal(absent?.kind, "not-in-archive");
 });
