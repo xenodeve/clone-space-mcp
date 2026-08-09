@@ -127,4 +127,28 @@ describe("the served page genuinely exercises every capability", () => {
     expect(map.mappings.length).toBeGreaterThan(0);
     expect(map.sources.length).toBeGreaterThan(0);
   });
+
+  test("the request-normalization page serves and declares exactly one volatile-key request", async () => {
+    const pageUrl = new URL("/request-normalization.html", servers.capability.url);
+    const pageResponse = await fetch(pageUrl);
+    expect(pageResponse.status).toBe(200);
+    const page = await pageResponse.text();
+    expect(page).toContain("data-fixture-marker=\"request-normalization\"");
+    expect(page).toContain("/request-normalization-endpoint?tag=capture&_t=");
+
+    // The script performs exactly one awaited fetch with one volatile key and one stable key.
+    const fetchCalls = (page.match(/fetch\(/g) ?? []).length;
+    expect(fetchCalls).toBe(1);
+
+    // The endpoint the page targets records the method + raw URL for the capture ground truth.
+    const endpointResponse = await fetch(new URL("/request-normalization-endpoint?tag=probe&_t=fixture", servers.capability.url));
+    expect(endpointResponse.status).toBe(200);
+    const observedResponse = await fetch(new URL("/__observed-request-urls", servers.capability.url));
+    const observed = (await observedResponse.json()) as Array<{ method: string; url: string }>;
+    const recorded = observed.at(-1);
+    expect(recorded).toEqual({
+      method: "GET",
+      url: expect.stringContaining("/request-normalization-endpoint?tag=probe&_t=fixture"),
+    });
+  });
 });

@@ -539,3 +539,45 @@ test("binds environment.json to the final checkpoint", async () => {
     "environment openedAt does not match the final checkpoint",
   );
 });
+
+test("captures the volatile-key policy and preserves the raw request evidence", async () => {
+  const pageUrl = new URL("/request-normalization.html", servers.capability.url);
+  const harPath = await captureHar({
+    browser,
+    url: pageUrl.href,
+    outDir: nextCaptureOutDir(),
+    volatileQueryKeys: ["_t"],
+  });
+
+  // The fixture server recorded the raw request (method + URL) it served for this page.
+  const observed = (await fetch(new URL("/__observed-request-urls", servers.capability.url)).then(
+    (response) => response.json(),
+  )) as Array<{ method: string; url: string }>;
+  const observedEntry = observed.find((entry) => entry.url.includes("/request-normalization-endpoint"));
+  assert.ok(observedEntry, "the fixture server never observed the request-normalization request");
+  assert.equal(observedEntry.method, "GET", "the observed request was not a GET");
+  const observedUrl = new URL(observedEntry.url);
+
+  const policy = JSON.parse(
+    readFileSync(join(dirname(harPath), "request-normalization.json"), "utf8"),
+  ) as { query: { volatileKeys: string[] } };
+  assert.deepEqual(policy.query.volatileKeys, ["_t"]);
+
+  // The raw HAR retains the full observed URL, including the volatile `_t` value.
+  const har = JSON.parse(readFileSync(harPath, "utf8"));
+  const entries = har.log.entries as HarEntry[];
+  const requestEntry = entries.find((entry) => entry.request.url === observedEntry.url);
+  assert.ok(requestEntry, "the HAR is missing the server-observed request");
+  const observedT = observedUrl.searchParams.get("_t");
+  assert.ok(observedT, "observed request is missing the volatile _t value");
+  assert.ok(requestEntry.request.url.includes(`_t=${observedT}`), "raw HAR URL lost the volatile _t value");
+  assert.equal(observedUrl.searchParams.get("tag"), "capture", "stable query parameter missing from observed request");
+
+  // The pure normalizer (the same one replay will use) removes exactly `_t` and nothing else.
+  const { normalizeRequestUrl } = await import("../../src/capture/request-normalization.ts");
+  assert.equal(
+    normalizeRequestUrl(observedEntry.url, ["_t"]),
+    `${observedUrl.origin}/request-normalization-endpoint?tag=capture`,
+    "normalization must remove only the allowlisted _t parameter",
+  );
+});
