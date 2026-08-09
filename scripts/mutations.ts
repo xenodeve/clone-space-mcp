@@ -272,4 +272,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "captureHar records budget-exceeded when the wall-clock cap is crossed",
   },
+  {
+    id: "termination-staged-file-required",
+    why: "Issue #104 follow-up — dropping the termination staged regular-file check let a capture publish an archive whose association names a missing or directory termination.json (it is written before validation, unlike commit, so it can and must be checked here).",
+    file: "src/capture/checkpoints.ts",
+    find: 'if (!(await isStagedRegularFile(stagingRoot, stagedDocument.termination as RunAssociation))) {',
+    replace: "if (false) {",
+    suite: "bun",
+    expect: "refuses when termination.json is missing",
+  },
 ];

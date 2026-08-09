@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>clone-space-mcp in-place live page termination fixture</title>
+  </head>
+  <body>
+    <main data-fixture-marker="in-place-live">
+      <section data-fixture-id="in-place-live">in-place live updates</section>
+      <div id="ticker" style="height: 40px"></div>
+    </main>
+
+    <script>
+      // Appends a fixed-height element directly to body in place (scrollHeight stays constant —
+      // the appended element is height:0 and fits) while the page keeps mutating. Only
+      // DOM-activity detection can stop the quiet-window rule; the wall-clock budget must be
+      // what ends capture.
+      let tick = 0;
+      setInterval(() => {
+        tick += 1;
+        const line = document.createElement("div");
+        line.textContent = "tick " + tick;
+        line.style.height = "0"; // height:0 so the document does not grow
+        document.body.append(line);
+        window.__tick = tick;
+      }, 150);
+      window.__tick = 0;
+    </script>
+  </body>
+</html>

@@ -633,3 +633,29 @@ test("an infinite-scroll page terminates via the wall-clock budget, not forever"
   assert.equal(termination.budgets.wallClockMs, 1500);
   assert.ok(termination.stats.scrolls > 0, "the sweep must have scrolled");
 });
+
+test("an in-place live page is not misreported as complete before its budget fires", async () => {
+  const url = new URL("/in-place-live.html", servers.capability.url);
+  const harPath = await captureHar({
+    browser,
+    url: url.href,
+    outDir: nextCaptureOutDir(),
+    budgets: { wallClockMs: 1000 },
+  });
+
+  const termination = JSON.parse(
+    readFileSync(join(dirname(harPath), "termination.json"), "utf8"),
+  ) as {
+    outcome: string;
+    reason?: string;
+    stats: { sweepCheckpoints: number };
+  };
+  // The page never grows scrollHeight, so without DOM-activity detection the quiet-window rule
+  // would fire at ~3 checkpoints and label this COMPLETE. With it, the wall clock ends capture.
+  assert.equal(termination.outcome, "incomplete", "an in-place live page must be incomplete, not complete");
+  assert.equal(termination.reason, "budget-exceeded");
+  assert.ok(
+    termination.stats.sweepCheckpoints < 3,
+    "the quiet-window rule must not have fired on a still-mutating page",
+  );
+});

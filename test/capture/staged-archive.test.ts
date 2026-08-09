@@ -31,6 +31,15 @@ function writeValidRequestNormalization(root: string): void {
   });
 }
 
+function writeValidTermination(root: string): void {
+  writeJson(root, "termination.json", {
+    schemaVersion: 1,
+    outcome: "complete",
+    budgets: { wallClockMs: 30000, maxBytes: 67108864, maxNodes: 100000, maxHeight: 200000, maxEvents: 20000 },
+    stats: { sweepCheckpoints: 3, scrolls: 4, wallClockMs: 1200, bytes: 100, nodes: 500, height: 2400 },
+  });
+}
+
 function writeCoherentStaging(root: string, capabilities: unknown = {
   schemaVersion: 1,
   flags: {
@@ -61,6 +70,7 @@ function writeCoherentStaging(root: string, capabilities: unknown = {
     schemaVersion: 1,
     query: { volatileKeys: [], keyMatch: "case-insensitive-exact" },
   });
+  writeValidTermination(root);
   writeJson(root, "environment.json", {
     schemaVersion: 1,
     checkpoint: {
@@ -105,6 +115,7 @@ test("accepts a coherent staging directory", async () => {
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -148,6 +159,7 @@ test("refuses when the binding names the final checkpoint but a different docume
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -187,6 +199,7 @@ test("refuses when the binding names the final checkpoint but a different opened
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -209,6 +222,7 @@ test("refuses when checkpoints.json is missing", async () => {
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -248,6 +262,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -319,6 +334,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -369,6 +385,7 @@ test("refuses when the binding names a real checkpoint that is not the final one
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -407,6 +424,7 @@ test("refuses when the HAR named by the association is not present", async () =>
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -446,6 +464,7 @@ test("accepts a coherent staging directory whose HAR is present", async () => {
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -484,6 +503,7 @@ test("refuses when the HAR association names the staging root itself", async () 
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -523,6 +543,7 @@ test("refuses when the HAR association names a directory", async () => {
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -564,6 +585,7 @@ test("refuses when the HAR association resolves outside the staging root", async
     });
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
+    writeValidTermination(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -915,5 +937,57 @@ test("refuses when the policy collapses distinct archived requests (ambiguity)",
     expect(result).toEqual({ ok: false });
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses when termination.json is missing", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeCoherentStaging(stagingRoot);
+    rmSync(join(stagingRoot, "termination.json"));
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses when termination.json is not a regular file", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeCoherentStaging(stagingRoot);
+    rmSync(join(stagingRoot, "termination.json"));
+    mkdirSync(join(stagingRoot, "termination.json"));
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses when termination.json resolves outside the staging root", async () => {
+  const stagingRoot = makeStagingRoot();
+  const outsideDir = mkdtempSync(join(tmpdir(), "clone-space-termination-outside-"));
+  try {
+    writeCoherentStaging(stagingRoot);
+    rmSync(join(stagingRoot, "termination.json"));
+    writeFileSync(join(outsideDir, "termination.json"), "{}");
+    symlinkSync(outsideDir, join(stagingRoot, "termination-link"), "junction");
+    const doc = JSON.parse(readFileSync(join(stagingRoot, "checkpoints.json"), "utf8")) as {
+      termination: { path: string; scope: string };
+    };
+    doc.termination = { path: "termination-link/termination.json", scope: "run" };
+    writeJson(stagingRoot, "checkpoints.json", doc);
+
+    const result = await validateStagedArchive(stagingRoot);
+
+    expect(result).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
   }
 });
