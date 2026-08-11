@@ -5,6 +5,7 @@ import {
   type HarRequestEntry,
   validateRequestNormalization,
 } from "./request-normalization.ts";
+import { validateTargets } from "./targets.ts";
 
 const SUPPORTED_SCHEMA_VERSION = 1;
 const REQUIRED_CAPABILITY_FLAGS = [
@@ -145,6 +146,7 @@ export function validateCheckpoints(doc: unknown): { ok: true } | { ok: false } 
   if (!isRunAssociation(checkpointsDocument.capabilities)) return { ok: false };
   if (!isRunAssociation(checkpointsDocument.requestNormalization)) return { ok: false };
   if (!isRunAssociation(checkpointsDocument.termination)) return { ok: false };
+  if (!isRunAssociation(checkpointsDocument.targets)) return { ok: false };
   if (!isRunAssociation(checkpointsDocument.commit)) return { ok: false };
 
   let previousOpenedAt: number | undefined;
@@ -187,6 +189,17 @@ export async function validateStagedArchive(
   // termination.json is written before validation (unlike commit.json, which is written after
   // because it must hash the validated bytes), so it can and must be a staged regular file here.
   if (!(await isStagedRegularFile(stagingRoot, stagedDocument.termination as RunAssociation))) {
+    return { ok: false };
+  }
+  // §6.9 targets.json, same publication order as termination.json: written before validation, so
+  // it is a staged regular file here and its contents can be checked before anything is renamed.
+  if (!(await isStagedRegularFile(stagingRoot, stagedDocument.targets as RunAssociation))) {
+    return { ok: false };
+  }
+  const targetsDoc = await readJsonFile(
+    join(stagingRoot, (stagedDocument.targets as RunAssociation).path),
+  );
+  if (targetsDoc === undefined || !validateTargets(targetsDoc).ok) {
     return { ok: false };
   }
 

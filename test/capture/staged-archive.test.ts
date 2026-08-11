@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { validateStagedArchive } from "../../src/capture/checkpoints.ts";
 
 function makeStagingRoot(): string {
@@ -56,6 +56,7 @@ function writeCoherentStaging(root: string, capabilities: unknown = {
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
     termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
@@ -71,6 +72,7 @@ function writeCoherentStaging(root: string, capabilities: unknown = {
     query: { volatileKeys: [], keyMatch: "case-insensitive-exact" },
   });
   writeValidTermination(root);
+  writeValidTargets(root);
   writeJson(root, "environment.json", {
     schemaVersion: 1,
     checkpoint: {
@@ -95,6 +97,7 @@ test("accepts a coherent staging directory", async () => {
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -116,6 +119,7 @@ test("accepts a coherent staging directory", async () => {
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -139,6 +143,7 @@ test("refuses when the binding names the final checkpoint but a different docume
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -160,6 +165,7 @@ test("refuses when the binding names the final checkpoint but a different docume
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -179,6 +185,7 @@ test("refuses when the binding names the final checkpoint but a different opened
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -200,6 +207,7 @@ test("refuses when the binding names the final checkpoint but a different opened
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -223,6 +231,7 @@ test("refuses when checkpoints.json is missing", async () => {
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -242,6 +251,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -263,6 +273,7 @@ test("refuses when checkpoints.json fails schema validation", async () => {
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -282,6 +293,7 @@ test("refuses when environment.json has no coherent final-checkpoint binding", a
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -314,6 +326,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -335,6 +348,7 @@ test("refuses when a binding names a checkpointId that is not present in checkpo
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -359,6 +373,7 @@ test("refuses when the binding names a real checkpoint that is not the final one
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -386,6 +401,7 @@ test("refuses when the binding names a real checkpoint that is not the final one
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -405,6 +421,7 @@ test("refuses when the HAR named by the association is not present", async () =>
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -425,6 +442,7 @@ test("refuses when the HAR named by the association is not present", async () =>
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -444,6 +462,7 @@ test("accepts a coherent staging directory whose HAR is present", async () => {
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -465,6 +484,7 @@ test("accepts a coherent staging directory whose HAR is present", async () => {
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -484,6 +504,7 @@ test("refuses when the HAR association names the staging root itself", async () 
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -504,6 +525,7 @@ test("refuses when the HAR association names the staging root itself", async () 
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -523,6 +545,7 @@ test("refuses when the HAR association names a directory", async () => {
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -544,6 +567,7 @@ test("refuses when the HAR association names a directory", async () => {
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -564,6 +588,7 @@ test("refuses when the HAR association resolves outside the staging root", async
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       checkpoints: [
         {
           checkpointId: "cp:0",
@@ -586,6 +611,7 @@ test("refuses when the HAR association resolves outside the staging root", async
     writeValidCapabilities(stagingRoot);
     writeValidRequestNormalization(stagingRoot);
     writeValidTermination(stagingRoot);
+    writeValidTargets(stagingRoot);
 
     const result = await validateStagedArchive(stagingRoot);
 
@@ -989,5 +1015,79 @@ test("refuses when termination.json resolves outside the staging root", async ()
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
     rmSync(outsideDir, { recursive: true, force: true });
+  }
+});
+
+function writeValidTargets(root: string): void {
+  writeJson(root, "targets.json", {
+    schemaVersion: 1,
+    targets: [{ targetId: "OOPIF-1", type: "iframe", openedAt: 10, closedAt: 20 }],
+  });
+}
+
+/**
+ * §6.9. The inventory is supplemental evidence, but a published archive that claims to carry it
+ * and does not — or carries one that says a target closed before it opened — is describing a
+ * browser state that never existed. Publication refuses rather than shipping it.
+ */
+test("refuses when the targets association is missing", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeCoherentStaging(stagingRoot);
+    writeValidTargets(stagingRoot);
+    const doc = JSON.parse(readFileSync(join(stagingRoot, "checkpoints.json"), "utf8"));
+    delete doc.targets;
+    writeJson(stagingRoot, "checkpoints.json", doc);
+
+    expect(await validateStagedArchive(stagingRoot)).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses when targets.json is malformed", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeCoherentStaging(stagingRoot);
+    writeJson(stagingRoot, "targets.json", { schemaVersion: 1, targets: "not-an-array" });
+
+    expect(await validateStagedArchive(stagingRoot)).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+test("refuses a target that closed before it opened", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeCoherentStaging(stagingRoot);
+    writeJson(stagingRoot, "targets.json", {
+      schemaVersion: 1,
+      targets: [{ targetId: "OOPIF-1", type: "iframe", openedAt: 20, closedAt: 10 }],
+    });
+
+    expect(await validateStagedArchive(stagingRoot)).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The containment half of the association check, and the only case the inventory validation below
+ * it cannot cover: a path that escapes the staging root would otherwise be read and — if it
+ * happened to be a well-formed inventory — accepted as this run's evidence.
+ */
+test("refuses when the targets association resolves outside the staging root", async () => {
+  const stagingRoot = makeStagingRoot();
+  try {
+    writeCoherentStaging(stagingRoot);
+    writeJson(dirname(stagingRoot), "outside-targets.json", { schemaVersion: 1, targets: [] });
+    const doc = JSON.parse(readFileSync(join(stagingRoot, "checkpoints.json"), "utf8"));
+    doc.targets = { path: "../outside-targets.json", scope: "run" };
+    writeJson(stagingRoot, "checkpoints.json", doc);
+
+    expect(await validateStagedArchive(stagingRoot)).toEqual({ ok: false });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
   }
 });

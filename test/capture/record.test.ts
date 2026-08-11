@@ -145,6 +145,7 @@ test("captureHar configures and drives a browser context", async () => {
       capabilities: { path: "capabilities.json", scope: "run" },
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
+      targets: { path: "targets.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
@@ -1252,5 +1253,116 @@ test("captureHar records budget-exceeded when the wall-clock cap is crossed", as
     expect(termination.reason).toBe("budget-exceeded");
   } finally {
     rmSync(dirname(root), { recursive: true, force: true });
+  }
+});
+
+/**
+ * A browser-level CDP session (§6.9). Chromium emits `Target.targetCreated` for targets that
+ * already exist the moment discovery is switched on, so the fake does the same: enabling
+ * discovery replays the scripted events through whatever handlers were registered.
+ */
+function fakeBrowserCdpSession(events: readonly { method: string; payload: unknown }[]) {
+  const handlers = new Map<string, (payload: unknown) => void>();
+  const sent: string[] = [];
+  return {
+    sent,
+    open: async () => ({
+      async send(method: string) {
+        sent.push(method);
+        if (method === "Target.setDiscoverTargets") {
+          for (const event of events) handlers.get(event.method)?.(event.payload);
+        }
+        if (method === "Target.getTargets") return { targetInfos: [] };
+        return {};
+      },
+      on(method: string, handler: (payload: unknown) => void) {
+        handlers.set(method, handler);
+      },
+    }),
+  };
+}
+
+test("captureHar publishes the targets discovered over the browser-level CDP session", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-"));
+  const session = fakeBrowserCdpSession([
+    // The opener first, as Chromium reports it. `validateTargets` refuses a dangling openerId, so
+    // an inventory that named a parent it never recorded would fail publication — loudly, rather
+    // than by quietly dropping the relationship.
+    {
+      method: "Target.targetCreated",
+      payload: { targetInfo: { targetId: "PAGE-0", type: "page", url: "https://example.com" } },
+    },
+    {
+      method: "Target.targetCreated",
+      payload: {
+        targetInfo: {
+          targetId: "OOPIF-1",
+          type: "iframe",
+          url: "https://cdn.example.com/frame.html",
+          openerId: "PAGE-0",
+        },
+      },
+    },
+  ]);
+  const browser = {
+    ...makeHarFakeBrowser({ log: { entries: [] } }),
+    newBrowserCDPSession: session.open,
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    // Discovery has to be switched on, or nothing is ever reported.
+    expect(session.sent).toContain("Target.setDiscoverTargets");
+
+    const targets = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8"));
+    expect(targets.schemaVersion).toBe(1);
+    expect(targets.targets).toHaveLength(2);
+    // The shape is `targets.ts`'s `TargetEntry`, not whatever CDP happened to send, and the
+    // opener relationship survives into the archive.
+    expect(targets.targets[1]).toMatchObject({
+      targetId: "OOPIF-1",
+      type: "iframe",
+      url: "https://cdn.example.com/frame.html",
+      openerId: "PAGE-0",
+    });
+    // Capture-relative, like every other timestamp in the archive.
+    expect(typeof targets.targets[1].openedAt).toBe("number");
+    expect(targets.targets[1].openedAt).toBeGreaterThanOrEqual(0);
+
+    expect(statSync(join(outDir, "targets.json")).mode & 0o600).toBe(0o600);
+    expect(JSON.parse(readFileSync(join(outDir, "checkpoints.json"), "utf8")).targets).toEqual({
+      path: "targets.json",
+      scope: "run",
+    });
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar records closedAt for a target that opens and then goes away", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-closed-"));
+  const session = fakeBrowserCdpSession([
+    {
+      method: "Target.targetCreated",
+      payload: { targetInfo: { targetId: "POPUP-1", type: "page", url: "https://example.com/p" } },
+    },
+    { method: "Target.targetDestroyed", payload: { targetId: "POPUP-1" } },
+  ]);
+  const browser = {
+    ...makeHarFakeBrowser({ log: { entries: [] } }),
+    newBrowserCDPSession: session.open,
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    const [target] = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8")).targets;
+    expect(target.targetId).toBe("POPUP-1");
+    // A target that closed is evidence about a window that existed, not a target that never did.
+    expect(typeof target.closedAt).toBe("number");
+    expect(target.closedAt).toBeGreaterThanOrEqual(target.openedAt);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
   }
 });
