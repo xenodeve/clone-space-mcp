@@ -288,7 +288,7 @@ export const MUTATIONS: Mutation[] = [
     find: "if (!isRunAssociation(checkpointsDocument.targets)) return { ok: false };",
     replace: "if (false) return { ok: false };",
     suite: "bun",
-    expect: "refuses when the targets association is missing",
+    expect: "rejects a document missing the run-level targets association",
   },
   {
     id: "targets-containment-unchecked",

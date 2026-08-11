@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { validateStagedArchive } from "../../src/capture/checkpoints.ts";
 
 function makeStagingRoot(): string {
@@ -598,7 +598,11 @@ test("refuses when the HAR association resolves outside the staging root", async
         },
       ],
     });
-    writeFileSync(join(outsideDir, "outside.har"), "");
+    // A *valid* HAR, so containment is the only thing that can refuse this archive. An empty file
+    // here made the case pass under a disabled containment check — refused by HAR parsing instead —
+    // so the test never isolated the guard it names.
+    writeFileSync(join(outsideDir, "outside.har"), `${JSON.stringify({ log: { entries: [] } })}
+`);
     symlinkSync(outsideDir, join(stagingRoot, "link"), "junction");
     writeJson(stagingRoot, "environment.json", {
       schemaVersion: 1,
@@ -1073,21 +1077,26 @@ test("refuses a target that closed before it opened", async () => {
 });
 
 /**
- * The containment half of the association check, and the only case the inventory validation below
- * it cannot cover: a path that escapes the staging root would otherwise be read and — if it
- * happened to be a well-formed inventory — accepted as this run's evidence.
+ * The containment half of the association check, and the only case the checks around it cannot
+ * cover. A `../` path never reaches here — the pure validator rejects it first — so the probe has
+ * to be a symlink: the path stays inside the archive, `lstat` refuses to follow it, and the read
+ * below would otherwise follow it and accept an inventory from outside as this run's evidence.
  */
 test("refuses when the targets association resolves outside the staging root", async () => {
   const stagingRoot = makeStagingRoot();
+  const outsideDir = mkdtempSync(join(tmpdir(), "clone-space-targets-outside-"));
   try {
     writeCoherentStaging(stagingRoot);
-    writeJson(dirname(stagingRoot), "outside-targets.json", { schemaVersion: 1, targets: [] });
+    rmSync(join(stagingRoot, "targets.json"));
+    writeJson(outsideDir, "targets.json", { schemaVersion: 1, targets: [] });
+    symlinkSync(outsideDir, join(stagingRoot, "targets-link"), "junction");
     const doc = JSON.parse(readFileSync(join(stagingRoot, "checkpoints.json"), "utf8"));
-    doc.targets = { path: "../outside-targets.json", scope: "run" };
+    doc.targets.path = "targets-link/targets.json";
     writeJson(stagingRoot, "checkpoints.json", doc);
 
     expect(await validateStagedArchive(stagingRoot)).toEqual({ ok: false });
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
   }
 });

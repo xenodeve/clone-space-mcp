@@ -782,10 +782,36 @@ test("rejects a document missing the run-level termination association", () => {
     capabilities: { path: "capabilities.json", scope: "run" },
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
+    targets: { path: "targets.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
         primaryTarget: { documentEpoch: "epoch:456789ABCDEF0123456789ABCDEF0123" },
+        openedAt: 0,
+        artifacts: [],
+      },
+    ],
+  });
+
+  expect(result).toEqual({ ok: false });
+});
+
+/**
+ * §6.9. Omits only `targets`, so this case isolates that association guard: every other required
+ * association is present and valid, and nothing else can be the reason it refuses.
+ */
+test("rejects a document missing the run-level targets association", () => {
+  const result = validateCheckpoints({
+    schemaVersion: 1,
+    har: { path: "network.har", scope: "run" },
+    capabilities: { path: "capabilities.json", scope: "run" },
+    requestNormalization: { path: "request-normalization.json", scope: "run" },
+    commit: { path: "commit.json", scope: "run" },
+    termination: { path: "termination.json", scope: "run" },
+    checkpoints: [
+      {
+        checkpointId: "cp:0",
+        primaryTarget: { documentEpoch: "epoch:56789ABCDEF0123456789ABCDEF01234" },
         openedAt: 0,
         artifacts: [],
       },
@@ -824,6 +850,7 @@ test("rejects a termination association with an archive escape", () => {
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
     termination: { path: "../termination.json", scope: "run" },
+    targets: { path: "targets.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
