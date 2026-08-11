@@ -101,15 +101,26 @@ export function markClosed(entries: TargetEntry[], targetId: string, closedAt: n
   );
 }
 
+/**
+ * What a stored entry may carry, which is not the same set `normalizeType` recognises: everything
+ * it does not recognise becomes "other", so refusing "other" here would refuse documents this
+ * module produced — Chromium's own `browser` target among them.
+ */
+const STORED_TYPES: ReadonlySet<string> = new Set([...KNOWN_TYPES, "other"]);
+
 function isTargetEntry(value: unknown): value is TargetEntry {
   if (!isRecord(value)) return false;
   if (typeof value.targetId !== "string" || value.targetId.length === 0) return false;
-  if (typeof value.type !== "string" || !KNOWN_TYPES.has(value.type)) return false;
-  if (typeof value.openedAt !== "number" || !Number.isFinite(value.openedAt)) return false;
+  if (typeof value.type !== "string" || !STORED_TYPES.has(value.type)) return false;
+  // Capture-relative, so a negative value cannot have come from a run.
+  if (typeof value.openedAt !== "number" || !Number.isFinite(value.openedAt) || value.openedAt < 0) {
+    return false;
+  }
   if (value.url !== undefined && typeof value.url !== "string") return false;
   if (value.openerId !== undefined && typeof value.openerId !== "string") return false;
   if (value.closedAt !== undefined) {
     if (typeof value.closedAt !== "number" || !Number.isFinite(value.closedAt)) return false;
+    if (value.closedAt < 0) return false;
     if (value.closedAt < value.openedAt) return false;
   }
   return true;

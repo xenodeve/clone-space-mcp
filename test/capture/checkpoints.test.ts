@@ -829,6 +829,7 @@ test("rejects a document whose termination scope is not run", () => {
     requestNormalization: { path: "request-normalization.json", scope: "run" },
     commit: { path: "commit.json", scope: "run" },
     termination: { path: "termination.json", scope: "checkpoint" },
+    targets: { path: "targets.json", scope: "run" },
     checkpoints: [
       {
         checkpointId: "cp:0",
