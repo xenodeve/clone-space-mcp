@@ -183,6 +183,26 @@ export const MUTATIONS: Mutation[] = [
     expect: "ignores dependency events delivered after capabilities are observed",
   },
   {
+    id: "target-creation-observation-boundary",
+    why: "#117 review — the discovery listeners shipped without the boundary the capability flags have, so a target Chromium reported during context.close() was published as if the page had opened it.",
+    file: "src/capture/record.ts",
+    find: `if (!observingDependencies) return;
+          const info = (payload as { targetInfo?: CdpTargetPayload }).targetInfo;`,
+    replace: "const info = (payload as { targetInfo?: CdpTargetPayload }).targetInfo;",
+    suite: "bun",
+    expect: "stops recording targets once the observation window closes",
+  },
+  {
+    id: "target-destruction-observation-boundary",
+    why: "#117 review — same boundary on the destroy path: closing the context destroys every target it owns, and an unguarded handler stamps closedAt for our own teardown.",
+    file: "src/capture/record.ts",
+    find: `if (!observingDependencies) return;
+          const targetId = (payload as { targetId?: unknown }).targetId;`,
+    replace: "const targetId = (payload as { targetId?: unknown }).targetId;",
+    suite: "bun",
+    expect: "does not close a target on a destroy that arrives after the observation window",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",

@@ -1266,6 +1266,9 @@ function fakeBrowserCdpSession(events: readonly { method: string; payload: unkno
   const sent: string[] = [];
   return {
     sent,
+    emit(method: string, payload: unknown) {
+      handlers.get(method)?.(payload);
+    },
     open: async () => ({
       async send(method: string) {
         sent.push(method);
@@ -1279,6 +1282,30 @@ function fakeBrowserCdpSession(events: readonly { method: string; payload: unkno
         handlers.set(method, handler);
       },
     }),
+  };
+}
+
+// Chromium keeps reporting targets while the context tears down. This wraps a fake browser so a
+// chosen event arrives during `context.close()` — after `observingDependencies` has been cleared
+// and before the inventory is serialized.
+function browserEmittingDuringClose(
+  session: ReturnType<typeof fakeBrowserCdpSession>,
+  event: { method: string; payload: unknown },
+) {
+  const base = makeHarFakeBrowser({ log: { entries: [] } });
+  return {
+    ...base,
+    newBrowserCDPSession: session.open,
+    async newContext(options: { recordHar: { path: string } }) {
+      const context = await base.newContext(options);
+      return {
+        ...context,
+        async close() {
+          session.emit(event.method, event.payload);
+          await context.close();
+        },
+      };
+    },
   };
 }
 
@@ -1362,6 +1389,57 @@ test("captureHar records closedAt for a target that opens and then goes away", a
     // A target that closed is evidence about a window that existed, not a target that never did.
     expect(typeof target.closedAt).toBe("number");
     expect(target.closedAt).toBeGreaterThanOrEqual(target.openedAt);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar stops recording targets once the observation window closes", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-boundary-"));
+  const session = fakeBrowserCdpSession([
+    {
+      method: "Target.targetCreated",
+      payload: { targetInfo: { targetId: "PAGE-0", type: "page", url: "https://example.com" } },
+    },
+  ]);
+  // The capabilities gathered from the page stop at `observingDependencies = false`; the inventory
+  // has to stop at the same instant, or it attributes our own teardown to the page.
+  const browser = browserEmittingDuringClose(session, {
+    method: "Target.targetCreated",
+    payload: { targetInfo: { targetId: "TEARDOWN-1", type: "page", url: "https://example.com/late" } },
+  });
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    const targets = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8"));
+    expect(targets.targets.map((entry: { targetId: string }) => entry.targetId)).toEqual(["PAGE-0"]);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar does not close a target on a destroy that arrives after the observation window", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-late-destroy-"));
+  const session = fakeBrowserCdpSession([
+    {
+      method: "Target.targetCreated",
+      payload: { targetInfo: { targetId: "PAGE-0", type: "page", url: "https://example.com" } },
+    },
+  ]);
+  // Closing the context destroys every target it owns. Recording that as a `closedAt` would report
+  // our own teardown as a window the page closed.
+  const browser = browserEmittingDuringClose(session, {
+    method: "Target.targetDestroyed",
+    payload: { targetId: "PAGE-0" },
+  });
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    const [target] = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8")).targets;
+    expect(target.targetId).toBe("PAGE-0");
+    expect(target.closedAt).toBeUndefined();
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }

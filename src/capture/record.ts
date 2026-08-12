@@ -269,14 +269,24 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // OOPIFs and workers the navigation itself produced are still reported. Opened lazily — a
       // browser without a session-level API leaves the inventory empty rather than failing capture,
       // because this evidence is supplemental to the primary single-document layout.
+      //
+      // Both handlers respect `observingDependencies`, so the inventory describes the observation
+      // window rather than our own teardown. That boundary is on delivery time, not occurrence
+      // time: this is a browser-level session, so a destroy the page caused just before the
+      // boundary can be delivered after it and lose its `closedAt`. The result is coarser evidence
+      // — an absent `closedAt` says the target was still open when the window closed — never a
+      // false one. Deliverable 2 of #117, a `Target.getTargets` snapshot taken at the boundary, is
+      // what closes that gap, because a recorded target missing from the snapshot is known closed.
       if (options.browser.newBrowserCDPSession !== undefined) {
         const browserCdp = await options.browser.newBrowserCDPSession();
         browserCdp.on("Target.targetCreated", (payload) => {
+          if (!observingDependencies) return;
           const info = (payload as { targetInfo?: CdpTargetPayload }).targetInfo;
           if (info === undefined) return;
           targets = [...targets, targetEntryFromCreated(info, performance.now() - runStartedAt)];
         });
         browserCdp.on("Target.targetDestroyed", (payload) => {
+          if (!observingDependencies) return;
           const targetId = (payload as { targetId?: unknown }).targetId;
           if (typeof targetId !== "string") return;
           // A destroy for a target discovery never reported is not evidence of anything, and
