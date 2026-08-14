@@ -215,3 +215,65 @@ test("refuses to reach a live origin for what the archive is missing", async () 
     await servers.stop();
   }
 });
+
+/**
+ * #155. The test above proves the no-live-network guarantee on the path where **no** entry is
+ * unservable — and on that path `replayArchive` never registers its route at all, so it exercises
+ * the code as it was before this change. Every other request now passes through `route.fallback()`
+ * instead of reaching `routeFromHAR` directly, and if `fallback()` ever stopped deferring, the
+ * request would leak to the internet with nothing watching. This installs the handler and repeats
+ * the measurement, with the origin **up**.
+ */
+test("still refuses a live origin when the unservable handler is installed", async () => {
+  const servers: FixtureServers = await startFixtureServers();
+  const archive = join(tempDir, `archive-${(archiveCounter += 1)}`);
+  try {
+    await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+
+    const harPath = join(archive, "network.har");
+    const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+      log: { entries: { request: { url: string }; response: Record<string, unknown> }[] };
+    };
+    // One same-origin asset kept, with no response — that is what installs the handler. Everything
+    // else the page asks for is dropped, so it can only come from the archive or the live server.
+    const asset = har.log.entries.find((entry) => /\.(css|js)(\?|$)/.test(entry.request.url));
+    assert.ok(asset !== undefined, "the fixture capture recorded no css or js asset");
+    asset.response = {
+      status: -1,
+      statusText: "",
+      httpVersion: "",
+      headers: [],
+      content: { size: -1, mimeType: "x-unknown" },
+    };
+    har.log.entries = [har.log.entries[0]!, asset];
+    writeFileSync(harPath, JSON.stringify(har));
+
+    const replay = await replayArchive({ archive, browser: browser as never });
+    try {
+      assert.equal(replay.unservable, 1, "the handler was not installed, so this proves nothing");
+      // The handler's own path: an asset the live server would serve, refused.
+      assert.ok(
+        replay.aborted.includes(asset.request.url),
+        `the unservable asset was not refused. aborted=${JSON.stringify(replay.aborted)}`,
+      );
+      // The fallback path: a different same-origin asset, dropped from the HAR entirely, must also
+      // be refused. If `fallback()` stopped deferring to the HAR router, this one would be fetched
+      // from the origin that is still listening, and nothing else in the suite would notice.
+      const origin = new URL(servers.primary.url).origin;
+      const otherRefused = replay.aborted.find(
+        (candidate) =>
+          candidate !== asset.request.url &&
+          candidate.startsWith(origin) &&
+          /\.(css|js|png|svg)(\?|$)/.test(candidate),
+      );
+      assert.ok(
+        otherRefused !== undefined,
+        `fallback reached the live server instead of the archive. aborted=${JSON.stringify(replay.aborted)}`,
+      );
+    } finally {
+      await replay.close();
+    }
+  } finally {
+    await servers.stop();
+  }
+});

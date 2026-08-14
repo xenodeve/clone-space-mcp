@@ -526,4 +526,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "still serves a URL the archive has a good entry for, alongside a bad one",
   },
+  {
+    id: "fallback-continues-to-the-live-network",
+    why: "#155 - every request that is not unservable now passes through this handler. `continue()` sends it to the network instead of deferring to the HAR router, which breaks the guarantee the whole archive rests on and looks identical offline. Only a test with the origin still listening can tell the two apart.",
+    file: "src/replay/replay.ts",
+    find: "      await route.fallback();",
+    replace: "      await (route as unknown as { continue(): Promise<void> }).continue();",
+    suite: "browser",
+    expect: "still refuses a live origin when the unservable handler is installed",
+  },
 ];
