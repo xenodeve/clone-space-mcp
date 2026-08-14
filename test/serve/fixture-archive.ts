@@ -3,6 +3,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
 
+/**
+ * Which `page.evaluate` call this is, decided by **what is being evaluated** rather than by how
+ * many times it has been called (#140). A counter makes a fake's answers depend on the number of
+ * `evaluate` calls production code happens to make, which is not part of any contract — adding one
+ * anywhere in `captureHar` silently re-points every later one. Measured on #114: two added calls
+ * broke four tests that had nothing to do with the feature.
+ */
+export function isSweepEvaluate(arg: unknown): boolean {
+  return typeof arg === "object" && arg !== null && "budgets" in arg;
+}
+
+/** A fake handed an argument it does not recognise must fail loudly, not answer the wrong slot. */
+export function refuseUnknownEvaluate(arg: unknown): never {
+  throw new Error(`fake browser: unrecognised evaluate argument ${JSON.stringify(arg)}`);
+}
+
+
 const SWEEP_EVALUATE_RESULT = {
   sweepCheckpoints: 2,
   scrolls: 4,
@@ -45,7 +62,6 @@ export function fakeBrowser(har: unknown) {
     }),
     async newPage() {
       let pageUrl = "";
-      let evaluation = 0;
       return {
         localStorage: { async items() { return []; } },
         sessionStorage: { async items() { return []; } },
@@ -56,9 +72,9 @@ export function fakeBrowser(har: unknown) {
         url() {
           return pageUrl;
         },
-        async evaluate<Result>() {
-          evaluation += 1;
-          if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+        async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+          if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+          if (arg !== undefined) refuseUnknownEvaluate(arg);
           return ENV_EVALUATE_RESULT as Result;
         },
       };
