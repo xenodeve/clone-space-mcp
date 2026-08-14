@@ -15,6 +15,7 @@ re-deriving it. A decision that overturns an earlier one marks the old ADR **Sup
 | [0006](0006-run-scoped-archive-artifacts-and-capability-flags.md) | Run-scoped archive artifacts, and the §6.4 capability contract | Capture / archive integrity | Accepted — contract via #60, implementation via #61–#64 |
 | [0007](0007-normalized-har-fallback-for-logically-identical-requests.md) | Normalized HAR fallback for logically identical requests | Capture / replay / archive contract | Accepted — implemented by #85–#93 |
 | [0008](0008-target-discovery-is-enabled-after-navigation.md) | Target discovery is enabled after navigation, and what that costs | Capture / §6.9 target inventory | Accepted — records the #117 ordering and its known omission (#122) |
+| [0009](0009-response-bodies-are-not-redactable.md) | Response bodies are not redactable, and what that obliges instead | Capture / redaction / tool surface | Accepted — closes #127 finding 3; the choice is archive or not |
 
 ## Decisions that will need an ADR before the code lands
 
