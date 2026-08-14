@@ -9,6 +9,15 @@ import {
   type StorageAllowlist,
 } from "./environment.ts";
 import { validateStagedArchive } from "./checkpoints.ts";
+import {
+  TARGETS_SCHEMA_VERSION,
+  appendDiscovered,
+  markClosed,
+  reconcileWithSnapshot,
+  type CdpTargetPayload,
+  type TargetEntry,
+  type TargetsV1,
+} from "./targets.ts";
 import { redactHarArchive } from "./redact.ts";
 import {
   buildCommit,
@@ -84,6 +93,15 @@ interface CaptureHarContext {
   close(): Promise<void>;
 }
 
+/**
+ * The browser-level CDP session §6.9 needs. It is separate from the page session because target
+ * discovery reports OOPIFs, popups and workers that no page session can see.
+ */
+interface CaptureHarBrowserCdpSession {
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  on(event: string, handler: (payload: unknown) => void): void;
+}
+
 interface CaptureHarBrowser {
   version(): string;
   newContext(options: Partial<ReplayContext> & {
@@ -93,10 +111,16 @@ interface CaptureHarBrowser {
       content: "attach";
     };
   }): Promise<CaptureHarContext>;
+  /**
+   * Optional on purpose. A fake browser in a unit test has no browser-level session, and capture
+   * must still complete rather than fail on a capability the archive treats as supplemental.
+   */
+  newBrowserCDPSession?(): Promise<CaptureHarBrowserCdpSession>;
 }
 
 const HAR_FILE_NAME = "network.har";
 const CAPABILITIES_FILE_NAME = "capabilities.json";
+const TARGETS_FILE_NAME = "targets.json";
 type CapabilityValue = boolean | "undetermined";
 
 function hasClosedShadowRoot(node: CaptureHarDomNode): boolean {
@@ -162,6 +186,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     });
     let environment: EnvironmentV1;
     let documentEpoch: string;
+    let targets: TargetEntry[] = [];
     let sweepStats: {
       sweepCheckpoints: number;
       scrolls: number;
@@ -239,6 +264,42 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       });
 
       await page.goto(options.url, { waitUntil: "load" });
+
+      // §6.9 target discovery. Switched on after navigation and before the sweep: Chromium reports
+      // `targetCreated` for targets that already exist at the moment discovery is enabled, so the
+      // OOPIFs and workers the navigation itself produced are still reported. Opened lazily — a
+      // browser without a session-level API leaves the inventory empty rather than failing capture,
+      // because this evidence is supplemental to the primary single-document layout.
+      //
+      // Both handlers respect `observingDependencies`, so the inventory describes the observation
+      // window rather than our own teardown. That boundary is on delivery time, not occurrence
+      // time: this is a browser-level session, so a destroy the page caused just before the
+      // boundary can be delivered after it and lose its `closedAt`. The result is coarser evidence
+      // — an absent `closedAt` says the target was still open when the window closed — never a
+      // false one. Deliverable 2 of #117, a `Target.getTargets` snapshot taken at the boundary, is
+      // what closes that gap, because a recorded target missing from the snapshot is known closed.
+      let browserCdp: CaptureHarBrowserCdpSession | undefined;
+      if (options.browser.newBrowserCDPSession !== undefined) {
+        browserCdp = await options.browser.newBrowserCDPSession();
+        browserCdp.on("Target.targetCreated", (payload) => {
+          if (!observingDependencies) return;
+          const info = (payload as { targetInfo?: CdpTargetPayload }).targetInfo;
+          if (info === undefined) return;
+          targets = appendDiscovered(targets, info, performance.now() - runStartedAt);
+        });
+        browserCdp.on("Target.targetDestroyed", (payload) => {
+          if (!observingDependencies) return;
+          const targetId = (payload as { targetId?: unknown }).targetId;
+          if (typeof targetId !== "string") return;
+          // A destroy for a target discovery never reported is not evidence of anything, and
+          // `markClosed` refuses it. Dropping it keeps a supplemental inventory from aborting a
+          // capture over a target the run never saw open.
+          if (!targets.some((entry) => entry.targetId === targetId)) return;
+          targets = markClosed(targets, targetId, performance.now() - runStartedAt);
+        });
+        await browserCdp.send("Target.setDiscoverTargets", { discover: true });
+      }
+
       sweepStats = await page.evaluate(async (args: { budgets: Budgets; quietWindowCheckpoints: number }) => {
         const { budgets, quietWindowCheckpoints } = args;
         const waitForCheckpoint = async () => {
@@ -354,6 +415,27 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         throw new Error("the primary document changed while the checkpoint was open");
       }
       documentEpoch = `epoch:${loaderIdAtOpen}`;
+
+      // §6.9 deliverable 2. A pull at a known instant, where the event stream is a filter on
+      // pushes: a target that existed before discovery was enabled — or whose `targetCreated`
+      // never arrived — is still evidence about this run, and the snapshot is the only thing that
+      // can report it.
+      if (browserCdp !== undefined) {
+        // Taken before the await: the enumeration Chromium is about to build cannot contain a
+        // target that does not exist yet, so only what is already recorded may be closed by its
+        // absence from the result.
+        const drainable = new Set(targets.map((entry) => entry.targetId));
+        const snapshot =
+          ((await browserCdp.send("Target.getTargets")) as { targetInfos?: CdpTargetPayload[] })
+            .targetInfos ?? [];
+        targets = reconcileWithSnapshot(
+          targets,
+          snapshot,
+          performance.now() - runStartedAt,
+          drainable,
+        );
+      }
+
       observingDependencies = false;
       capabilities = {
         serviceWorkerDependent,
@@ -412,6 +494,11 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       { mode: 0o600 },
     );
     await writeFile(
+      resolve(stagingRoot, TARGETS_FILE_NAME),
+      `${JSON.stringify({ schemaVersion: TARGETS_SCHEMA_VERSION, targets } satisfies TargetsV1, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+    await writeFile(
       resolve(stagingRoot, "checkpoints.json"),
       `${JSON.stringify(
         {
@@ -420,6 +507,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           capabilities: { path: CAPABILITIES_FILE_NAME, scope: "run" },
           requestNormalization: { path: REQUEST_NORMALIZATION_FILE_NAME, scope: "run" },
           termination: { path: TERMINATION_FILE_NAME, scope: "run" },
+          targets: { path: TARGETS_FILE_NAME, scope: "run" },
           commit: { path: COMMIT_FILE_NAME, scope: "run" },
           checkpoints: [finalCheckpoint],
         },

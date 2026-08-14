@@ -181,3 +181,32 @@ describe("validateTargets", () => {
     expect(TARGETS_SCHEMA_VERSION).toBe(1);
   });
 });
+
+/**
+ * The producer and the validator have to agree. `normalizeType` maps every unrecognised CDP type
+ * to "other" — Chromium's own `browser` target is one — so a validator that refuses "other"
+ * refuses documents this module produced. With §6.9 discovery wired up (#117) that is not a
+ * theoretical mismatch: it aborts every real capture.
+ */
+test("accepts an inventory carrying a target this module itself normalised to other", () => {
+  const entry = targetEntryFromCreated({ targetId: "B1", type: "browser" }, 1);
+
+  expect(entry.type).toBe("other");
+  expect(validateTargets({ schemaVersion: 1, targets: [entry] })).toEqual({ ok: true });
+});
+
+/**
+ * Timestamps are capture-relative — `performance.now() - runStartedAt` — so a negative value
+ * cannot have come from a real run. Same rule the checkpoint clock already carries.
+ */
+test("rejects a target whose timestamps precede the start of the run", () => {
+  expect(
+    validateTargets({ schemaVersion: 1, targets: [{ targetId: "X", type: "page", openedAt: -20 }] }),
+  ).toEqual({ ok: false });
+  expect(
+    validateTargets({
+      schemaVersion: 1,
+      targets: [{ targetId: "X", type: "page", openedAt: 0, closedAt: -1 }],
+    }),
+  ).toEqual({ ok: false });
+});
