@@ -12,6 +12,7 @@
 - [[a-blocked-method-is-not-a-blocked-task]] — #78 was parked as "needs the developer" because reverting a merged fix was assumed to need `git reset`; the state was reproducible in-process and the park was wrong
 - [[a-reviewer-can-rewrite-your-working-tree]] — a clink reviewer ran `bun run mutate` because the prompt named it; killing it skipped the `finally` and left a defect applied in `src/`
 - [[remove-the-write-dont-guard-it]] — four guards accumulated around one write, and the one added for the actual incident was measured not to fire; applying the defect in memory deleted the whole problem
+- [[python-text-mode-rewrites-every-line-ending]] — a one-line Python edit converted two files to CRLF and broke mutation anchors it never touched; git normalises on commit, so the diff is clean and only the working tree is wrong
 - [[an-observation-boundary-is-delivery-not-occurrence]] — a flag that ignores events after a point bounds when the callback ran, not when the thing happened; on #117 a reviewer showed the gap that `verify` and `mutate` both passed over
 
 ## project — ongoing goals / constraints not derivable from the code
