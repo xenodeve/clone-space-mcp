@@ -95,10 +95,28 @@ async function readFileOrUndefined(path: string): Promise<string | undefined> {
   }
 }
 
-async function readJson(path: string): Promise<unknown | undefined> {
-  const raw = await readFileOrUndefined(path);
+/**
+ * Parse a document, or fail with a message about *this reader* rather than about the runtime.
+ *
+ * The caller supplied the path, so naming it discloses nothing. What a raw error adds is the
+ * parser's own account of the bytes and, on a permission failure, the runtime's phrasing of what
+ * exists where — detail the caller did not ask for, cannot act on, and which travels back over MCP
+ * to whoever is driving the tool.
+ */
+async function readJson(path: string, fileName: string, root: string): Promise<unknown | undefined> {
+  let raw: string | undefined;
+  try {
+    raw = await readFileOrUndefined(path);
+  } catch {
+    throw new Error(`inspect_archive: ${fileName} in ${root} could not be read`);
+  }
   if (raw === undefined) return undefined;
-  return JSON.parse(raw) as unknown;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    void error;
+    throw new Error(`inspect_archive: ${fileName} in ${root} is not readable as JSON`);
+  }
 }
 
 export async function readArchive(root: string): Promise<ArchiveRead> {
@@ -111,7 +129,7 @@ export async function readArchive(root: string): Promise<ArchiveRead> {
     ArchiveDocumentName,
     string,
   ][]) {
-    const parsed = await readJson(resolve(archiveRoot, fileName));
+    const parsed = await readJson(resolve(archiveRoot, fileName), fileName, archiveRoot);
     if (parsed === undefined) {
       missing.push(name);
       continue;

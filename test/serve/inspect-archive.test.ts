@@ -42,3 +42,20 @@ test("inspectArchive refuses a path that is not an archive", async () => {
     /not an archive/,
   );
 });
+
+test("a malformed archive fails with a stable message, not a raw parser error", async () => {
+  const root = await captureFixtureArchive();
+  try {
+    writeFileSync(join(root, "checkpoints.json"), "{ not json");
+
+    // The caller supplied the path, so naming it discloses nothing. What a raw error adds is the
+    // parser's own account of the bytes and, on a permission failure, the runtime's phrasing of
+    // what exists where — detail the caller did not ask for and cannot act on.
+    await expect(inspectArchive({ path: root })).rejects.toThrow(
+      /inspect_archive: checkpoints\.json in .* is not readable as JSON/,
+    );
+    await expect(inspectArchive({ path: root })).rejects.not.toThrow(/JSON Parse|Unexpected token/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

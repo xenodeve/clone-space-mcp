@@ -356,6 +356,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "stops waiting on work that outlasts the deadline",
   },
   {
+    id: "archive-reader-echoes-runtime-errors",
+    why: "#127 - a raw parse or permission error carries the runtime's own account of the bytes and of what exists where, and it travels back over MCP to whoever is driving the tool. The caller supplied the path; it did not ask for the parser's phrasing.",
+    file: "src/archive/read.ts",
+    find: "    throw new Error(`inspect_archive: ${fileName} in ${root} is not readable as JSON`);",
+    replace: "    throw error;",
+    suite: "bun",
+    expect: "fails with a stable message, not a raw parser error",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",
