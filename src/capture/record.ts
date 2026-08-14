@@ -12,6 +12,7 @@ import { validateStagedArchive } from "./checkpoints.ts";
 import {
   TARGETS_SCHEMA_VERSION,
   appendDiscovered,
+  belongsToRun,
   markClosed,
   reconcileWithSnapshot,
   type CdpTargetPayload,
@@ -218,6 +219,13 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     try {
       const page = await context.newPage();
       const cdp = await context.newCDPSession(page);
+      // §6.9/#122: discovery is browser-wide, so the run has to know which context is its own or a
+      // concurrent capture sharing the browser leaks into this inventory. The page session answers
+      // for itself; a browser that does not answer leaves this undefined and nothing is filtered.
+      const runContextId = ((await cdp.send("Target.getTargetInfo").catch(() => ({}))) as {
+        targetInfo?: { browserContextId?: unknown };
+      }).targetInfo?.browserContextId;
+      const runContext = typeof runContextId === "string" ? runContextId : undefined;
       let observingDependencies = true;
       let serviceWorkerDependent = false;
       // The listener and domain are installed before navigation. If either setup step fails,
@@ -305,6 +313,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           if (!observingDependencies) return;
           const info = (payload as { targetInfo?: CdpTargetPayload }).targetInfo;
           if (info === undefined) return;
+          if (!belongsToRun(info, runContext)) return;
           targets = appendDiscovered(targets, info, performance.now() - runStartedAt);
         });
         browserCdp.on("Target.targetDestroyed", (payload) => {
@@ -450,7 +459,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
             .targetInfos ?? [];
         targets = reconcileWithSnapshot(
           targets,
-          snapshot,
+          snapshot.filter((info) => belongsToRun(info, runContext)),
           performance.now() - runStartedAt,
           drainable,
         );

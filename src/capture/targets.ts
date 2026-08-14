@@ -35,6 +35,8 @@ export type TargetsV1 = {
 /** A CDP `Target.targetCreated` / `Target.getTargets` payload, minimally typed. */
 export type CdpTargetPayload = {
   targetId?: unknown;
+  /** Which browser context the target belongs to. Absent on a fake or an older CDP build. */
+  browserContextId?: unknown;
   type?: unknown;
   url?: unknown;
   openerId?: unknown;
@@ -51,6 +53,24 @@ const KNOWN_TYPES: ReadonlySet<string> = new Set([
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Does this target belong to the run doing the capturing?
+ *
+ * `Target.setDiscoverTargets` is **browser-wide**: a second capture sharing the browser reports its
+ * targets to this session too, and an archive would then describe a page it never visited. The run
+ * learns its own context by asking its page session for `Target.getTargetInfo`, which answers with
+ * a `browserContextId` — verified against a real Chromium before this was written.
+ *
+ * Unknown on either side means keep. Filtering on a context nobody reported would empty the
+ * inventory over a missing capability, and §6.9 evidence is supplemental: a fake browser, or a CDP
+ * build that does not answer, must leave capture working rather than silently blank.
+ */
+export function belongsToRun(info: CdpTargetPayload, runContextId: string | undefined): boolean {
+  if (runContextId === undefined) return true;
+  if (typeof info.browserContextId !== "string") return true;
+  return info.browserContextId === runContextId;
 }
 
 /** Map a CDP target type to the canonical set; anything unknown falls to "other". */
