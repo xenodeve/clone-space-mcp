@@ -90,3 +90,36 @@ export function terminationOutcome(
   if (decision.reason === "quiet-window") return { outcome: "complete", reason: "quiet-window" };
   return { outcome: "incomplete", reason: decision.reason };
 }
+
+/** How long the post-sweep drain may take before capture stops waiting for it. */
+export const DRAIN_DEADLINE_MS = 10_000;
+
+/**
+ * Wait for everything to settle, or stop waiting at `deadlineMs`. Resolves `true` when the work
+ * settled in time and `false` when the deadline won.
+ *
+ * §6.10 bounds the sweep in wall-clock, and that bound is the archive's promise about how long a
+ * capture takes. The drain runs *after* the sweep and so outside it: one script read that never
+ * answers holds a browser open, and through the MCP tool it holds the caller's request open too.
+ * A drain outside the budget is a hole in the budget.
+ *
+ * A rejection counts as settled. These reads are already handled by their caller, so the deadline
+ * is about time, not outcome.
+ */
+export async function settleWithin(
+  work: readonly Promise<unknown>[],
+  deadlineMs: number,
+): Promise<boolean> {
+  if (work.length === 0) return true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.allSettled(work).then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), deadlineMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}

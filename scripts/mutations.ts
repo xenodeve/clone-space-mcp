@@ -347,6 +347,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "never runs two browsers at once",
   },
   {
+    id: "post-sweep-drain-unbounded",
+    why: "#127 - the drain runs after the sweep and so outside §6.10's wall-clock budget. One script read that never answers holds a browser open, and through the MCP tool the caller's request with it. A drain outside the budget is a hole in the budget.",
+    file: "src/capture/budget.ts",
+    find: "        timer = setTimeout(() => resolve(false), deadlineMs);",
+    replace: "        timer = setTimeout(() => resolve(false), 3_600_000);",
+    suite: "bun",
+    expect: "stops waiting on work that outlasts the deadline",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",

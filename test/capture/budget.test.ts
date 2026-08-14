@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   defaultBudgets,
+  settleWithin,
   evaluateBudget,
   terminationOutcome,
   TERMINATION_SCHEMA_VERSION,
@@ -119,5 +120,28 @@ describe("terminationOutcome", () => {
   test("no stop maps to complete with no reason", () => {
     const decision = evaluateBudget(DEFAULTS, baseStats);
     expect(terminationOutcome(decision)).toEqual({ outcome: "complete" });
+  });
+});
+
+describe("settleWithin", () => {
+  test("returns true once everything settles", async () => {
+    expect(await settleWithin([Promise.resolve(), Promise.resolve()], 1000)).toBe(true);
+  });
+
+  test("counts a rejection as settled — the deadline is about time, not outcome", async () => {
+    expect(await settleWithin([Promise.reject(new Error("x")).catch(() => {})], 1000)).toBe(true);
+  });
+
+  test("stops waiting on work that outlasts the deadline", async () => {
+    // Deliberately a *late* promise rather than one that never settles: a never-settling promise
+    // left pending at the end of a test hangs the runner, which is how the first attempt at this
+    // was reverted. Late is enough to prove the deadline won.
+    const late = new Promise<void>((resolve) => setTimeout(resolve, 300));
+    const started = Date.now();
+
+    expect(await settleWithin([late], 20)).toBe(false);
+    expect(Date.now() - started).toBeLessThan(250);
+
+    await late;
   });
 });
