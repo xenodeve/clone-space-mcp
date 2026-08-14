@@ -391,6 +391,10 @@ test("publishes a capture that redirected cross-origin, without that origin's st
     // what makes this a real test: the allowlist was written for the requested origin, so if the
     // read still happened the value would be published under a label that is not its own.
     storageAllowlist: { localStorage: ["redirect-secret"] },
+    // `captureHar` refuses an origin change unless the caller supplies a policy — the default-deny
+    // that keeps a library consumer where it was before #157. `capture_page` supplies its address
+    // check; this test supplies "any origin is fine", which is what makes the redirect reachable.
+    assertOriginAllowed: async () => {},
   });
 
   const environmentText = readFileSync(join(dirname(harPath), "environment.json"), "utf8");

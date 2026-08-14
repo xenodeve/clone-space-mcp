@@ -61,6 +61,67 @@ interface ObservedEnvironment {
   };
 }
 
+/**
+ * Every distinct origin the navigation passed through, oldest hop first (#157).
+ *
+ * Checking only where the page **ended up** is not enough: a chain that goes public → link-local →
+ * public satisfies a final-origin check while the middle hop's request and response are already
+ * recorded in the HAR. The refusal this project used to carry — abort whenever the final origin
+ * differs — happened to bound that case, and replacing it with an address check on one origin
+ * would have quietly given the bound away.
+ *
+ * Duck-typed rather than requiring Playwright's `Response`, because a fake browser's `goto`
+ * returns nothing and the structural interface types it `unknown`. A navigation this cannot read
+ * yields an empty list; the caller's final-origin check still runs, so that is a gap in what the
+ * fakes exercise rather than a hole in what production enforces.
+ */
+export function originsInRedirectChain(navigation: unknown): string[] {
+  const request = (navigation as { request?: () => unknown } | undefined)?.request?.();
+  const origins: string[] = [];
+  const seenRequests = new Set<unknown>();
+  let hop: unknown = request;
+  while (hop !== undefined && hop !== null && !seenRequests.has(hop)) {
+    seenRequests.add(hop);
+    const url = (hop as { url?: () => unknown }).url?.();
+    if (typeof url === "string") {
+      try {
+        const { origin } = new URL(url);
+        if (!origins.includes(origin)) origins.unshift(origin);
+      } catch {
+        // A URL this cannot parse names no origin to check. Skipping it is right: the policy
+        // applies to origins, and an unparseable hop is reported by the navigation itself.
+      }
+    }
+    hop = (hop as { redirectedFrom?: () => unknown }).redirectedFrom?.();
+  }
+  return origins;
+}
+
+/**
+ * Apply the caller's network policy to every origin the navigation touched that is not the one it
+ * was asked for (#157).
+ *
+ * **Default-deny.** With no policy supplied this refuses, which is exactly what `captureHar` did
+ * before #157 — it aborted any capture whose origin changed. A library caller that never opted
+ * into a policy keeps that behaviour instead of silently losing it, and `capture_page` opts in by
+ * passing the same address check it already runs pre-flight.
+ */
+export async function assertOriginsAllowed(
+  origins: readonly string[],
+  primaryOrigin: string,
+  assertOriginAllowed: ((origin: string) => Promise<void>) | undefined,
+): Promise<void> {
+  for (const origin of origins) {
+    if (origin === primaryOrigin) continue;
+    if (assertOriginAllowed === undefined) {
+      throw new Error(
+        `capture refused a redirect to ${origin}: the requested origin was ${primaryOrigin} and no network policy was supplied for another one`,
+      );
+    }
+    await assertOriginAllowed(origin);
+  }
+}
+
 export interface EnvironmentV1 {
   schemaVersion: 1;
   /** The origin of the URL capture was asked for. The storage allowlist is written for this one. */
@@ -130,12 +191,12 @@ export async function collectEnvironment(options: {
   requested?: Partial<ReplayContext>;
   storageAllowlist?: StorageAllowlist;
   /**
-   * Re-apply the caller's network policy to the origin the page ended up on, when a redirect
-   * moved it (#157). Throwing refuses the capture, so nothing is published. Injected rather than
-   * imported because the policy belongs to whoever owns the network position — the tool — and
-   * `captureHar` deliberately does not decide it.
+   * Decide whether an origin other than the requested one may be captured (#157). Injected rather
+   * than imported because the policy belongs to whoever owns the network position — the tool —
+   * and `captureHar` deliberately does not decide it. **Absent means refuse**, see
+   * `assertOriginsAllowed`.
    */
-  assertFinalOrigin?: (origin: string) => Promise<void>;
+  assertOriginAllowed?: (origin: string) => Promise<void>;
 }): Promise<EnvironmentV1> {
   const primaryOrigin = new URL(options.url).origin;
   const requested = { ...options.requested };
@@ -234,9 +295,7 @@ export async function collectEnvironment(options: {
   // a different host is cross-origin, and `collectEnvironment` refuses to publish" — the two were
   // a documented pair. Removing that refusal without this hook would leave a public URL that
   // redirects to `169.254.169.254` publishing the internal page instead of throwing it away.
-  if (finalOrigin !== primaryOrigin && options.assertFinalOrigin !== undefined) {
-    await options.assertFinalOrigin(finalOrigin);
-  }
+  await assertOriginsAllowed([finalOrigin], primaryOrigin, options.assertOriginAllowed);
   const storageIsThisOrigin = primaryOrigin !== "null" && finalOrigin === primaryOrigin;
   const [allLocalStorage, allSessionStorage] = storageIsThisOrigin
     ? await Promise.all([

@@ -81,10 +81,10 @@ export async function capturePage(
       url: params.url,
       outDir,
       volatileQueryKeys: params.volatileQueryKeys,
-      // The same policy, applied again to wherever a redirect landed (#157). The pre-flight check
-      // above only sees the URL the caller asked for; without this, a public URL redirecting to a
-      // link-local address would be archived rather than refused.
-      assertFinalOrigin: async (origin) => {
+      // The same policy, applied again to every origin the navigation touched (#157). The
+      // pre-flight check above only sees the URL the caller asked for; without this, a public URL
+      // redirecting through a link-local address would be archived rather than refused.
+      assertOriginAllowed: async (origin) => {
         await assertReachableUrl(origin, params.allowPrivateNetwork === true, params.resolveHost);
       },
     });

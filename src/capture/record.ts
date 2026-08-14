@@ -2,7 +2,9 @@ import { mkdir, mkdtemp, readFile, readdir, rename, rm, rmdir, stat, writeFile }
 import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
+  assertOriginsAllowed,
   collectEnvironment,
+  originsInRedirectChain,
   type EnvironmentV1,
   type EnvironmentPage,
   type ReplayContext,
@@ -167,11 +169,12 @@ export interface CaptureHarOptions {
   /** Capture termination budgets (§6.10). Defaults to the documented set. */
   budgets?: Partial<Budgets>;
   /**
-   * Re-apply the caller's network policy to the origin a redirect landed on (#157). Left
-   * undefined, a redirect to any origin is captured — which is why `capture_page` always supplies
-   * it, and why a caller that skips it is choosing its own exposure.
+   * Decide whether an origin other than the requested one may be captured (#157) — applied to
+   * every hop of the navigation, not only where it ended up. **Absent means refuse**, which is
+   * what this function did for any origin change before #157; `capture_page` supplies the same
+   * address check it runs pre-flight.
    */
-  assertFinalOrigin?: (origin: string) => Promise<void>;
+  assertOriginAllowed?: (origin: string) => Promise<void>;
 }
 
 async function assertEmptyOutputDirectory(path: string): Promise<void> {
@@ -239,6 +242,11 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // The listener and domain are installed before navigation. If either setup step fails,
       // capture aborts instead of publishing an archive with incomplete ServiceWorker coverage;
       // therefore this flag's no-positive undetermined state is unreachable.
+      const documentOrigins = new Set<string>([new URL(options.url).origin]);
+      // #157. A registration is this page's dependency when its scope is an origin the document
+      // actually occupies. Comparing against the *requested* origin alone reported `false` for
+      // every apex-to-www site, where the worker registers on `www` — invisible until the redirect
+      // stopped aborting the capture. The set gains the navigation's origins once `goto` returns.
       cdp.on("ServiceWorker.workerRegistrationUpdated", (event) => {
         if (!observingDependencies) return;
         if (
@@ -246,7 +254,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
             (registration) =>
               !registration.isDeleted &&
               registration.scopeURL !== undefined &&
-              new URL(registration.scopeURL).origin === new URL(options.url).origin,
+              documentOrigins.has(new URL(registration.scopeURL).origin),
           )
         ) {
           serviceWorkerDependent = true;
@@ -293,7 +301,13 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         );
       });
 
-      await page.goto(options.url, { waitUntil: "load" });
+      // #157. The policy applies to every origin the navigation passed through. Checking only the
+      // final one leaves `public -> link-local -> public` publishing the middle hop's request and
+      // response, which `recordHar` has already written by the time anything looks at the origin.
+      const navigation = await page.goto(options.url, { waitUntil: "load" });
+      const navigatedOrigins = originsInRedirectChain(navigation);
+      await assertOriginsAllowed(navigatedOrigins, new URL(options.url).origin, options.assertOriginAllowed);
+      for (const origin of navigatedOrigins) documentOrigins.add(origin);
 
       // §6.7/§6.11. Installed after navigation and before the sweep, so every scroll the sweep
       // drives is recorded with the container that actually moved. Events during load are not
@@ -443,7 +457,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         browserChannel: options.browserChannel,
         requested: options.environment,
         storageAllowlist: options.storageAllowlist,
-        assertFinalOrigin: options.assertFinalOrigin,
+        assertOriginAllowed: options.assertOriginAllowed,
       });
       // A same-origin navigation during collection would leave environment.json describing one
       // document under an epoch naming another — an archive that reads as coherent while
