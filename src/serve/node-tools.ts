@@ -52,7 +52,7 @@ export const REPLAY_TOOL: ToolDefinition = {
   name: "replay_page",
   title: "Replay an archived page",
   description:
-    "Open an archived page again with the network unplugged: the archive is the only source, and a request it cannot serve fails rather than reaching the internet. Returns the URL, anything the archive could not serve (empty is what you want), how many HAR entries the archive holds no response for at all, and counts of the motion actually running - CSS keyframes, WAAPI, GSAP tweens and ScrollTriggers. It answers whether the page still moves, not how; describing the motion is the extract stage.",
+    "Open an archived page again with the network unplugged: the archive is the only source, and a request it cannot serve fails rather than reaching the internet. Returns the URL, anything the archive could not serve (empty is what you want), how many distinct URLs the archive holds no usable response for at all, and counts of the motion actually running - CSS keyframes, WAAPI, GSAP tweens and ScrollTriggers. It answers whether the page still moves, not how; describing the motion is the extract stage.",
   inputSchema: { archive: z.string().describe("Path to a published archive directory") },
   run: (params) =>
     replayPage({ archive: String(params.archive) }, { launch: () => chromium.launch() as never }),

@@ -517,4 +517,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "does not stall on a HAR entry the archive has no response for",
   },
+  {
+    id: "one-bad-entry-condemns-the-whole-url",
+    why: "#155 - a HAR can hold a good GET and a still-open POST for one URL. Refusing the URL on the bad entry alone aborts an asset the archive can serve, which removes working motion from a replay that previously had it - a worse failure than the stall being fixed.",
+    file: "src/replay/replay.ts",
+    find: "  for (const url of servable) unservable.delete(url);",
+    replace: "  void servable;",
+    suite: "browser",
+    expect: "still serves a URL the archive has a good entry for, alongside a bad one",
+  },
 ];

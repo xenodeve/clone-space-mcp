@@ -136,6 +136,47 @@ test("does not stall on a HAR entry the archive has no response for", async () =
   assert.equal(after.log.entries.length, har.log.entries.length, "replay rewrote the published HAR");
 });
 
+/**
+ * #155, the case a URL-keyed refusal gets wrong. A HAR can hold two entries for one URL — a
+ * `GET` that succeeded and a `POST` that was still open at teardown, or a second fetch of the
+ * same asset. Refusing every URL that appears in *any* entry with no response would then abort a
+ * request the archive can answer perfectly well, which is a worse failure than the one being
+ * fixed: it removes a working asset from a replay that used to serve it.
+ */
+test("still serves a URL the archive has a good entry for, alongside a bad one", async () => {
+  const archive = await captureThenTakeTheOriginDown();
+  const harPath = join(archive, "network.har");
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: { entries: { request: { url: string; method?: string }; response: Record<string, unknown> }[] };
+  };
+
+  const good = har.log.entries.find((entry) => entry.request.url.endsWith("/gsap-scene.js"));
+  assert.ok(good !== undefined, "fixture no longer loads /gsap-scene.js");
+  har.log.entries.push({
+    ...good,
+    request: { ...good.request, method: "POST" },
+    response: { status: -1, statusText: "", httpVersion: "", headers: [], content: { size: -1, mimeType: "x-unknown" } },
+  });
+  writeFileSync(harPath, JSON.stringify(har));
+
+  const replay = await replayArchive({ archive, browser: browser as never });
+  try {
+    assert.ok(
+      !replay.aborted.some((url) => url.endsWith("/gsap-scene.js")),
+      "a URL the archive can serve was refused because another entry for it had no response",
+    );
+    // Served is not enough — the script has to have run, which is the fidelity this protects.
+    const tweens = await replay.page.evaluate(() => {
+      const win = globalThis as unknown as { gsap?: { globalTimeline: { getChildren(): unknown[] } } };
+      return win.gsap?.globalTimeline.getChildren().length ?? 0;
+    });
+    assert.ok(tweens > 0, "the scene script was served but never executed");
+    assert.equal(replay.unservable, 0, "a URL with a good entry counted as unservable");
+  } finally {
+    await replay.close();
+  }
+});
+
 test("refuses to reach a live origin for what the archive is missing", async () => {
   // The origin stays **up** here, and that is the whole point. With it down, `abort` and
   // `fallback` are indistinguishable — both leave the request failed — and the corpus measured

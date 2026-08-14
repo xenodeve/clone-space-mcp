@@ -24,9 +24,10 @@ export interface ReplayPageResult {
    */
   aborted: string[];
   /**
-   * How many HAR entries the archive holds no response for (#155). This is a fact about the
-   * archive rather than about this replay: capture recorded the request and never got an answer,
-   * so replay cannot serve it either. Non-zero means the page ran without something it asked for.
+   * How many distinct URLs the archive holds no usable response for (#155). This is a fact about
+   * the archive rather than about this replay: capture recorded the request and never got an
+   * answer, so replay cannot serve it either. Non-zero means the page ran without something it
+   * asked for.
    */
   unservable: number;
   /**

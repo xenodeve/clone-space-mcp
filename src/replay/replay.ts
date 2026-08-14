@@ -53,9 +53,10 @@ export interface ReplayHandle {
   /** Requests the archive could not serve. Empty is P3's exit criterion. */
   aborted: string[];
   /**
-   * HAR entries the archive recorded without ever receiving a response (#155). They are archive
-   * quality, not replay failure: capture published a request it never got an answer for, so the
-   * page cannot get one either. Non-zero means this replay is missing something the live page had.
+   * How many distinct **URLs** the archive holds no usable response for (#155) — not a count of
+   * HAR entries, because one URL can carry several. Archive quality rather than replay failure:
+   * capture published a request it never got an answer for, so the page cannot get one either.
+   * Non-zero means this replay is missing something the live page had.
    */
   unservable: number;
   page: ReplayPage;
@@ -83,24 +84,32 @@ function documentUrlFrom(har: unknown): string {
 }
 
 /**
- * URLs the HAR holds an entry for but no response to (#155). Playwright records a request that
- * never completed with `response.status: -1`, and `routeFromHAR` **matches** such an entry — so it
- * never reaches `notFound: "abort"` — then has nothing to fulfil with and leaves the request
- * pending forever. Five of those, all `<script>`, is why `https://labs.chaingpt.org/` replayed to
- * neither `DOMContentLoaded` nor `load`.
+ * URLs the HAR holds **no** usable response for (#155). Playwright records a request that never
+ * completed with `response.status: -1`, and `routeFromHAR` **matches** such an entry — so it never
+ * reaches `notFound: "abort"` — then has nothing to fulfil with and leaves the request pending
+ * forever. Five of those, all `<script>`, is why `https://labs.chaingpt.org/` replayed to neither
+ * `DOMContentLoaded` nor `load`.
+ *
+ * A URL is only refused when *every* entry for it is unusable. One URL can carry two entries — a
+ * `GET` that succeeded and a `POST` still open at teardown, or a second fetch of the same asset —
+ * and refusing on the bad one alone would drop an asset the archive can serve. That is a worse
+ * failure than the stall: it removes working motion from a replay that previously had it.
  *
  * A real HTTP status is >= 100, so this catches Playwright's `-1` and a `0` without guessing at
  * which sentinel a future version picks.
  */
 function unservableUrlsIn(har: unknown): Set<string> {
-  const urls = new Set<string>();
+  const servable = new Set<string>();
+  const unservable = new Set<string>();
   for (const entry of entriesOf(har)) {
     const record = entry as { request?: { url?: unknown }; response?: { status?: unknown } };
+    const url = record.request?.url;
+    if (typeof url !== "string") continue;
     const status = record.response?.status;
-    if (typeof status === "number" && status >= 100) continue;
-    if (typeof record.request?.url === "string") urls.add(record.request.url);
+    (typeof status === "number" && status >= 100 ? servable : unservable).add(url);
   }
-  return urls;
+  for (const url of servable) unservable.delete(url);
+  return unservable;
 }
 
 function replayContextFrom(environment: unknown): Partial<ReplayContext> {
