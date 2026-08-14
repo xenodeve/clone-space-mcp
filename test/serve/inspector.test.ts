@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderInspector } from "../../src/serve/inspector.ts";
+import { BEHAVIOUR_SCHEMA_VERSION } from "../../src/extract/behaviour.ts";
 import { inspectArchive } from "../../src/serve/tools/inspect-archive.ts";
 import { captureFixtureArchive } from "./fixture-archive.ts";
 
@@ -19,7 +20,7 @@ test("the inspector shows a gap as a row, not as a count nobody compared", async
       archive,
       declared: DECLARED,
       behaviour: {
-        schemaVersion: 1,
+        schemaVersion: BEHAVIOUR_SCHEMA_VERSION,
         url: "https://example.com/",
         aborted: [],
         mechanisms: ["gsap-timeline"],
