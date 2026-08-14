@@ -12,6 +12,7 @@ import { chromium } from "playwright";
 import { z } from "zod";
 import { capturePage } from "./tools/capture-page.ts";
 import { replayPage } from "./tools/replay-page.ts";
+import { extractBehaviourFromArchive } from "./tools/extract-behaviour.ts";
 import { BROWSERLESS_TOOLS, type ToolDefinition } from "./tools/index.ts";
 
 export const CAPTURE_TOOL: ToolDefinition = {
@@ -57,4 +58,21 @@ export const REPLAY_TOOL: ToolDefinition = {
     replayPage({ archive: String(params.archive) }, { launch: () => chromium.launch() as never }),
 };
 
-export const ALL_TOOLS: readonly ToolDefinition[] = [...BROWSERLESS_TOOLS, CAPTURE_TOOL, REPLAY_TOOL];
+export const EXTRACT_TOOL: ToolDefinition = {
+  name: "extract_behaviour",
+  title: "Extract the behaviour graph",
+  description:
+    "Replay the archive and report what moves on the page and what drives it: one node per animation with its mechanism (CSS keyframes, WAAPI, GSAP timeline, GSAP ScrollTrigger), a selector for its target, its timing and easing, and the library that owns it. It also returns anything the archive could not serve — a graph from an incomplete replay describes a page that did not fully run.",
+  inputSchema: { archive: z.string().describe("Path to a published archive directory") },
+  run: (params) =>
+    extractBehaviourFromArchive({ archive: String(params.archive) }, {
+      launch: () => chromium.launch() as never,
+    }),
+};
+
+export const ALL_TOOLS: readonly ToolDefinition[] = [
+  ...BROWSERLESS_TOOLS,
+  CAPTURE_TOOL,
+  REPLAY_TOOL,
+  EXTRACT_TOOL,
+];

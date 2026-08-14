@@ -65,3 +65,15 @@ export {
   type InspectArchiveParams,
   type InspectArchiveResult,
 } from "./serve/tools/inspect-archive.ts";
+
+/** Replay — open an archived page again with the network unplugged. */
+export { replayArchive, type ReplayHandle, type ReplayArchiveOptions } from "./replay/replay.ts";
+
+/** Extract — what moves on the replayed page, and what drives it. */
+export {
+  extractBehaviour,
+  BEHAVIOUR_SCHEMA_VERSION,
+  type BehaviourGraph,
+  type BehaviourNode,
+  type BehaviourMechanism,
+} from "./extract/behaviour.ts";
