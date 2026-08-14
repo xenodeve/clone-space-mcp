@@ -143,6 +143,20 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         );
         return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
       }
+      // #156. Accepts the connection and never answers — what a third-party tracker does when
+      // capture closes before it replies. The request is fired from a timer rather than a tag so
+      // it cannot hold `load`, which is what capture navigates on: the point is a request still
+      // open at the observation boundary, not a page that never loads.
+      if (pathname === "/unanswered-request.html") {
+        return new Response(
+          `<!doctype html><title>unanswered</title><body><p>fixture</p>
+           <script>setTimeout(() => { fetch("/never-answers"); }, 50);</script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/never-answers") {
+        return await new Promise<Response>(() => {});
+      }
       if (pathname === "/cross-origin-script.html") {
         const script = new URL("/instrumented.js", crossOriginUrl);
         return new Response(`<script src="${script.href}"></script>`, {

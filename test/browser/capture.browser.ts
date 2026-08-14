@@ -659,3 +659,66 @@ test("an in-place live page is not misreported as complete before its budget fir
     "the quiet-window rule must not have fired on a still-mutating page",
   );
 });
+
+/**
+ * #156. `termination.json` said `complete` on runs whose archive was missing responses the page
+ * needed. Three captures of `https://labs.chaingpt.org/` produced 5, 1 and 3 HAR entries with
+ * `response.status: -1` — one of them `jquery-3.5.1.min.js`, which that Webflow page's entire
+ * interaction layer depends on — and every run reported `complete` / `quiet-window`.
+ *
+ * The sweep's termination test runs inside `page.evaluate` and measures DOM activity. It has no
+ * view of the network, so the quiet window can close while responses are still outstanding.
+ */
+test("does not report complete when a response was never received", async () => {
+  const url = new URL("/unanswered-request.html", servers.primary.url);
+  const harPath = await captureHar({ browser, url: url.href, outDir: nextCaptureOutDir() });
+
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: {
+      entries: {
+        request: { url: string };
+        response: { status?: unknown; _failureText?: unknown };
+      }[];
+    };
+  };
+  // The same predicate `src/capture/record.ts` uses, so this checks the published number rather
+  // than a second definition of it that could agree by luck.
+  const responseless = har.log.entries.filter(
+    (entry) => typeof entry.response.status !== "number" || entry.response.status < 100,
+  );
+  const outstanding = responseless.filter((entry) => entry.response._failureText === undefined);
+
+  // The fixture route accepts the connection and never replies, so this is the archive defect
+  // being reported on — if it is absent the assertions below would pass vacuously. It must be
+  // *outstanding*, not failed: a failure is what the live browser saw and is faithful to record.
+  assert.ok(
+    outstanding.some((entry) => entry.request.url.endsWith("/never-answers")),
+    `the fixture's unanswered request is not outstanding in the HAR. responseless=${JSON.stringify(
+      responseless.map((entry) => [entry.request.url, entry.response._failureText]),
+    )}`,
+  );
+
+  const termination = JSON.parse(
+    readFileSync(join(dirname(harPath), "termination.json"), "utf8"),
+  ) as {
+    outcome: string;
+    reason?: string;
+    stats: { unansweredRequests?: number; failedRequests?: number };
+  };
+
+  assert.equal(
+    termination.stats.unansweredRequests,
+    outstanding.length,
+    "termination.json does not count the responses that were still outstanding",
+  );
+  assert.equal(
+    termination.stats.failedRequests,
+    responseless.length - outstanding.length,
+    "termination.json does not count the requests that failed outright",
+  );
+  // An archive whose responses were still arriving is not a complete capture, whatever the
+  // sweep's own reason for stopping was. Asserting the reason too is what makes this exercise
+  // the #156 override rather than an ordinary budget truncation that would satisfy the line above.
+  assert.equal(termination.outcome, "incomplete", "a run with responses outstanding said complete");
+  assert.equal(termination.reason, "quiet-window", "the sweep did not end on a quiet window, so the override was not what produced the incomplete verdict");
+});

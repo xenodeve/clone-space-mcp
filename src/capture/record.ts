@@ -573,6 +573,29 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     // checkpoint DOM node count, then record why capture stopped so a truncated capture is
     // distinguishable from a complete one.
     const harBytes = (await stat(stagingHarPath)).size;
+    const redactedHar = JSON.parse(await readFile(stagingHarPath, "utf8")) as {
+      log?: { entries?: HarRequestEntry[] };
+    };
+    const harEntries = redactedHar.log?.entries;
+    if (harEntries === undefined) {
+      throw new Error("capture: redacted HAR has no log.entries");
+    }
+    // §6.10 + #156. Playwright writes both a failed request and one still in flight at teardown
+    // with `response.status: -1`, and only `_failureText` tells them apart. The distinction is the
+    // whole point: a failure is what the live browser saw and the archive is faithful for
+    // recording it, while an outstanding response is capture stopping before the answer arrived.
+    // A real HTTP status is >= 100, so this catches the sentinel without depending on which
+    // negative value a future version picks.
+    const responseless = harEntries.map(
+      (entry) => (entry as { response?: { status?: unknown; _failureText?: unknown } }).response,
+    ).filter((response) => {
+      const status = response?.status;
+      return typeof status !== "number" || status < 100;
+    });
+    const failedRequests = responseless.filter(
+      (response) => response?._failureText !== undefined,
+    ).length;
+    const unansweredRequests = responseless.length - failedRequests;
     const terminationStats = {
       sweepCheckpoints: sweepStats.sweepCheckpoints,
       scrolls: sweepStats.scrolls,
@@ -580,9 +603,11 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       bytes: harBytes,
       nodes: nodeCount,
       height: sweepStats.height,
+      unansweredRequests,
+      failedRequests,
     };
     const terminationDecision = evaluateBudget(sweepBudgets, terminationStats);
-    const terminationOutcomeValue = terminationOutcome(terminationDecision);
+    const terminationOutcomeValue = terminationOutcome(terminationDecision, terminationStats);
     await writeFile(
       resolve(stagingRoot, TERMINATION_FILE_NAME),
       `${JSON.stringify(
@@ -599,13 +624,6 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     );
     // The producer check: no two distinct archived raw URLs may collapse under the policy for
     // the same method — replay must never be forced to choose between different responses.
-    const redactedHar = JSON.parse(await readFile(stagingHarPath, "utf8")) as {
-      log?: { entries?: HarRequestEntry[] };
-    };
-    const harEntries = redactedHar.log?.entries;
-    if (harEntries === undefined) {
-      throw new Error("capture: redacted HAR has no log.entries");
-    }
     const ambiguous = findAmbiguousNormalizedRequests(harEntries, volatileKeys);
     if (ambiguous.length > 0) {
       throw new Error(
