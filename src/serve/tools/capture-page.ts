@@ -47,6 +47,20 @@ export interface BrowserLauncher {
   }>;
 }
 
+/**
+ * One capture at a time, process-wide.
+ *
+ * An MCP server is long-lived and an agent can call a tool as often as it likes. Unbounded, every
+ * concurrent call launches its own Chromium, and a handful of them is a host with no memory left —
+ * a failure that belongs to the machine rather than to any archive, so nothing that inspects an
+ * archive would ever see it.
+ *
+ * A queue rather than a rejection: a caller that asked for two captures wants two archives, and
+ * making the second wait costs it time where refusing costs it the result. Capture is already
+ * bounded in wall-clock by §6.10's budget, so the wait cannot be unbounded either.
+ */
+let captureQueue: Promise<unknown> = Promise.resolve();
+
 export async function capturePage(
   params: CapturePageParams,
   launcher: BrowserLauncher,
@@ -56,8 +70,9 @@ export async function capturePage(
   const outDir = assertWritableOutDir(params.outDir, existsSync);
   await assertReachableUrl(params.url, params.allowPrivateNetwork === true, params.resolveHost);
 
-  const browser = await launcher.launch();
-  try {
+  const run = captureQueue.then(async () => {
+    const browser = await launcher.launch();
+    try {
     const har = await captureHar({
       // The launcher's structural type is deliberately loose: Playwright's Browser is not
       // assignable to the structural interface `captureHar` declares, and narrowing it here would
@@ -67,8 +82,12 @@ export async function capturePage(
       outDir,
       volatileQueryKeys: params.volatileQueryKeys,
     });
-    return { archive: outDir, har, url: params.url };
-  } finally {
-    await browser.close();
-  }
+      return { archive: outDir, har, url: params.url };
+    } finally {
+      await browser.close();
+    }
+  });
+  // The queue must not stop on a failed capture, and it must not swallow that failure either.
+  captureQueue = run.catch(() => undefined);
+  return run;
 }
