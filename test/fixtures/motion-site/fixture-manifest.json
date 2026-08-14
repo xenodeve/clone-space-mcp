@@ -1,7 +1,6 @@
 {
   "version": 1,
   "note": "The single source of truth for what this fixture declares. test/fixtures/motion-site.test.ts reads it, so a case removed from the page fails a test instead of silently shrinking the ground truth. Do not maintain a second copy of this list anywhere — link here instead.",
-
   "declares": [
     {
       "id": "css-keyframes-pulse",
@@ -72,9 +71,15 @@
       "kind": "capture-fidelity",
       "selector": "[data-fixture-id='sourcemap-module']",
       "expect": "A <script> for /build/instrumented.js — minified, with a published //# sourceMappingURL. computeHeroParallaxOffset survives only in the map."
+    },
+    {
+      "id": "nested-scroller",
+      "kind": "transcript",
+      "mechanism": "nested-scroll",
+      "selector": "[data-fixture-id='nested-scroller']",
+      "expect": "A horizontally scrollable nested container that advances its own scrollLeft. Its scroll event does not bubble to window, so §6.11's transcript must name the container that moved."
     }
   ],
-
   "identityCases": [
     {
       "kind": "duplicate-siblings",
@@ -102,7 +107,6 @@
       "expect": "An element removed and re-added on a timer. Reconciliation must not silently rebind it to a new id, and must emit identity-unresolved when it cannot decide."
     }
   ],
-
   "assets": {
     "lazyImage": "/assets/lazy-panel.svg",
     "crossOriginStylesheet": "/theme.css",

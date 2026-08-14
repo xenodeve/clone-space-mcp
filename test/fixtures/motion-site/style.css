@@ -140,3 +140,8 @@ body {
   height: 120px;
   background: linear-gradient(90deg, var(--accent), transparent);
 }
+
+/* A genuinely scrollable nested container (§6.11). Its scroll does not bubble to window, so a
+   transcript that listens only there records the page and misses this entirely. */
+.nested-scroller { width: 200px; overflow-x: auto; white-space: nowrap; }
+.nested-scroller__rail { width: 2000px; }

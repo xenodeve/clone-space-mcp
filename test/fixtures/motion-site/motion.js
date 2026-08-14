@@ -134,3 +134,17 @@
     }
   }, 1500);
 })();
+
+// §6.11 ground truth: a nested horizontal scroller that scrolls itself. Nothing outside this
+// element moves, and its scroll event does not reach window — so a transcript that records only
+// the page cannot tell this apart from a container that never moved.
+{
+  const rail = document.querySelector("[data-fixture-id='nested-scroller']");
+  if (rail) {
+    let offset = 0;
+    setInterval(() => {
+      offset = (offset + 40) % 1800;
+      rail.scrollLeft = offset;
+    }, 120);
+  }
+}

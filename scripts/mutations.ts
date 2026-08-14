@@ -311,6 +311,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "records the scrolling the adaptive sweep drove",
   },
   {
+    id: "transcript-scroll-listener-outside-the-capture-phase",
+    why: "#115/§6.11 - a scroll on a nested container does not bubble to window. Without the capture phase the listener records the page and reports nothing for an inner scroller, which is indistinguishable from a container that never moved. The fixture's nested-scroller declares that case.",
+    file: "src/capture/transcript.ts",
+    find: "  }, true);",
+    replace: "  }, false);",
+    suite: "browser",
+    expect: "records a nested container that scrolls itself",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",

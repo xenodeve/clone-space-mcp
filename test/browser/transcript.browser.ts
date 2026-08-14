@@ -64,3 +64,20 @@ test("every scroll names the container that moved, not page coordinates alone", 
     );
   }
 });
+
+test("records a nested container that scrolls itself, which never reaches window", () => {
+  const scrolls = transcript.chunks.flatMap((chunk) => chunk.events).filter((e) => e.type === "scroll");
+  const nested = scrolls.filter((event) => event.target !== "window");
+  // §6.11's ground truth is `nested-scroller` in the fixture manifest: a horizontal container that
+  // advances its own scrollLeft. Its scroll event does not bubble to window, so a transcript that
+  // listened only there would record the page and report nothing for this — indistinguishable from
+  // a container that never moved.
+  assert.ok(
+    nested.length > 0,
+    `no nested-container scroll recorded; ${scrolls.length} scrolls were all on window`,
+  );
+  assert.ok(
+    nested.some((event) => event.detail.x !== 0),
+    "the nested scroller moved horizontally and no recorded offset shows it",
+  );
+});
