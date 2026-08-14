@@ -365,6 +365,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "fails with a stable message, not a raw parser error",
   },
   {
+    id: "allowed-roots-not-enforced",
+    why: "#127 - a restriction a deployment sets and the tool ignores is worse than none, because the operator believes it holds. The mechanism is only worth adding if it is enforced.",
+    file: "src/serve/tools/inspect-archive.ts",
+    find: "    if (!params.allowedRoots.some((root) => isWithin(resolve(root), wanted))) {",
+    replace: "    if (false) {",
+    suite: "bun",
+    expect: "refuses an archive outside the allowed roots",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",
