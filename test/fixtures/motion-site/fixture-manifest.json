@@ -25,6 +25,13 @@
       "expect": "A gsap.timeline() with three tweens, reachable from gsap.globalTimeline.getChildren()."
     },
     {
+      "id": "gsap-nested-only",
+      "kind": "animation",
+      "mechanism": "gsap-timeline",
+      "selector": "[data-fixture-id='gsap-nested-only']",
+      "expect": "A tween nested inside a gsap.timeline() and nothing else. No top-level tween targets this element, so an extractor that does not descend into child timelines reports nothing for it."
+    },
+    {
       "id": "gsap-scroll-panel",
       "mechanism": "gsap-scrolltrigger",
       "kind": "animation",
