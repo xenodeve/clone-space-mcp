@@ -338,6 +338,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "does not report targets from a concurrent capture sharing the browser",
   },
   {
+    id: "capture-tool-unbounded-concurrency",
+    why: "#127 - an MCP server is long-lived and an agent can call a tool as often as it likes. Unbounded, every concurrent call launches its own Chromium and a handful is a host with no memory left - a failure that belongs to the machine, so nothing inspecting an archive would see it.",
+    file: "src/serve/tools/capture-page.ts",
+    find: "  const run = captureQueue.then(async () => {",
+    replace: "  const run = Promise.resolve().then(async () => {",
+    suite: "bun",
+    expect: "never runs two browsers at once",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",
