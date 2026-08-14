@@ -535,4 +535,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "an allowlist entry with no rationale is refused at load rather than silently accepted",
   },
+  {
+    id: "coverage-claims-an-interaction-it-never-drove",
+    why: "#171 - v1 drives navigation and a scroll pass and nothing else. A coverage vector that claims interaction it never drove turns the honest small claim into the rubber stamp the plan warns about: 242 click listeners registered, none fired, and the report saying otherwise.",
+    file: "src/equivalence/run.ts",
+    find: "      interaction: [0, 1],",
+    replace: "      interaction: [1, 1],",
+    suite: "browser",
+    expect: "reports a verdict and a coverage vector for the fixture",
+  },
 ];
