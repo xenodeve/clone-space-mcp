@@ -12,6 +12,55 @@ synthesised against measurements taken the same day on three real sites.
 
 ---
 
+## 0. The goal, in one sentence
+
+**Archive a web page so its client side is still alive rather than merely still present — then let
+an agent walk into it and explain how anything works, citing a real line.**
+
+Two statements of this exist in the repository and they are the same goal at different sharpness.
+
+`CLAUDE.md` says **what must be possible**:
+
+> Archive a live web page so that it **replays offline with real fidelity** — carousels,
+> GSAP/ScrollTrigger, CSS animation genuinely run, not a frozen skeleton — and so an **AI agent can
+> consume it** and explain how the page is built and where the motion is. The measure of done is
+> not "the HTML was saved": disconnect the network → capture → replay and watch the motion actually
+> run → extract a behavior graph → serve it and have an agent answer *"what makes the hero move?"*
+> correctly, **citing file and line**.
+
+The criterion in §1 says **how anyone can tell it is true**. The difference matters: the first is
+checked by questions somebody thought to ask, which bounds it by that person's imagination. The
+second needs no question authored at all — if the clone behaves as the original does, completeness
+follows rather than being asserted.
+
+### Why this is a different instrument, not a better scraper
+
+A scraper keeps the **result** — markdown, a hydrated DOM, a screenshot. All three are one frame,
+already frozen.
+
+This keeps **the conditions under which the page can run again**, and then asks the page while it
+is running. That is not a quality difference; it is a difference in what is answerable at all, and
+two measurements from 2026-08-14 show where the line falls:
+
+- **82,613 characters of GLSL** recovered from `www.chaingpt.org` — assembled at runtime, present in
+  no archived file, unobtainable by anything that reads files.
+- `gl.shaderSource` traced to **`three@0.151.2/build/three.module.js:18723:4`** — a runtime event
+  resolved to an original source line.
+
+Neither is possible if what you kept was the result.
+
+### What is not reached
+
+All three parts of the goal — *what moves*, *how it works*, *which line* — are demonstrated, and
+all three are demonstrated **only over what a single scroll-through triggers**. `click 242 ·
+keydown 214 · mouseenter 72` were observed as registrations and never once as behaviour.
+
+So the ceiling on the word *everything* currently sits below where the goal puts it. That is the
+reason slice 3 exists and the reason slice 0 precedes it: without the falsifier, a clone that is
+green over scrolling looks the same as a clone that is complete.
+
+---
+
 ## 1. Definition of done, in the developer's own words
 
 > การที่สามารถ Clone มาแล้วทำให้มันใช้งานแบบ Offline ได้เหมือนกับ Online ทุกประการสำหรับ Code ฝั่ง
@@ -320,6 +369,51 @@ budget exists so that growth is measured rather than assumed harmless.
 > สิ่งที่ยังเปิดอยู่ → **[`docs/OPEN-WORK-LEDGER.md`](../../OPEN-WORK-LEDGER.md)**
 > มันต่อยอดจาก [`2026-07-31-pipeline-architecture.md`](2026-07-31-pipeline-architecture.md) · เมื่อสองไฟล์
 > ขัดกัน ไฟล์นั้นชนะในทุกเรื่องที่มันตัดสินไปแล้ว
+
+---
+
+## 0. เป้าหมาย ในประโยคเดียว
+
+**เก็บหน้าเว็บมาให้ฝั่ง client ของมันยังมีชีวิตอยู่ ไม่ใช่แค่ยังมีร่าง — แล้วให้ agent เดินเข้าไปในนั้น
+แล้วอธิบายได้ว่าอะไรทำงานยังไง โดยอ้างถึงบรรทัดจริง**
+
+คำกล่าวสองฉบับของเรื่องนี้มีอยู่ในรีโป และมันคือเป้าหมายเดียวกันที่คมไม่เท่ากัน
+
+`CLAUDE.md` บอกว่า **อะไรต้องทำได้**
+
+> เก็บหน้าเว็บที่มีชีวิตไว้ เพื่อให้มัน **replay แบบออฟไลน์ด้วยความสมจริงจริง** — carousel ·
+> GSAP/ScrollTrigger · CSS animation ทำงานจริง ไม่ใช่โครงกระดูกแช่แข็ง — และเพื่อให้ **AI agent
+> เอาไปใช้ได้** และอธิบายได้ว่าหน้าถูกสร้างยังไงและ motion อยู่ตรงไหน · การวัดว่าเสร็จไม่ใช่
+> "HTML ถูกเซฟแล้ว": ถอดสายเน็ต → capture → replay แล้วดู motion วิ่งจริง → extract กราฟพฤติกรรม →
+> serve แล้วให้ agent ตอบว่า *"อะไรทำให้ hero ขยับ"* ได้ถูกต้อง **โดยอ้างไฟล์และบรรทัด**
+
+เกณฑ์ใน §1 บอกว่า **ใครจะรู้ได้ยังไงว่ามันจริง** · ความต่างนี้สำคัญ: ฉบับแรกถูกตรวจด้วยคำถามที่ใครสักคน
+นึกจะถาม ซึ่งจำกัดมันไว้ด้วยจินตนาการของคนคนนั้น · ฉบับที่สองไม่ต้องมีใครเขียนคำถามเลย — ถ้าโคลนทำตัว
+เหมือนต้นฉบับ ความครบถ้วนก็ตามมาเอง แทนที่จะถูกกล่าวอ้าง
+
+### ทำไมมันเป็นเครื่องมือคนละชนิด ไม่ใช่ scraper ที่ดีกว่า
+
+scraper เก็บ **ผลลัพธ์** — markdown · DOM ที่ hydrate แล้ว · screenshot · ทั้งสามอย่างคือหนึ่งเฟรม
+ที่แช่แข็งไปแล้ว
+
+ตัวนี้เก็บ **เงื่อนไขที่ทำให้หน้ารันใหม่ได้** แล้วไปถามหน้าที่กำลังรันอยู่ · นั่นไม่ใช่ความต่างเชิงคุณภาพ
+แต่เป็นความต่างว่าอะไรตอบได้บ้างตั้งแต่แรก และการวัดสองอย่างจาก 2026-08-14 แสดงว่าเส้นแบ่งอยู่ตรงไหน
+
+- **GLSL 82,613 ตัวอักษร** กู้มาจาก `www.chaingpt.org` — ประกอบขึ้นตอนรัน ไม่มีอยู่ในไฟล์ไหนใน archive
+  และเครื่องมือที่อ่านไฟล์อย่างเดียวเอามาไม่ได้
+- `gl.shaderSource` สืบย้อนไปถึง **`three@0.151.2/build/three.module.js:18723:4`** — เหตุการณ์ตอนรัน
+  ที่คลายไปหาบรรทัดต้นฉบับ
+
+ทั้งสองอย่างเป็นไปไม่ได้ถ้าสิ่งที่เก็บไว้คือผลลัพธ์
+
+### สิ่งที่ยังไปไม่ถึง
+
+ทั้งสามท่อนของเป้าหมาย — *อะไรขยับ* · *ทำงานยังไง* · *บรรทัดไหน* — สาธิตได้แล้ว และทั้งสามท่อนสาธิตได้
+**เฉพาะบนสิ่งที่การเลื่อนหน้าครั้งเดียวกระตุ้น** เท่านั้น · `click 242 · keydown 214 · mouseenter 72`
+ถูกสังเกตในฐานะการลงทะเบียน และไม่เคยถูกสังเกตในฐานะพฤติกรรมแม้แต่ครั้งเดียว
+
+เพดานของคำว่า *ทั้งหมด* จึงยังอยู่ต่ำกว่าที่เป้าหมายวางไว้ · นั่นคือเหตุผลที่สไลซ์ 3 มีอยู่ และเหตุผลที่
+สไลซ์ 0 มาก่อนมัน: ถ้าไม่มีตัวหักล้าง โคลนที่เขียวบนการเลื่อนหน้าจะหน้าตาเหมือนโคลนที่สมบูรณ์ทุกประการ
 
 ---
 
