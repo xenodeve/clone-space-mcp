@@ -6,8 +6,10 @@
  * and an inspector can all reach the same data without an agent in the loop.
  */
 
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
+import { validateCommit, type CommitArtifact, type CommitV1 } from "../capture/commit.ts";
 
 /** The JSON documents an archive publishes, keyed the way `checkpoints.json` associates them. */
 export const ARCHIVE_DOCUMENTS = {
@@ -24,6 +26,38 @@ export type ArchiveDocumentName = keyof typeof ARCHIVE_DOCUMENTS;
 
 export const HAR_FILE_NAME = "network.har";
 
+/**
+ * The eleven §6.x archive contracts, and the artifact each one lands in.
+ *
+ * `artifact: null` means **this version of capture publishes nothing for it** — §6.6 is a type
+ * only, and §6.7/§6.11 have their schema but no capture wiring. That is a different fact from an
+ * archive being *missing* a file it should have, and collapsing the two is how a reader reports a
+ * complete archive as broken, or an incomplete one as fine.
+ */
+export const ARCHIVE_CONTRACTS: readonly { section: string; name: string; artifact: string | null }[] =
+  [
+    { section: "§6.1", name: "credential redaction", artifact: HAR_FILE_NAME },
+    { section: "§6.2", name: "environment", artifact: "environment.json" },
+    { section: "§6.3", name: "checkpoint coherence", artifact: "checkpoints.json" },
+    { section: "§6.4", name: "capabilities", artifact: "capabilities.json" },
+    { section: "§6.5", name: "request normalization", artifact: "request-normalization.json" },
+    { section: "§6.6", name: "target reference schema", artifact: null },
+    { section: "§6.7", name: "interaction transcript", artifact: null },
+    { section: "§6.8", name: "transactional integrity", artifact: "commit.json" },
+    { section: "§6.9", name: "target inventory", artifact: "targets.json" },
+    { section: "§6.10", name: "termination budget", artifact: "termination.json" },
+    { section: "§6.11", name: "scroll-container transcript", artifact: null },
+  ];
+
+export type ContractStatus = "present" | "missing" | "not-produced";
+
+export interface ContractCoverage {
+  section: string;
+  name: string;
+  artifact: string | null;
+  status: ContractStatus;
+}
+
 export interface ArchiveRead {
   /** The absolute archive root, as resolved. */
   root: string;
@@ -33,6 +67,17 @@ export interface ArchiveRead {
   missing: ArchiveDocumentName[];
   /** The HAR is reported by path: it is not JSON this module should hold in memory. */
   harPath: string;
+  /**
+   * The `commit.json` verdict, as data. `validateCommit` is a fail-closed gate and stops at
+   * ok/not-ok; a reader is a diagnostic, so it also names the artifacts whose bytes no longer hash
+   * to what the commit recorded. `mismatched` is empty when the verdict is ok, and can also be
+   * empty on a failure the hash walk cannot explain — a missing commit, a wrong producer, an
+   * unlisted file — which is itself the signal that the failure is structural rather than a
+   * corrupted artifact.
+   */
+  integrity: { ok: boolean; mismatched: string[] };
+  /** One row per §6.x contract, so "is this capture complete?" is answerable without an agent. */
+  contracts: ContractCoverage[];
 }
 
 /** Is `candidate` strictly inside `root`? Used before reading anything an archive names. */
@@ -41,14 +86,18 @@ function isStrictlyWithin(root: string, candidate: string): boolean {
   return candidate !== root && candidate.startsWith(base);
 }
 
-async function readJson(path: string): Promise<unknown | undefined> {
-  let raw: string;
+async function readFileOrUndefined(path: string): Promise<string | undefined> {
   try {
-    raw = await readFile(path, "utf8");
+    return await readFile(path, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
+}
+
+async function readJson(path: string): Promise<unknown | undefined> {
+  const raw = await readFileOrUndefined(path);
+  if (raw === undefined) return undefined;
   return JSON.parse(raw) as unknown;
 }
 
@@ -56,6 +105,7 @@ export async function readArchive(root: string): Promise<ArchiveRead> {
   const archiveRoot = resolve(root);
   const documents: Partial<Record<ArchiveDocumentName, unknown>> = {};
   const missing: ArchiveDocumentName[] = [];
+  const present = new Set<string>();
 
   for (const [name, fileName] of Object.entries(ARCHIVE_DOCUMENTS) as [
     ArchiveDocumentName,
@@ -67,6 +117,10 @@ export async function readArchive(root: string): Promise<ArchiveRead> {
       continue;
     }
     documents[name] = parsed;
+    present.add(fileName);
+  }
+  if ((await readFileOrUndefined(resolve(archiveRoot, HAR_FILE_NAME))) !== undefined) {
+    present.add(HAR_FILE_NAME);
   }
 
   return {
@@ -74,7 +128,48 @@ export async function readArchive(root: string): Promise<ArchiveRead> {
     documents,
     missing,
     harPath: resolveAssociation(archiveRoot, documents.checkpoints, "har", HAR_FILE_NAME),
+    integrity: await verifyIntegrity(archiveRoot, documents.commit),
+    contracts: ARCHIVE_CONTRACTS.map((contract) => ({
+      ...contract,
+      status:
+        contract.artifact === null
+          ? "not-produced"
+          : present.has(contract.artifact)
+            ? "present"
+            : "missing",
+    })),
   };
+}
+
+async function verifyIntegrity(
+  root: string,
+  commit: unknown,
+): Promise<{ ok: boolean; mismatched: string[] }> {
+  const verdict = await validateCommit(commit, root);
+  if (verdict.ok) return { ok: true, mismatched: [] };
+
+  const artifacts =
+    typeof commit === "object" && commit !== null && Array.isArray((commit as CommitV1).artifacts)
+      ? ((commit as CommitV1).artifacts as CommitArtifact[])
+      : [];
+  const mismatched: string[] = [];
+  for (const artifact of artifacts) {
+    if (typeof artifact?.path !== "string" || typeof artifact?.sha256 !== "string") continue;
+    const full = resolve(join(root, artifact.path));
+    if (!isStrictlyWithin(root, full)) {
+      mismatched.push(artifact.path);
+      continue;
+    }
+    let actual: string;
+    try {
+      actual = createHash("sha256").update(await readFile(full)).digest("hex");
+    } catch {
+      mismatched.push(artifact.path);
+      continue;
+    }
+    if (actual !== artifact.sha256) mismatched.push(artifact.path);
+  }
+  return { ok: false, mismatched };
 }
 
 /**

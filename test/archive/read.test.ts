@@ -90,6 +90,49 @@ async function captureFixtureArchive(): Promise<string> {
   return outDir;
 }
 
+test("readArchive reports contract coverage, separating not-produced from missing", async () => {
+  const root = await captureFixtureArchive();
+  try {
+    const { contracts } = await readArchive(root);
+    const status = Object.fromEntries(contracts.map((c) => [c.section, c.status]));
+
+    // Eight contracts land in an artifact and this archive carries all eight.
+    for (const section of ["§6.1", "§6.2", "§6.3", "§6.4", "§6.5", "§6.8", "§6.9", "§6.10"]) {
+      expect(status[section]).toBe("present");
+    }
+    // The other three publish nothing today: §6.6 is a type, §6.7 and §6.11 have a schema and no
+    // capture wiring. Reporting them as "missing" would call a complete archive broken.
+    for (const section of ["§6.6", "§6.7", "§6.11"]) {
+      expect(status[section]).toBe("not-produced");
+    }
+
+    rmSync(join(root, "targets.json"));
+    const damaged = await readArchive(root);
+    const after = Object.fromEntries(damaged.contracts.map((c) => [c.section, c.status]));
+    expect(after["§6.9"]).toBe("missing");
+    expect(after["§6.7"]).toBe("not-produced");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("readArchive verifies the commit and names the artifact that no longer matches", async () => {
+  const root = await captureFixtureArchive();
+  try {
+    const clean = await readArchive(root);
+    expect(clean.integrity).toEqual({ ok: true, mismatched: [] });
+
+    writeFileSync(join(root, "capabilities.json"), '{"schemaVersion":1,"flags":{}}');
+    const tampered = await readArchive(root);
+    // A verdict of "not ok" is where `validateCommit` stops, because it is a fail-closed gate.
+    // A reader is a diagnostic, so it also says which file stopped being what the commit recorded.
+    expect(tampered.integrity.ok).toBe(false);
+    expect(tampered.integrity.mismatched).toEqual(["capabilities.json"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("readArchive refuses an association that resolves outside the archive root", async () => {
   const root = await captureFixtureArchive();
   try {
