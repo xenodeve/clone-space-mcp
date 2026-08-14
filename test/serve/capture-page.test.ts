@@ -26,7 +26,7 @@ test("capturePage returns the archive directory, not the HAR path inside it", as
   const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-capture-tool-")), "archive");
   const launcher = fakeLauncher();
   try {
-    const result = await capturePage({ url: "https://example.com", outDir }, launcher as never);
+    const result = await capturePage({ url: "https://example.com", outDir, resolveHost: async () => ["93.184.216.34"] }, launcher as never);
 
     // `captureHar` returns the HAR. A caller handed that path and told it was the archive would
     // pass it straight to `inspect_archive`, which would refuse it as "not an archive".
@@ -45,7 +45,7 @@ test("capturePage closes the browser it launched, even when capture fails", asyn
     // An empty HAR path is not the failure; a browser that throws during capture is. The fake
     // browser writes its HAR on close, so pointing capture at a URL it refuses is enough.
     await expect(
-      capturePage({ url: "ftp://example.com", outDir }, launcher as never),
+      capturePage({ url: "ftp://example.com", outDir, resolveHost: async () => ["93.184.216.34"] }, launcher as never),
     ).rejects.toThrow(/unsupported protocol/);
     // Refused before launching: nothing to close, and no browser process is left behind.
     expect(launcher.wasClosed()).toBe(false);
@@ -58,7 +58,7 @@ test("capturePage releases the browser after a successful capture", async () => 
   const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-capture-tool-close-")), "archive");
   const launcher = fakeLauncher();
   try {
-    await capturePage({ url: "https://example.com", outDir }, launcher as never);
+    await capturePage({ url: "https://example.com", outDir, resolveHost: async () => ["93.184.216.34"] }, launcher as never);
     // Without this the MCP server leaks a Chromium process per call, which a long-lived agent
     // session turns into a machine with no memory left.
     expect(launcher.wasClosed()).toBe(true);

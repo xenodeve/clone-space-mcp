@@ -16,7 +16,7 @@ test("capturePage refuses an outDir that already exists", async () => {
   const existing = mkdtempSync(join(tmpdir(), "clone-space-existing-"));
   try {
     await expect(
-      capturePage({ url: "https://example.com", outDir: existing }, launcher() as never),
+      capturePage({ url: "https://example.com", outDir: existing, resolveHost: async () => ["93.184.216.34"] }, launcher() as never),
     ).rejects.toThrow(/already exists/);
   } finally {
     rmSync(existing, { recursive: true, force: true });
@@ -34,7 +34,7 @@ test("capturePage refuses a URL that resolves to a private or loopback address",
   // developer's own services are all reachable over plain http from wherever this runs.
   for (const url of ["http://127.0.0.1:8080/", "http://169.254.169.254/latest/meta-data/", "http://[::1]/"]) {
     await expect(
-      capturePage({ url, outDir: join(tmpdir(), "never-created") }, launcher() as never),
+      capturePage({ url, outDir: join(tmpdir(), "never-created"), resolveHost: async () => ["93.184.216.34"] }, launcher() as never),
     ).rejects.toThrow(/private|loopback|link-local/i);
   }
 });
