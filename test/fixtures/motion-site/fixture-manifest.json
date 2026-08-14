@@ -78,6 +78,13 @@
       "mechanism": "nested-scroll",
       "selector": "[data-fixture-id='nested-scroller']",
       "expect": "A horizontally scrollable nested container that advances its own scrollLeft. Its scroll event does not bubble to window, so §6.11's transcript must name the container that moved."
+    },
+    {
+      "id": "dedicated-worker",
+      "kind": "target",
+      "mechanism": "worker",
+      "selector": "[data-fixture-id='dedicated-worker']",
+      "expect": "A dedicated Web Worker created from fixture-worker.js. It is invisible to the page CDP session, so §6.9's inventory must report it from the browser-level session."
     }
   ],
   "identityCases": [

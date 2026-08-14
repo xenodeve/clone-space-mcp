@@ -148,3 +148,15 @@
     }, 120);
   }
 }
+
+// §6.9 ground truth: a dedicated worker. Target discovery runs on a browser-level CDP session
+// precisely because a worker is invisible to the page session, so a fixture without one cannot
+// tell whether the inventory works or merely returns the page.
+{
+  try {
+    const worker = new Worker("fixture-worker.js");
+    worker.onmessage = () => {};
+  } catch {
+    // A browser without workers still serves every other fixture case.
+  }
+}
