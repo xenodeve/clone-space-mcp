@@ -499,4 +499,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "refuses a target that closed before it opened",
   },
+  {
+    id: "data-sourcemap-fetched-anyway",
+    why: "#165 - an inline `data:` sourcemap needs no fetch, and asking `context.request.get` for one can never be answered. Measured on www.chaingpt.org: two entries in the published HAR with no response and no failure, while the network drain correctly reported the page had nothing outstanding. With #156 that is enough on its own to report the whole archive incomplete.",
+    file: "src/capture/record.ts",
+    find: "                    if (resolved.protocol === \"http:\" || resolved.protocol === \"https:\") {",
+    replace: "                    if (true) {",
+    suite: "browser",
+    expect: "does not fetch a sourcemap that is published inline as a data URI",
+  },
 ];

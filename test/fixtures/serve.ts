@@ -143,6 +143,24 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         );
         return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
       }
+      // #165. A script whose sourcemap is published inline as a `data:` URI — an ordinary and
+      // correct way to ship one. Capture used to fetch it through `context.request.get`, which can
+      // never be answered and left a permanently unanswered entry in the published HAR.
+      if (pathname === "/inline-sourcemap.html") {
+        return new Response(
+          `<!doctype html><title>inline map</title><body><p>fixture</p>
+           <script src="/inline-map.js"></script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/inline-map.js") {
+        return new Response(
+          `globalThis.inlineMapped = 1;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjogMywgInNvdXJjZXMiOiBbImlubGluZS1zb3VyY2UudHMiXSwgIm5hbWVzIjogW10sICJtYXBwaW5ncyI6ICJBQUFBIiwgInNvdXJjZXNDb250ZW50IjogWyJleHBvcnQgY29uc3QgaW5saW5lID0gMTtcbiJdfQ==
+`,
+          { headers: { "content-type": CONTENT_TYPES[".js"]! } },
+        );
+      }
       if (pathname === "/cross-origin-script.html") {
         const script = new URL("/instrumented.js", crossOriginUrl);
         return new Response(`<script src="${script.href}"></script>`, {

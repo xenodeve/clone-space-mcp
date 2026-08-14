@@ -274,7 +274,17 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
                 if (sourceMappingURL) {
                   sourcemapDeclared = true;
                   try {
-                    discoveredMapUrls.add(new URL(sourceMappingURL, response.url()).href);
+                    const resolved = new URL(sourceMappingURL, response.url());
+                    // #165. An inline `data:` map needs no fetch — the map *is* the URL, and the
+                    // script carrying it is already archived. Asking `context.request.get` for one
+                    // can never be answered, so it left an entry in the published HAR with no
+                    // response and no failure: indistinguishable from a response capture stopped
+                    // waiting for, and enough on its own to report the whole archive incomplete.
+                    // `sourcemapDeclared` is set above and stays true, because the flag is about
+                    // the declaration rather than about fetching anything.
+                    if (resolved.protocol === "http:" || resolved.protocol === "https:") {
+                      discoveredMapUrls.add(resolved.href);
+                    }
                   } catch {
                     // A declaration with an unresolvable URL is still a declaration.
                   }
