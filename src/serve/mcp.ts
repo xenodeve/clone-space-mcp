@@ -9,9 +9,15 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import pkg from "../../package.json" with { type: "json" };
 import { findTool, type ToolDefinition } from "./tools/index.ts";
 
-export const SERVER_INFO = { name: "clone-space-mcp", version: "0.1.0-alpha.0" } as const;
+/**
+ * What the server tells a client during the handshake. Read from `package.json` rather than
+ * written here: a second copy of the version is a second source of truth, and this one had already
+ * drifted — the server announced `0.1.0-alpha.0` over the protocol while the package said `0.0.0`.
+ */
+export const SERVER_INFO = { name: pkg.name, version: pkg.version } as const;
 
 export function createServer(tools: readonly ToolDefinition[]): McpServer {
   const server = new McpServer(SERVER_INFO);

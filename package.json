@@ -1,6 +1,6 @@
 {
   "name": "clone-space-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "private": true,
   "type": "module",
   "description": "Archive a live web page so it replays offline with real motion, and an AI agent can read how it is built.",
