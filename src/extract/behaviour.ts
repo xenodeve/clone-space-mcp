@@ -93,9 +93,16 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
     });
   }
 
-  // `getChildren()` returns the timeline's direct children, and a child may itself be a timeline —
-  // the fixture declares exactly that: `gsap.timeline()` with three tweens inside it. Only the
-  // leaves carry targets, so a non-recursive walk reports a node that animates nothing.
+  // `getChildren()` already flattens: its `nested` parameter defaults to true, so descendants of a
+  // child timeline arrive here without any walking of our own. Measured — a recursive version was
+  // written, and a corpus entry that disabled the recursion SURVIVED three times because there was
+  // no behaviour to lose.
+  //
+  // The empty-targets skip below is defensive and, measured, currently unreachable: an entry that
+  // disabled it also SURVIVED, because with `nested` defaulting to true this list contains only
+  // leaf tweens and every one of them has a target. It is kept rather than deleted because the
+  // cost is one comparison and the failure it prevents — a node that animates nothing and names no
+  // element — is one a caller cannot tell apart from a real one. It is **not** claimed as proven.
   const walkGsap = (children: unknown[]): void => {
     for (const child of children) {
       const node = child as {
@@ -105,10 +112,6 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
         delay?: () => number;
         vars?: { ease?: unknown; repeat?: unknown };
       };
-      if (typeof node.getChildren === "function") {
-        walkGsap(node.getChildren());
-        continue;
-      }
       const targets = typeof node.targets === "function" ? node.targets() : [];
       if (targets.length === 0) continue;
       for (const target of targets) {
