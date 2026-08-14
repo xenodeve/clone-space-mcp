@@ -11,6 +11,7 @@
 import { chromium } from "playwright";
 import { z } from "zod";
 import { capturePage } from "./tools/capture-page.ts";
+import { replayPage } from "./tools/replay-page.ts";
 import { BROWSERLESS_TOOLS, type ToolDefinition } from "./tools/index.ts";
 
 export const CAPTURE_TOOL: ToolDefinition = {
@@ -46,4 +47,14 @@ export const CAPTURE_TOOL: ToolDefinition = {
     ),
 };
 
-export const ALL_TOOLS: readonly ToolDefinition[] = [...BROWSERLESS_TOOLS, CAPTURE_TOOL];
+export const REPLAY_TOOL: ToolDefinition = {
+  name: "replay_page",
+  title: "Replay an archived page",
+  description:
+    "Open an archived page again with the network unplugged: the archive is the only source, and a request it cannot serve fails rather than reaching the internet. Returns the URL, anything the archive could not serve (empty is what you want), and counts of the motion actually running - CSS keyframes, WAAPI, GSAP tweens and ScrollTriggers. It answers whether the page still moves, not how; describing the motion is the extract stage.",
+  inputSchema: { archive: z.string().describe("Path to a published archive directory") },
+  run: (params) =>
+    replayPage({ archive: String(params.archive) }, { launch: () => chromium.launch() as never }),
+};
+
+export const ALL_TOOLS: readonly ToolDefinition[] = [...BROWSERLESS_TOOLS, CAPTURE_TOOL, REPLAY_TOOL];

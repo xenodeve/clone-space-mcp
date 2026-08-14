@@ -10,7 +10,7 @@
 
 import { existsSync } from "node:fs";
 import { captureHar } from "../../capture/record.ts";
-import { assertReachableUrl, assertWritableOutDir } from "./capture-guards.ts";
+import { assertReachableUrl, assertWritableOutDir, type HostResolver } from "./capture-guards.ts";
 
 export interface CapturePageParams {
   /** The page to archive. Must be an absolute http(s) URL. */
@@ -26,6 +26,8 @@ export interface CapturePageParams {
    * inside a network into a stated choice rather than an accident.
    */
   allowPrivateNetwork?: boolean;
+  /** Injected so a unit test does not depend on live DNS. Production uses the system resolver. */
+  resolveHost?: HostResolver;
 }
 
 export interface CapturePageResult {
@@ -52,7 +54,7 @@ export async function capturePage(
   // Both refusals happen before anything is launched or created: a rejected call leaves no
   // browser process and no directory behind.
   const outDir = assertWritableOutDir(params.outDir, existsSync);
-  await assertReachableUrl(params.url, params.allowPrivateNetwork === true);
+  await assertReachableUrl(params.url, params.allowPrivateNetwork === true, params.resolveHost);
 
   const browser = await launcher.launch();
   try {

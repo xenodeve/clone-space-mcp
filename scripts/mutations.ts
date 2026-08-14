@@ -284,6 +284,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "refuses a URL that resolves to a private or loopback address",
   },
   {
+    id: "replay-falls-through-to-the-live-network",
+    why: "#133 - notFound: abort is what makes replay evidence rather than optimism. Fall through instead and an incomplete archive silently reaches the origin, so a replay of a broken archive looks perfect.",
+    file: "src/replay/replay.ts",
+    find: 'notFound: "abort", url: "**/*"',
+    replace: 'notFound: "fallback", url: "**/*"',
+    suite: "browser",
+    expect: "refuses to reach a live origin for what the archive is missing",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",

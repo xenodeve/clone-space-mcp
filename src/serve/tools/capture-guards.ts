@@ -45,7 +45,17 @@ function isPrivateAddress(address: string): string | undefined {
  * not need to: a redirect to a different host is cross-origin, and `collectEnvironment` refuses to
  * publish a capture whose final origin differs from the requested one. The pair is what bounds it.
  */
-export async function assertReachableUrl(rawUrl: string, allowPrivateNetwork: boolean): Promise<URL> {
+/** Resolve a hostname to addresses. Injected so a test does not depend on live DNS. */
+export type HostResolver = (hostname: string) => Promise<string[]>;
+
+const resolveWithDns: HostResolver = async (hostname) =>
+  (await lookup(hostname, { all: true })).map((record) => record.address);
+
+export async function assertReachableUrl(
+  rawUrl: string,
+  allowPrivateNetwork: boolean,
+  resolve: HostResolver = resolveWithDns,
+): Promise<URL> {
   const url = new URL(rawUrl);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`capture_page: unsupported protocol ${url.protocol}`);
@@ -53,7 +63,16 @@ export async function assertReachableUrl(rawUrl: string, allowPrivateNetwork: bo
   if (allowPrivateNetwork) return url;
 
   const host = url.hostname.replace(/^\[|\]$/g, "");
-  const addresses = isIP(host) !== 0 ? [host] : (await lookup(host, { all: true })).map((r) => r.address);
+  // A resolver failure is not a private address: say what happened rather than surfacing a raw
+  // EAI_AGAIN, which reads as a bug in this tool rather than a name that could not be looked up.
+  let addresses: string[];
+  try {
+    addresses = isIP(host) !== 0 ? [host] : await resolve(host);
+  } catch (error) {
+    throw new Error(
+      `capture_page: cannot resolve ${url.hostname}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   for (const address of addresses) {
     const kind = isPrivateAddress(address);
     if (kind !== undefined) {
