@@ -320,6 +320,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "records a nested container that scrolls itself",
   },
   {
+    id: "snapshot-merged-in-arrival-order",
+    why: "#122 - Target.getTargets promises no ordering. Merging in arrival order loses an opener relationship whenever the browser lists a child before its parent, because appendDiscovered can only assert an opener this run already recorded.",
+    file: "src/capture/targets.ts",
+    find: "      if (waitingOnSnapshotOpener) {",
+    replace: "      if (false) {",
+    suite: "bun",
+    expect: "keeps an opener relationship the snapshot happened to list out of order",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",

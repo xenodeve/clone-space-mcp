@@ -155,7 +155,34 @@ export function reconcileWithSnapshot(
   drainable: ReadonlySet<string>,
 ): TargetEntry[] {
   let result = entries;
-  for (const info of snapshot) {
+  // Opener-first, not snapshot order. `Target.getTargets` promises no ordering, and a snapshot
+  // that happens to list a child before its parent would lose the relationship under a single
+  // forward pass — `appendDiscovered` can only assert an opener this run has already recorded.
+  // Passing until nothing more can be placed keeps every edge the snapshot actually contains.
+  let pending = [...snapshot];
+  const inSnapshot = new Set(snapshot.map((info) => info.targetId));
+  let placedSomething = true;
+  while (pending.length > 0 && placedSomething) {
+    placedSomething = false;
+    const deferred: CdpTargetPayload[] = [];
+    for (const info of pending) {
+      const opener = info.openerId;
+      const waitingOnSnapshotOpener =
+        typeof opener === "string" &&
+        inSnapshot.has(opener) &&
+        !result.some((entry) => entry.targetId === opener);
+      if (waitingOnSnapshotOpener) {
+        deferred.push(info);
+        continue;
+      }
+      result = appendDiscovered(result, info, observedAt);
+      placedSomething = true;
+    }
+    pending = deferred;
+  }
+  // Whatever is left is a cycle the browser reported; append it and let `appendDiscovered` drop
+  // the reference it cannot vouch for, rather than looping forever over it.
+  for (const info of pending) {
     result = appendDiscovered(result, info, observedAt);
   }
 

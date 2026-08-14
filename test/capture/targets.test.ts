@@ -4,6 +4,7 @@ import {
   normalizeType,
   TARGETS_SCHEMA_VERSION,
   targetEntryFromCreated,
+  reconcileWithSnapshot,
   validateTargets,
   type TargetEntry,
 } from "../../src/capture/targets.ts";
@@ -209,4 +210,24 @@ test("rejects a target whose timestamps precede the start of the run", () => {
       targets: [{ targetId: "X", type: "page", openedAt: 0, closedAt: -1 }],
     }),
   ).toEqual({ ok: false });
+});
+
+test("keeps an opener relationship the snapshot happened to list out of order", () => {
+  // `Target.getTargets` has no guaranteed order. A snapshot that lists a child before its parent
+  // would lose the edge under a single forward pass, because the parent is not recorded yet when
+  // the child is appended — evidence destroyed by an ordering the browser never promised.
+  const result = reconcileWithSnapshot(
+    [],
+    [
+      { targetId: "CHILD", type: "iframe", url: "https://cdn.example.com/f", openerId: "PARENT" },
+      { targetId: "PARENT", type: "page", url: "https://example.com" },
+    ],
+    10,
+    new Set<string>(),
+  );
+
+  const child = result.find((entry) => entry.targetId === "CHILD");
+  expect(child?.openerId).toBe("PARENT");
+  // And the document still validates: the opener has to be an *earlier* entry.
+  expect(validateTargets({ schemaVersion: 1, targets: result })).toEqual({ ok: true });
 });
