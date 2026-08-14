@@ -535,4 +535,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "draining twice does not return the same observations again",
   },
+  {
+    id: "extract-replays-without-the-observation-layer",
+    why: "#173 - the graph says what moves; the observation layer says what the page does. Replaying without hooks leaves an agent unable to reach a shader, a canvas realm or the interaction surface at all, which is the effect and 3D half of the goal missing from the only tool that could carry it.",
+    file: "src/serve/tools/extract-behaviour.ts",
+    find: "    const replay = await replayArchive({ archive: params.archive, browser, instrument: true });",
+    replace: "    const replay = await replayArchive({ archive: params.archive, browser });",
+    suite: "browser",
+    expect: "extract_behaviour returns the observation summary an agent can act on",
+  },
+  {
+    id: "shader-origin-invented-when-the-stack-is-unreadable",
+    why: "#173 - the innermost readable frame is the shader's origin, and a stack naming no coordinate must leave it absent. Substituting a placeholder gives an agent a citation nobody can check, which is worse than saying the origin is unknown.",
+    file: "src/serve/tools/extract-behaviour.ts",
+    find: "            origin: parseStackFrames(observation.stack)[0],",
+    replace: "            origin: parseStackFrames(observation.stack)[0] ?? { url: \"unknown\", line: 0, column: 0 },",
+    suite: "browser",
+    expect: "extract_behaviour returns the observation summary an agent can act on",
+  },
 ];
