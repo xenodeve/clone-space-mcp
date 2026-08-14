@@ -8,11 +8,23 @@
  * without something to compare against, and neither is an archive that merely exists.
  */
 
+import { resolve, sep } from "node:path";
 import { readArchive, type ContractCoverage } from "../../archive/read.ts";
 
 export interface InspectArchiveParams {
   /** Absolute or relative path to a published archive directory. */
   path: string;
+  /**
+   * Directories the tool may read archives from. **Omitted means no restriction**, which is the
+   * documented default and the residual risk ADR 0009 states.
+   *
+   * This is the mechanism, not a value: which roots a deployment permits is its own call, and a
+   * tool that offers no way to restrict leaves an operator with nothing to set even when they know
+   * exactly what they want. Defaulting to a restriction instead would make the reader unable to
+   * open an archive the user stored anywhere but one place — a different failure, and a worse one
+   * for a local tool.
+   */
+  allowedRoots?: readonly string[];
 }
 
 export interface InspectArchiveResult {
@@ -43,7 +55,18 @@ function terminationOf(document: unknown): { outcome: string; reason?: string } 
   return typeof record.reason === "string" ? { outcome, reason: record.reason } : { outcome };
 }
 
+function isWithin(root: string, candidate: string): boolean {
+  const base = root.endsWith(sep) ? root : `${root}${sep}`;
+  return candidate === root || candidate.startsWith(base);
+}
+
 export async function inspectArchive(params: InspectArchiveParams): Promise<InspectArchiveResult> {
+  if (params.allowedRoots !== undefined) {
+    const wanted = resolve(params.path);
+    if (!params.allowedRoots.some((root) => isWithin(resolve(root), wanted))) {
+      throw new Error(`inspect_archive: ${wanted} is outside the allowed roots`);
+    }
+  }
   const archive = await readArchive(params.path);
   // An archive without a commit marker was never published: `commit.json` is written last, after
   // validation, so its absence means the capture aborted or the path is simply something else.

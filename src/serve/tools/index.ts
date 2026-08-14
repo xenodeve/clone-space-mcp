@@ -34,8 +34,22 @@ export const BROWSERLESS_TOOLS: readonly ToolDefinition[] = [
     title: "Inspect an archive",
     description:
       "Report whether a published archive is complete: which §6.x contracts it carries, whether its commit still verifies, and how the capture terminated. Reads only; needs no browser and no network.",
-    inputSchema: { path: z.string().describe("Path to a published archive directory") },
-    run: (params) => inspectArchive({ path: String(params.path) }),
+    inputSchema: {
+      path: z.string().describe("Path to a published archive directory"),
+      allowedRoots: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Directories this call may read from. Omitted means no restriction, which is the default a local deployment gets.",
+        ),
+    },
+    run: (params) =>
+      inspectArchive({
+        path: String(params.path),
+        allowedRoots: Array.isArray(params.allowedRoots)
+          ? params.allowedRoots.map(String)
+          : undefined,
+      }),
   },
 ];
 
