@@ -4,7 +4,7 @@
 #
 # Install as `.github/workflows/t4-verify.yml`, then make ALL FOUR jobs required
 # status checks on `main` and disallow direct pushes (see ci-cd-layer.md).
-# Required check names: `lint`, `typecheck`, `test`, `build`.
+# Required check names: `lint`, `typecheck`, `test`, `browser`, `build`.
 #
 # Keep the fast subset in sync with `.claude/t4.json` "verify" — the local gate
 # should fail for the same reasons this does, just sooner.
@@ -51,6 +51,26 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun test                     # clone-space-mcp unit suite
+
+  # The Bun suite is only half the evidence. Replay, extract, the interaction
+  # transcript, the target inventory and the stdio server are all proven by
+  # `node --test` against a real Chromium, and none of it runs under Bun
+  # (ADR 0001). Without this job the gate reports green while every test that
+  # needed a browser went unrun — which is the shape of a gate that teaches
+  # people green means nothing.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      # `--with-deps` because a bare Chromium download is missing the shared
+      # libraries the runner image does not ship.
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run test:browser
 
   build:
     runs-on: ubuntu-latest
