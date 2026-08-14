@@ -371,19 +371,45 @@ test("publishes the requested and observed environment without non-allowlisted s
   assert.doesNotMatch(environmentText, /redirect-secret|CROSS_ORIGIN_VALUE/);
 });
 
-test("refuses to publish storage captured after a cross-origin redirect", async () => {
+/**
+ * #157. The refusal this replaces aborted the **whole capture** on any cross-origin redirect,
+ * which made `https://firecrawl.dev/` and `https://chaingpt.org/` unarchivable — an apex domain
+ * redirecting to `www` is one of the most common configurations on the web, and an agent handed
+ * the URL a human would type got an error that reads like a security incident.
+ *
+ * The property the refusal actually protected is narrower and is asserted directly here rather
+ * than inferred from a throw: storage read after landing on a different origin belongs to that
+ * origin, and publishing it under the requested one mislabels whose data it is.
+ */
+test("publishes a capture that redirected cross-origin, without that origin's storage", async () => {
   const outDir = nextCaptureOutDir();
+  const harPath = await captureHar({
+    browser,
+    url: new URL("/cross-origin-redirect.html", servers.primary.url).href,
+    outDir,
+    // The redirect target writes `redirect-secret` into ITS localStorage. Allowlisting the key is
+    // what makes this a real test: the allowlist was written for the requested origin, so if the
+    // read still happened the value would be published under a label that is not its own.
+    storageAllowlist: { localStorage: ["redirect-secret"] },
+  });
 
-  await assert.rejects(
-    captureHar({
-      browser,
-      url: new URL("/cross-origin-redirect.html", servers.primary.url).href,
-      outDir,
-      storageAllowlist: { localStorage: ["redirect-secret"] },
-    }),
-    /cross-origin redirect/,
-  );
-  assert.equal(existsSync(outDir), false);
+  const environmentText = readFileSync(join(dirname(harPath), "environment.json"), "utf8");
+  const environment = JSON.parse(environmentText) as {
+    primaryOrigin: string;
+    finalOrigin: string;
+    replay: { storage: { localStorage: unknown[]; sessionStorage: unknown[] } };
+  };
+
+  assert.equal(environment.primaryOrigin, new URL(servers.primary.url).origin);
+  assert.equal(environment.finalOrigin, new URL(servers.crossOrigin.url).origin);
+  assert.notEqual(environment.finalOrigin, environment.primaryOrigin);
+
+  assert.deepEqual(environment.replay.storage.localStorage, [], "published another origin's localStorage");
+  assert.deepEqual(environment.replay.storage.sessionStorage, [], "published another origin's sessionStorage");
+  // Belt and braces: the stored **value** must not appear anywhere in the artifact, under any key.
+  // The allowlisted key name is a different thing — the caller supplied it and recording the
+  // policy that was applied is the point of publishing it.
+  assert.doesNotMatch(environmentText, /CROSS_ORIGIN_VALUE/);
 });
 
 test("does not publish raw credentials when a failed capture is retried", async () => {

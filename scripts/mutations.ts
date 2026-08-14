@@ -499,4 +499,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "refuses a target that closed before it opened",
   },
+  {
+    id: "storage-read-after-a-cross-origin-redirect",
+    why: "#157 - storage is read from the page after navigation. When the page landed on a different origin those entries belong to that origin, and the allowlist was written for the requested one. Reading anyway publishes another origin's data under a label that is not its own - which is exactly what the whole-capture refusal this replaced existed to prevent.",
+    file: "src/capture/environment.ts",
+    find: "  const storageIsThisOrigin = primaryOrigin !== \"null\" && finalOrigin === primaryOrigin;",
+    replace: "  const storageIsThisOrigin = primaryOrigin !== \"null\";",
+    suite: "browser",
+    expect: "publishes a capture that redirected cross-origin, without that origin's storage",
+  },
+  {
+    id: "final-origin-escapes-the-address-policy",
+    why: "#157 - the pre-flight address check only sees the URL the caller asked for. The refusal it used to be paired with is gone, so without this hook a public URL that redirects to 169.254.169.254 publishes the internal page to disk instead of being thrown away.",
+    file: "src/capture/environment.ts",
+    find: "  if (finalOrigin !== primaryOrigin && options.assertFinalOrigin !== undefined) {",
+    replace: "  if (false && options.assertFinalOrigin !== undefined) {",
+    suite: "bun",
+    expect: "capturePage refuses when a redirect lands on a private address",
+  },
 ];

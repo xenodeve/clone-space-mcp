@@ -166,6 +166,12 @@ export interface CaptureHarOptions {
   volatileQueryKeys?: readonly string[];
   /** Capture termination budgets (§6.10). Defaults to the documented set. */
   budgets?: Partial<Budgets>;
+  /**
+   * Re-apply the caller's network policy to the origin a redirect landed on (#157). Left
+   * undefined, a redirect to any origin is captured — which is why `capture_page` always supplies
+   * it, and why a caller that skips it is choosing its own exposure.
+   */
+  assertFinalOrigin?: (origin: string) => Promise<void>;
 }
 
 async function assertEmptyOutputDirectory(path: string): Promise<void> {
@@ -437,6 +443,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         browserChannel: options.browserChannel,
         requested: options.environment,
         storageAllowlist: options.storageAllowlist,
+        assertFinalOrigin: options.assertFinalOrigin,
       });
       // A same-origin navigation during collection would leave environment.json describing one
       // document under an epoch naming another — an archive that reads as coherent while
