@@ -28,9 +28,17 @@ It had already caught a defect before it was adopted: a one-shot live-vs-replay 
 2026-08-14 found `www.chaingpt.org` matching exactly and `www.firecrawl.dev` apparently not — see
 §3 for how that second reading turned out.
 
-**Server-side is explicitly out of scope**, by the developer's decision. Everything that decides
-what the screen shows and how it moves is shipped to the browser by definition, so the exclusion
-removes no capability from the goal.
+**Server-side is explicitly out of scope**, by the developer's decision. The precise form of what
+that leaves is not *"everything that decides the screen is shipped to the browser"* — a server can
+decide the variant, the feature flags, the permission state and the initial markup, and send only
+the result. The claim that holds is narrower and is the one this plan uses:
+
+> Everything required to reproduce **the observed client-visible execution for a captured server
+> state** must be present or observable at the client boundary.
+
+For the same reason the criterion in this section is **behavioural completeness for the captured
+scenarios**, not "the client codebase is complete". §4.3 and §7 bound it that way regardless, and
+a §1 that claimed more would simply be in tension with them.
 
 ---
 
@@ -44,11 +52,17 @@ removes no capability from the goal.
 | The interaction surface is enumerable | click 242 · keydown 214 · mouseenter 72 · mouseleave 72 · swipe 53 | hook on `addEventListener` |
 | A runtime observation traces to an original source line | `gl.shaderSource` → `three.module.min.js:12:326662` → `/npm/three@0.151.2/build/three.module.js:18723:4` | stack capture + archived map, VLQ decoded by hand |
 | Original source is already in the archive | 221 files / 2.1 MB on `labs`; 233 files / 3.6 MB on `www.chaingpt.org` | `sourcesContent` in archived maps |
-| Names survive even where source does not | 7,397–9,006 original identifiers in `names[]`; 6,390–10,791 property names survive minification | archived maps + script bodies |
+| Names survive even where source does not | `names[]` lists 7,397–9,006 and **5,775–7,005 (78%) are referenced by a mapping**; the share of mapping segments carrying a name is **24.7% on `www.chaingpt.org` against 70.4% on `labs`** | archived maps |
+| Property names observed surviving minification | 6,390–10,791 distinct, **in these captured builds** — property mangling exists and elsewhere this number would fall | script bodies |
 
 **Hooking at the browser API layer is library-agnostic and that is why it holds.** `THREE` was not
 a global on `www.chaingpt.org` — the page loads `three.module.min.js` as an ES module — and every
 shader was still captured, because everything must pass through WebGL eventually.
+
+**Report the referenced count and the segment share, never the listed total.** A `names[]` entry is
+an original identifier, but 22% of them are referenced by no mapping this can resolve, and the
+segment share — the number that decides whether a given runtime position gets a name at all —
+differs by nearly 3× between two sites measured the same day. A single headline number hides that.
 
 ---
 
@@ -91,8 +105,25 @@ the site's drift rather than the clone's fidelity.
 - **Visual milestones** — screenshots at scenario checkpoints, as an **oracle**, not the gate.
 
 Every field resolves to `equal` · `allowed` · `different` · `unobserved`, and **`unobserved` never
-counts as equal**. The gate reports equivalence *and achieved coverage*; green means "equivalent
-for these scenarios and observed realms", never "equivalent for every possible input".
+counts as equal**.
+
+**Coverage is a vector, not a score, and it is published beside the verdict** — a single number
+would average away exactly the dimension that is weak:
+
+```
+equivalence: PASS
+coverage:
+  scroll               100%
+  interaction           38%
+  listener_execution    21%
+  canvas_realms        100%
+  webgl_programs       100%
+  visual_checkpoints    72%
+```
+
+Green means "equivalent for these scenarios and observed realms", never "equivalent for every
+possible input". **A green verdict at low coverage is not a success of the clone; it is a small
+claim, correctly reported.**
 
 ### 4.2 Differences that must be allowed, or the gate is red forever
 
@@ -147,7 +178,25 @@ falsifier before the things it must falsify**, or the rest can only be ordered b
 | 4 | **Visual milestones** | Screenshots at checkpoints, region and full page | Ghost execution; font and layout failures the graph cannot name | 2, 3 |
 | 5 | **Archive evidence index** | Queryable original sources, CSS, assets, shader strings, request evidence, identifier tables | 2.1–3.6 MB of original source sitting unread | `src/archive/read.ts` |
 | 6 | **Runtime → source provenance** | Observation → stack frame → generated coordinate → original coordinate → bounded excerpt, with the generated coordinate preserved | Unsupported explanations; ambiguous attribution | 1, 5 |
-| 7 | **Evidence graph** | The join: region ↔ element ↔ behaviour ↔ canvas/shader ↔ library ↔ asset ↔ source coordinate, queryable in one hop | Seven working subsystems whose outputs cannot answer the question | all |
+| 7 | **Symbol recovery** | Generated symbol identity; original-name recovery from `names[]`; library-region correlation against published builds; runtime semantic aliases — each with its own provenance level | A bundle with no map leaving the agent at `chunk-29f3a.js:1:4902`; and, worse, an inferred name presented as an original one | 5, 6 |
+| 8 | **Evidence graph** | The join, queryable in one hop | Eight working subsystems whose outputs cannot answer the question | all |
+
+**Slice 7 was in "not decided" in the first draft and is promoted here**, because the four naming
+sources turned out to be measurable rather than speculative and three of them return *facts*: the
+`names[]` table, the property names that survive minification, and a published library build that
+can be matched exactly. Left unslice, it becomes a nice-to-have — and for agent comprehension on a
+site with no maps it is closer to the whole product.
+
+**Slice 8's node types are not only the ones listed above.** The join has to carry `scenario`,
+`interaction`, `runtime event`, `symbol`, `visual checkpoint` and `network transaction` as first
+class, or the query that motivates the entire plan cannot be walked:
+
+```
+region → shader → uniform → runtime writer → pointermove listener → symbol → source
+```
+
+That is the shape of *"why does this hero distort when I move the mouse"*, and every hop in it is
+an edge some earlier slice produced.
 
 **Ordering corrections against the first draft:** instrumentation before interaction, because it has
 to see what interaction drives. Identity before any diff, because a comparison of indistinguishable
@@ -168,11 +217,28 @@ Three levels, each carrying its confidence, and a level is never promoted:
 |---|---|---|
 | `original-source` | an archived map resolves the frame | `three@0.151.2/build/three.module.js:18723` |
 | `generated-source` | no map, or no `sourcesContent` | `chunk-29f3a.js:1:4902` — the strongest available evidence, stated as such |
-| `runtime-generated` | the artefact exists only at runtime | the 82 KB of GLSL — provenance terminates at the JavaScript call that assembled it |
+| `runtime-generated` | the artefact exists only at runtime | the 82 KB of GLSL |
+
+**`runtime-generated` is a chain, not a dead end.** The artefact itself has no original coordinate
+— but the *generation event* does, and that is what the graph stores:
+
+```
+Shader #S19          runtime-generated
+  generated_by       three.module.min.js:12:326662
+  resolved_to        three.module.js:18723:4        original-source
+```
+
+Saying provenance "terminates" at the JavaScript call understates what was already measured: the
+call that assembled the GLSL resolves to an original line like anything else.
 
 `www.firecrawl.dev` declares 69 sourcemaps and 404s 51 of 52 requested. **A tool whose value
 depends on maps existing is useless on a large share of production sites**, so the three levels are
 the contract, not a degradation path bolted on later.
+
+Slice 7 adds a second, orthogonal axis for *names* — `original-name` (from `names[]`) ·
+`structurally-recovered` (matched against a published library build) · `runtime-semantic` (inferred
+from observed behaviour) · `static-semantic` (inferred from surviving property names) ·
+`model-hypothesis`. **An inferred name is never rewritten into the position of an original one.**
 
 ---
 
@@ -188,19 +254,58 @@ an unsupported scenario rather than normalised away.
 
 **Equivalence under a shared incomplete driver can rubber-stamp a partial clone.** A green gate on
 a scroll-only driver is a true statement about scroll-reachable behaviour and says nothing about
-the 242 click listeners. The criterion in §1 — *complete by construction* — is only as true as the
-driver is complete. The gate must therefore publish its coverage next to its verdict, and a
-coverage number that is not rising is the signal that the criterion is being over-claimed.
+the 242 click listeners. The criterion in §1 is only as true as the driver is complete. The gate
+must therefore publish its coverage vector next to its verdict, and a coverage number that is not
+rising is the signal that the criterion is being over-claimed.
+
+**The instrumentation can change what it observes, and the gate cannot see it.** Live-instrumented
+against replay-instrumented compares two pages that both carry the hooks — so a hook set that
+shifts rAF phase, call ordering or microtask timing produces agreement between two pages that
+neither user loads. The control the gate needs is therefore a third run: **instrumented against
+uninstrumented on the same side**, with a stated perturbation budget.
+
+Measured on `www.chaingpt.org`, replayed twice from one archive, with hooks on `shaderSource`,
+`getContext` and `addEventListener` — 1,510 listener registrations intercepted:
+
+| | uninstrumented | instrumented |
+|---|---|---|
+| `load` | 4,171 ms | 3,361 ms |
+| rAF frames in one second | 61 | 60 |
+| motion, settled | `12 / 190 / 38` | `12 / 190 / 38` |
+
+**The effect is below run-to-run noise here — the instrumented run was the faster one.** That is a
+baseline, not a dismissal: the hook set is meant to grow to WebAudio, observers and mutation, and
+wrapping `requestAnimationFrame` is the one addition with a mechanism for real distortion. The
+budget exists so that growth is measured rather than assumed harmless.
 
 ---
 
 ## 8. What this plan does not decide
 
-- The scenario language for slice 3 — what a scenario file looks like, and who authors it.
+- ~~The scenario language for slice 3~~ — **decided: hybrid.** Candidate actions are *discovered*
+  from the page (listeners, roles, links, buttons, tab order, `cursor: pointer`, canvas,
+  scrollable containers) and a *scenario* is authored on top of them, naming intent and
+  checkpoints. Neither half alone works: discovery without authorship is the click-everything
+  autopilot the pipeline plan already cut, and authorship without discovery cannot know what a
+  page offers. The shape:
+
+  ```yaml
+  scenario: hero_exploration
+  steps:
+    - navigate: /
+    - wait_for: stable
+    - pointer:  { target: hero_canvas, trajectory: center_sweep }
+    - scroll:   { target: section_2, progress: [0, .25, .5, .75, 1] }
+    - hover:    { target: portfolio_card_1 }
+  checkpoints: [hero_initial, hero_mouse_center, section2_mid_scroll]
+  ```
+
+  What stays open is narrower: whether the discovery half proposes scenarios an operator accepts,
+  or only supplies the vocabulary an author writes against.
 - Whether the evidence graph is an archive artefact or computed on demand at serve time.
-- The de-minification fallback for sites with no maps: whether identification against known library
-  builds is in scope, and whether model-assisted naming is permitted at all. If it is, it is a
-  fourth provenance level with its own confidence, never folded into the three above.
+- ~~The de-minification fallback~~ — **promoted to slice 7**, with its own provenance axis. What
+  stays open inside it: whether `model-hypothesis` is permitted at all, and if so whether it may
+  ever be shown without the observation that produced it.
 - Whether the fixture grows a WebGL/3D/interaction case, or a second fixture site is added for it.
 <!-- lang:end -->
 
@@ -232,8 +337,16 @@ coverage number that is not rising is the signal that the criterion is being ove
 2026-08-14 พบว่า `www.chaingpt.org` ตรงกันเป๊ะ ส่วน `www.firecrawl.dev` ดูเหมือนไม่ตรง — ดู §3 ว่าการอ่านครั้งที่สอง
 ลงเอยยังไง
 
-**ฝั่งเซิร์ฟเวอร์อยู่นอกขอบเขตโดยชัดแจ้ง** ตามการตัดสินของผู้พัฒนา · ทุกอย่างที่ตัดสินว่าหน้าจอแสดงอะไรและขยับยังไง
-ถูกส่งมาที่เบราว์เซอร์โดยนิยาม การตัดออกจึงไม่ได้เอาความสามารถใดออกจากเป้าหมายเลย
+**ฝั่งเซิร์ฟเวอร์อยู่นอกขอบเขตโดยชัดแจ้ง** ตามการตัดสินของผู้พัฒนา · รูปที่แม่นของสิ่งที่เหลืออยู่ไม่ใช่
+*"ทุกอย่างที่ตัดสินว่าหน้าจอแสดงอะไรถูกส่งมาที่เบราว์เซอร์"* — เซิร์ฟเวอร์ตัดสิน variant · feature flag ·
+สถานะสิทธิ์ · markup ตั้งต้น แล้วส่งมาแค่*ผลลัพธ์*ได้ · คำกล่าวที่ยืนได้แคบกว่านั้นและคือคำกล่าวที่แผนนี้ใช้
+
+> ทุกสิ่งที่จำเป็นต่อการสร้าง**การรันฝั่ง client ที่สังเกตเห็นได้ สำหรับสถานะเซิร์ฟเวอร์ที่ถูก capture ไว้**
+> ต้องมีอยู่หรือสังเกตได้ที่เส้นแบ่งฝั่ง client
+
+ด้วยเหตุผลเดียวกัน เกณฑ์ในหัวข้อนี้คือ **ความสมบูรณ์เชิงพฤติกรรมสำหรับ scenario ที่ capture ไว้**
+ไม่ใช่ "codebase ฝั่ง client สมบูรณ์" · §4.3 กับ §7 จำกัดมันไว้แบบนั้นอยู่แล้ว และ §1 ที่อ้างมากกว่านั้น
+ก็จะขัดกับสองหัวข้อนั้นเปล่า ๆ
 
 ---
 
@@ -247,11 +360,16 @@ coverage number that is not rising is the signal that the criterion is being ove
 | พื้นผิวการโต้ตอบนับได้ | click 242 · keydown 214 · mouseenter 72 · mouseleave 72 · swipe 53 | hook `addEventListener` |
 | การสังเกตตอนรันคลายกลับไปหาบรรทัดต้นฉบับได้ | `gl.shaderSource` → `three.module.min.js:12:326662` → `/npm/three@0.151.2/build/three.module.js:18723:4` | จับ stack + แมปใน archive ถอด VLQ เขียนเอง |
 | ซอร์สต้นฉบับอยู่ใน archive แล้ว | 221 ไฟล์ / 2.1 MB บน `labs` · 233 ไฟล์ / 3.6 MB บน `www.chaingpt.org` | `sourcesContent` ในแมปที่เก็บไว้ |
-| ชื่อรอดแม้ในที่ที่ซอร์สไม่รอด | identifier เดิม 7,397–9,006 ตัวใน `names[]` · ชื่อ property 6,390–10,791 ตัวรอดการย่อส่วน | แมป + เนื้อสคริปต์ |
+| ชื่อรอดแม้ในที่ที่ซอร์สไม่รอด | `names[]` ระบุ 7,397–9,006 และ **5,775–7,005 (78%) ถูกอ้างโดย mapping จริง** · สัดส่วน segment ที่พกชื่อคือ **24.7% บน `www.chaingpt.org` เทียบกับ 70.4% บน `labs`** | แมปใน archive |
+| ชื่อ property ที่สังเกตว่ารอดการย่อส่วน | 6,390–10,791 ตัวที่ต่างกัน **ใน build ที่ capture มาเหล่านี้** — property mangling มีอยู่จริง และที่อื่นตัวเลขนี้จะลดลง | เนื้อสคริปต์ |
 
 **การ hook ที่ชั้น API ของเบราว์เซอร์ไม่ผูกกับไลบรารี และนั่นคือเหตุผลที่มันทนทาน** · `THREE` ไม่ได้เป็น global บน
 `www.chaingpt.org` เพราะหน้าโหลด `three.module.min.js` เป็น ES module — และ shader ยังถูกจับได้ครบ
 เพราะสุดท้ายทุกอย่างต้องผ่าน WebGL
+
+**รายงานจำนวนที่ถูกอ้างและสัดส่วน segment ห้ามรายงานยอดรวมที่ระบุไว้** · entry ใน `names[]` เป็น identifier
+ต้นฉบับก็จริง แต่ 22% ของมันไม่ถูกอ้างโดย mapping ที่เราคลายได้เลย และสัดส่วน segment — ตัวเลขที่ตัดสินว่า
+ตำแหน่งหนึ่งตอนรันจะได้ชื่อหรือไม่ — ต่างกันเกือบสามเท่าระหว่างสองเว็บที่วัดวันเดียวกัน · ตัวเลขหัวเรื่องตัวเดียวกลบเรื่องนั้น
 
 ---
 
@@ -291,9 +409,23 @@ coverage number that is not rising is the signal that the criterion is being ove
 - **สายการเรียก canvas / WebGL / WebAudio** — digest ของ operation ตามลำดับ ไม่ใช่พิกเซล
 - **หมุดหมายเชิงภาพ** — screenshot ที่จุดตรวจของ scenario ในฐานะ **oracle** ไม่ใช่ตัวชี้ขาด
 
-ทุกฟิลด์ลงเอยเป็น `equal` · `allowed` · `different` · `unobserved` และ **`unobserved` ไม่เคยนับเป็น equal** ·
-ด่านรายงานทั้งสมมูล*และความครอบคลุมที่ทำได้* · เขียวแปลว่า "สมมูลสำหรับ scenario เหล่านี้และ realm ที่สังเกต"
-ไม่เคยแปลว่า "สมมูลสำหรับทุก input ที่เป็นไปได้"
+ทุกฟิลด์ลงเอยเป็น `equal` · `allowed` · `different` · `unobserved` และ **`unobserved` ไม่เคยนับเป็น equal**
+
+**ความครอบคลุมเป็นเวกเตอร์ ไม่ใช่คะแนน และถูกเผยแพร่เคียงข้างคำตัดสิน** — ตัวเลขเดียวจะเฉลี่ยกลบมิติที่อ่อนที่สุดพอดี
+
+```
+equivalence: PASS
+coverage:
+  scroll               100%
+  interaction           38%
+  listener_execution    21%
+  canvas_realms        100%
+  webgl_programs       100%
+  visual_checkpoints    72%
+```
+
+เขียวแปลว่า "สมมูลสำหรับ scenario เหล่านี้และ realm ที่สังเกต" ไม่เคยแปลว่า "สมมูลสำหรับทุก input ที่เป็นไปได้" ·
+**คำตัดสินเขียวที่ความครอบคลุมต่ำไม่ใช่ความสำเร็จของโคลน มันคือคำกล่าวเล็ก ๆ ที่รายงานอย่างถูกต้อง**
 
 ### 4.2 ความต่างที่ต้องอนุญาต ไม่งั้นด่านจะแดงตลอดกาล
 
@@ -347,7 +479,23 @@ instrumentation ที่มีอยู่ฝั่งเดียว · กา
 | 4 | **หมุดหมายเชิงภาพ** | screenshot ที่จุดตรวจ ทั้งเฉพาะบริเวณและเต็มหน้า | ghost execution · ความล้มเหลวของฟอนต์และ layout ที่กราฟเรียกชื่อไม่ได้ | 2 · 3 |
 | 5 | **ดัชนีหลักฐานใน archive** | ซอร์สต้นฉบับ · CSS · asset · เนื้อ shader · หลักฐานคำขอ · ตารางชื่อ ที่ค้นได้ | ซอร์สต้นฉบับ 2.1–3.6 MB ที่นอนอยู่โดยไม่มีใครอ่าน | `src/archive/read.ts` |
 | 6 | **การสืบย้อนจากตอนรันไปหาซอร์ส** | การสังเกต → เฟรมของ stack → พิกัดในไฟล์ที่ generate → พิกัดต้นฉบับ → ตัวอย่างที่มีขอบเขต โดยเก็บพิกัดของไฟล์ที่ generate ไว้ด้วย | คำอธิบายที่ไม่มีหลักฐานรอง · การระบุที่มาที่กำกวม | 1 · 5 |
-| 7 | **กราฟหลักฐาน** | ตัวเชื่อม: บริเวณ ↔ element ↔ พฤติกรรม ↔ canvas/shader ↔ ไลบรารี ↔ asset ↔ พิกัดซอร์ส ค้นได้ในก้าวเดียว | ระบบย่อยเจ็ดตัวที่ทำงานถูกทุกตัวแต่ผลลัพธ์ตอบคำถามไม่ได้ | ทั้งหมด |
+| 7 | **การกู้คืนสัญลักษณ์** | อัตลักษณ์ของสัญลักษณ์ในไฟล์ที่ generate · การกู้ชื่อเดิมจาก `names[]` · การจับคู่บริเวณกับ build ของไลบรารีที่เผยแพร่ · ชื่อพ้องเชิงความหมายจากการสังเกตตอนรัน — แต่ละอย่างมีระดับการสืบย้อนของตัวเอง | bundle ที่ไม่มีแมปทิ้ง agent ไว้ที่ `chunk-29f3a.js:1:4902` · และที่แย่กว่าคือชื่อที่อนุมานถูกนำเสนอเป็นชื่อต้นฉบับ | 5 · 6 |
+| 8 | **กราฟหลักฐาน** | ตัวเชื่อม ค้นได้ในก้าวเดียว | ระบบย่อยแปดตัวที่ทำงานถูกทุกตัวแต่ผลลัพธ์ตอบคำถามไม่ได้ | ทั้งหมด |
+
+**สไลซ์ 7 อยู่ใน "ไม่ได้ตัดสิน" ในร่างแรกและถูกเลื่อนขั้นมาที่นี่** เพราะแหล่งตั้งชื่อสี่ชั้นกลายเป็นสิ่งที่วัดได้
+ไม่ใช่การคาดเดา และสามในสี่ชั้นคืน*ข้อเท็จจริง*: ตาราง `names[]` · ชื่อ property ที่รอดการย่อส่วน ·
+และ build ของไลบรารีที่เผยแพร่ซึ่งจับคู่ได้ตรง ๆ · ถ้าไม่ทำเป็นสไลซ์ มันจะกลายเป็นของมีก็ดี — และสำหรับ
+ความเข้าใจของ agent บนเว็บที่ไม่มีแมป มันเกือบจะเป็นตัวผลิตภัณฑ์ทั้งหมด
+
+**ชนิดโหนดของสไลซ์ 8 ไม่ได้มีแค่ที่ระบุข้างบน** · ตัวเชื่อมต้องพก `scenario` · `interaction` ·
+`runtime event` · `symbol` · `visual checkpoint` · `network transaction` เป็นชั้นหนึ่ง ไม่งั้นคำถามที่เป็น
+แรงจูงใจของทั้งแผนก็เดินไม่ได้
+
+```
+บริเวณ → shader → uniform → ตัวเขียนตอนรัน → listener ของ pointermove → สัญลักษณ์ → ซอร์ส
+```
+
+นั่นคือรูปของ *"ทำไมพื้นหลัง hero ถึงบิดตอนขยับเมาส์"* และทุกก้าวในนั้นคือเส้นเชื่อมที่สไลซ์ก่อนหน้าผลิตขึ้น
 
 **ข้อแก้ลำดับเทียบกับร่างแรก:** instrumentation มาก่อนการโต้ตอบ เพราะมันต้องเห็นสิ่งที่การโต้ตอบขับ ·
 อัตลักษณ์มาก่อน diff ใด ๆ เพราะการเทียบของที่แยกกันไม่ออกไม่ใช่การเทียบ · การสืบย้อนถูก*ออกแบบเข้าไป*ใน
@@ -367,10 +515,27 @@ instrumentation ที่มีอยู่ฝั่งเดียว · กา
 |---|---|---|
 | `original-source` | แมปใน archive คลายเฟรมได้ | `three@0.151.2/build/three.module.js:18723` |
 | `generated-source` | ไม่มีแมป หรือไม่มี `sourcesContent` | `chunk-29f3a.js:1:4902` — หลักฐานที่ดีที่สุดที่มี และระบุไว้ตรง ๆ ว่าเป็นแบบนั้น |
-| `runtime-generated` | สิ่งประดิษฐ์นั้นมีอยู่เฉพาะตอนรัน | GLSL 82 KB — การสืบย้อนจบที่การเรียก JavaScript ที่ประกอบมันขึ้นมา |
+| `runtime-generated` | สิ่งประดิษฐ์นั้นมีอยู่เฉพาะตอนรัน | GLSL 82 KB |
+
+**`runtime-generated` เป็นโซ่ ไม่ใช่ทางตัน** · ตัวสิ่งประดิษฐ์เองไม่มีพิกัดต้นฉบับ — แต่*เหตุการณ์ที่สร้างมัน*มี
+และนั่นคือสิ่งที่กราฟเก็บ
+
+```
+Shader #S19          runtime-generated
+  generated_by       three.module.min.js:12:326662
+  resolved_to        three.module.js:18723:4        original-source
+```
+
+การบอกว่าการสืบย้อน "จบ" ที่การเรียก JavaScript พูดน้อยกว่าสิ่งที่วัดได้แล้ว: การเรียกที่ประกอบ GLSL ขึ้นมา
+คลายไปหาบรรทัดต้นฉบับได้เหมือนอย่างอื่น
 
 `www.firecrawl.dev` ประกาศ sourcemap 69 ตัวและ 404 ไป 51 จาก 52 ที่ร้องขอ · **เครื่องมือที่มีค่าเฉพาะเมื่อมีแมป
 จะไร้ประโยชน์บนเว็บ production ส่วนใหญ่** · สามระดับนี้จึงเป็นสัญญา ไม่ใช่ทางเสื่อมที่มาแปะทีหลัง
+
+สไลซ์ 7 เพิ่มแกนที่สองซึ่งตั้งฉากกัน สำหรับ*ชื่อ* — `original-name` (จาก `names[]`) ·
+`structurally-recovered` (จับคู่กับ build ของไลบรารีที่เผยแพร่) · `runtime-semantic` (อนุมานจากพฤติกรรมที่สังเกต) ·
+`static-semantic` (อนุมานจากชื่อ property ที่รอด) · `model-hypothesis` ·
+**ชื่อที่อนุมานไม่เคยถูกเขียนทับลงในตำแหน่งของชื่อต้นฉบับ**
 
 ---
 
@@ -385,18 +550,53 @@ instrumentation ที่มีอยู่ฝั่งเดียว · กา
 
 **สมมูลภายใต้ driver ที่ไม่ครบเหมือนกันทั้งสองฝั่ง สามารถประทับตราให้โคลนที่ไม่สมบูรณ์ได้**
 ด่านที่เขียวบน driver ที่ scroll อย่างเดียวเป็นคำกล่าวที่จริงเกี่ยวกับพฤติกรรมที่เข้าถึงได้ด้วยการเลื่อน และ
-ไม่พูดอะไรเลยเกี่ยวกับ click listener 242 ตัว · เกณฑ์ใน §1 — *สมบูรณ์โดยปริยาย* — จริงได้เท่าที่ driver ครบเท่านั้น ·
-ด่านจึงต้องเผยแพร่ความครอบคลุมของมันเคียงข้างคำตัดสิน และตัวเลขความครอบคลุมที่ไม่ขยับคือสัญญาณว่าเกณฑ์
+ไม่พูดอะไรเลยเกี่ยวกับ click listener 242 ตัว · เกณฑ์ใน §1 จริงได้เท่าที่ driver ครบเท่านั้น ·
+ด่านจึงต้องเผยแพร่เวกเตอร์ความครอบคลุมเคียงข้างคำตัดสิน และตัวเลขความครอบคลุมที่ไม่ขยับคือสัญญาณว่าเกณฑ์
 กำลังถูกอ้างเกินจริง
+
+**instrumentation เปลี่ยนสิ่งที่มันสังเกตได้ และด่านมองไม่เห็นเรื่องนั้น** · การเทียบสดที่ instrument กับ replay
+ที่ instrument คือการเทียบสองหน้าที่พก hook เหมือนกัน — ชุด hook ที่เลื่อนเฟส rAF · ลำดับการเรียก · หรือจังหวะ
+microtask จึงผลิตความเห็นตรงกันระหว่างสองหน้าที่ไม่มีผู้ใช้คนไหนโหลด · ตัวควบคุมที่ด่านต้องมีคือการรันที่สาม:
+**instrument เทียบกับไม่ instrument บนฝั่งเดียวกัน** พร้อม budget ของการรบกวนที่ระบุไว้
+
+วัดบน `www.chaingpt.org` โดย replay จาก archive เดียวกันสองครั้ง มี hook บน `shaderSource` ·
+`getContext` · `addEventListener` — ดักการลงทะเบียน listener 1,510 ครั้ง
+
+| | ไม่ instrument | instrument แล้ว |
+|---|---|---|
+| `load` | 4,171 ms | 3,361 ms |
+| เฟรม rAF ในหนึ่งวินาที | 61 | 60 |
+| motion เมื่อนิ่งแล้ว | `12 / 190 / 38` | `12 / 190 / 38` |
+
+**ผลกระทบอยู่ใต้สัญญาณรบกวนระหว่างรันในกรณีนี้ — รอบที่ instrument เป็นรอบที่เร็วกว่าด้วยซ้ำ** · นั่นคือ
+ตัวเลขฐาน ไม่ใช่การปัดตก: ชุด hook ตั้งใจจะโตไปถึง WebAudio · observer · mutation และการห่อ
+`requestAnimationFrame` คือส่วนเพิ่มที่มีกลไกทำให้เพี้ยนได้จริง · budget มีไว้เพื่อให้การเติบโตนั้นถูกวัด
+แทนที่จะถูกสมมติว่าไม่เป็นไร
 
 ---
 
 ## 8. สิ่งที่แผนนี้ไม่ได้ตัดสิน
 
-- ภาษาของ scenario สำหรับสไลซ์ 3 — ไฟล์ scenario หน้าตาเป็นยังไง และใครเขียนมัน
+- ~~ภาษาของ scenario สำหรับสไลซ์ 3~~ — **ตัดสินแล้ว: แบบผสม** · action ที่เป็นตัวเลือกถูก*ค้นพบ*จากหน้า
+  (listener · role · ลิงก์ · ปุ่ม · ลำดับ tab · `cursor: pointer` · canvas · container ที่เลื่อนได้) แล้ว
+  *scenario* ถูกเขียนทับบนนั้น โดยระบุเจตนาและจุดตรวจ · ครึ่งเดียวไม่พอทั้งคู่: การค้นพบโดยไม่มีคนเขียนคือ
+  autopilot คลิกทุกอย่างที่แผน pipeline ตัดไปแล้ว ส่วนการเขียนโดยไม่มีการค้นพบก็ไม่รู้ว่าหน้ามีอะไรให้เล่น · รูปร่าง
+
+  ```yaml
+  scenario: hero_exploration
+  steps:
+    - navigate: /
+    - wait_for: stable
+    - pointer:  { target: hero_canvas, trajectory: center_sweep }
+    - scroll:   { target: section_2, progress: [0, .25, .5, .75, 1] }
+    - hover:    { target: portfolio_card_1 }
+  checkpoints: [hero_initial, hero_mouse_center, section2_mid_scroll]
+  ```
+
+  สิ่งที่ยังเปิดอยู่แคบกว่านั้น: ครึ่งที่ค้นพบจะเสนอ scenario ให้ผู้ปฏิบัติงานรับ หรือเพียงจัดหาคำศัพท์
+  ให้คนเขียนใช้เท่านั้น
 - กราฟหลักฐานเป็น artifact ใน archive หรือคำนวณตอน serve
-- ทางถอยของการ de-minify สำหรับเว็บที่ไม่มีแมป: การระบุตัวเทียบกับ build ของไลบรารีที่รู้จักอยู่ในขอบเขตไหม
-  และการให้โมเดลช่วยตั้งชื่อได้รับอนุญาตหรือไม่ · ถ้าได้ มันคือระดับการสืบย้อนที่สี่ที่มีความมั่นใจของตัวเอง
-  ไม่ใช่การพับรวมเข้าไปในสามระดับข้างบน
+- ~~ทางถอยของการ de-minify~~ — **เลื่อนขั้นเป็นสไลซ์ 7** พร้อมแกนการสืบย้อนของตัวเอง · สิ่งที่ยังเปิดอยู่
+  ข้างในมัน: `model-hypothesis` ได้รับอนุญาตหรือไม่ และถ้าได้ มันแสดงโดยไม่มีการสังเกตที่ผลิตมันได้ไหม
 - fixture จะโตขึ้นให้มีเคส WebGL/3D/การโต้ตอบ หรือจะเพิ่ม fixture site ตัวที่สองสำหรับเรื่องนี้
 <!-- lang:end -->
