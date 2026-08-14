@@ -34,7 +34,9 @@ import {
 } from "./commit.ts";
 import {
   defaultBudgets,
+  DRAIN_DEADLINE_MS,
   evaluateBudget,
+  settleWithin,
   QUIET_WINDOW_CHECKPOINTS,
   TERMINATION_FILE_NAME,
   terminationOutcome,
@@ -399,14 +401,19 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           quietWindow: emptyCheckpoints >= quietWindowCheckpoints,
         };
       }, { budgets: sweepBudgets, quietWindowCheckpoints: QUIET_WINDOW_CHECKPOINTS });
+      // Bounded, because this runs *after* the sweep and so outside §6.10's wall-clock budget. One
+      // script read that never answers would otherwise hold a browser open — and through the MCP
+      // tool, the caller's request with it. Giving up loses a sourcemap; not giving up loses the
+      // capture and the process.
       let drainedScriptReads = 0;
       while (drainedScriptReads < pendingScriptReads.length) {
         const batch = pendingScriptReads.slice(drainedScriptReads);
         drainedScriptReads = pendingScriptReads.length;
-        await Promise.all(batch);
+        if (!(await settleWithin(batch, DRAIN_DEADLINE_MS))) break;
       }
-      await Promise.all(
+      await settleWithin(
         [...discoveredMapUrls].map((url) => context.request.get(url).catch(() => undefined)),
+        DRAIN_DEADLINE_MS,
       );
       // The checkpoint opens after the sweep and spans the environment collection, so the
       // epoch is read at open — the document that is live now, not the one the requested URL
