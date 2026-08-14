@@ -230,6 +230,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "does not close a target created while the snapshot was in flight",
   },
   {
+    id: "archive-association-containment-unchecked",
+    why: "#123 - checkpoints.json is data that names the other artifacts and arrives with the archive, so a reader that resolves an association without a containment check reopens the hole publication already closed, on every read.",
+    file: "src/archive/read.ts",
+    find: "if (!isStrictlyWithin(root, path)) {",
+    replace: "if (false) {",
+    suite: "bun",
+    expect: "refuses an association that resolves outside the archive root",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",
