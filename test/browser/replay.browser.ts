@@ -85,6 +85,57 @@ test("replays the motion fixture offline with every declared mechanism live", as
   }
 });
 
+/**
+ * #155. Playwright writes a request it recorded but never got a response for as a HAR entry with
+ * `response.status: -1`. `routeFromHAR` matches such an entry by URL — so it never reaches the
+ * `notFound: "abort"` path — and then has nothing to fulfil with, leaving the request pending
+ * forever. Measured on `https://labs.chaingpt.org/`: five of 114 entries, all `<script>`, and
+ * neither `DOMContentLoaded` nor `load` ever fired.
+ *
+ * The entry is rewritten here rather than produced by a stalling fixture route, because this is a
+ * claim about **replay** and a fixture that never answers would make the test a capture test with
+ * a timing dependency. Capture publishing them at all is #156.
+ */
+test("does not stall on a HAR entry the archive has no response for", async () => {
+  const archive = await captureThenTakeTheOriginDown();
+  const harPath = join(archive, "network.har");
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: { entries: { request: { url: string }; response: Record<string, unknown> }[] };
+  };
+
+  // A blocking classic `<script>` in the document: with no response and no abort, DOMContentLoaded
+  // never fires, which is what makes this fatal rather than cosmetic.
+  const stalled = har.log.entries.find((entry) => entry.request.url.endsWith("/gsap-scene.js"));
+  assert.ok(stalled !== undefined, "fixture no longer loads /gsap-scene.js");
+  stalled.response = {
+    ...stalled.response,
+    status: -1,
+    statusText: "",
+    httpVersion: "",
+    headers: [],
+    content: { size: -1, mimeType: "x-unknown" },
+  };
+  writeFileSync(harPath, JSON.stringify(har));
+
+  const replay = await replayArchive({ archive, browser: browser as never });
+  try {
+    // Aborted, not pending: a request the archive cannot answer has to fail loudly. That is the
+    // same contract `notFound: "abort"` already carries, applied to an entry that matched.
+    assert.ok(
+      replay.aborted.some((url) => url.endsWith("/gsap-scene.js")),
+      `the entry with no response was not aborted. aborted=${JSON.stringify(replay.aborted)}`,
+    );
+    assert.equal(replay.unservable, 1, "the count of entries the archive cannot serve is wrong");
+  } finally {
+    await replay.close();
+  }
+
+  // The published archive is the record of what capture observed, including that this never
+  // completed. Replay filters a copy; it does not rewrite the evidence.
+  const after = JSON.parse(readFileSync(harPath, "utf8")) as { log: { entries: unknown[] } };
+  assert.equal(after.log.entries.length, har.log.entries.length, "replay rewrote the published HAR");
+});
+
 test("refuses to reach a live origin for what the archive is missing", async () => {
   // The origin stays **up** here, and that is the whole point. With it down, `abort` and
   // `fallback` are indistinguishable — both leave the request failed — and the corpus measured

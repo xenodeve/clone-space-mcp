@@ -499,4 +499,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "refuses a target that closed before it opened",
   },
+  {
+    id: "unservable-entries-left-to-the-har-router",
+    why: "#155 - routeFromHAR matches an entry with no response and then neither fulfils nor aborts, so the request hangs forever. Without this abort, five such entries on labs.chaingpt.org left DOMContentLoaded and load both unfired and every replay of that site timed out.",
+    file: "src/replay/replay.ts",
+    find: "  if (unservable.size > 0) {",
+    replace: "  if (false) {",
+    suite: "browser",
+    expect: "does not stall on a HAR entry the archive has no response for",
+  },
+  {
+    id: "unservable-detected-by-a-truthy-status",
+    why: "#155 - Playwright writes an incomplete request as status -1, so a check for a falsy status misses it entirely. The sentinel is 'not a real HTTP status', not 'zero'.",
+    file: "src/replay/replay.ts",
+    find: "    if (typeof status === \"number\" && status >= 100) continue;",
+    replace: "    if (status !== 0) continue;",
+    suite: "browser",
+    expect: "does not stall on a HAR entry the archive has no response for",
+  },
 ];

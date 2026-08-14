@@ -29,8 +29,16 @@ export interface ReplayBrowser {
 
 export interface ReplayBrowserContext {
   routeFromHAR(har: string, options: { notFound: "abort"; url?: string }): Promise<void>;
+  route(url: string, handler: (route: ReplayRoute) => Promise<void>): Promise<void>;
   newPage(): Promise<ReplayPage>;
   close(): Promise<void>;
+}
+
+/** The slice of Playwright's Route this needs to abort one request and defer the rest. */
+export interface ReplayRoute {
+  request(): { url(): string };
+  abort(): Promise<void>;
+  fallback(): Promise<void>;
 }
 
 export interface ReplayPage {
@@ -44,6 +52,12 @@ export interface ReplayHandle {
   url: string;
   /** Requests the archive could not serve. Empty is P3's exit criterion. */
   aborted: string[];
+  /**
+   * HAR entries the archive recorded without ever receiving a response (#155). They are archive
+   * quality, not replay failure: capture published a request it never got an answer for, so the
+   * page cannot get one either. Non-zero means this replay is missing something the live page had.
+   */
+  unservable: number;
   page: ReplayPage;
   close(): Promise<void>;
 }
@@ -54,16 +68,39 @@ export interface ReplayHandle {
  * anywhere else can produce a navigation the router cannot answer. Redaction rewrites request URLs
  * in the published HAR (ADR 0003), and this reads the same rewritten value the router will.
  */
+function entriesOf(har: unknown): unknown[] {
+  return typeof har === "object" && har !== null
+    ? ((har as { log?: { entries?: unknown[] } }).log?.entries ?? [])
+    : [];
+}
+
 function documentUrlFrom(har: unknown): string {
-  const entries =
-    typeof har === "object" && har !== null
-      ? ((har as { log?: { entries?: unknown[] } }).log?.entries ?? [])
-      : [];
-  for (const entry of entries) {
+  for (const entry of entriesOf(har)) {
     const url = (entry as { request?: { url?: unknown } }).request?.url;
     if (typeof url === "string" && url.length > 0) return url;
   }
   throw new Error("replay: the archive's HAR has no request to navigate");
+}
+
+/**
+ * URLs the HAR holds an entry for but no response to (#155). Playwright records a request that
+ * never completed with `response.status: -1`, and `routeFromHAR` **matches** such an entry — so it
+ * never reaches `notFound: "abort"` — then has nothing to fulfil with and leaves the request
+ * pending forever. Five of those, all `<script>`, is why `https://labs.chaingpt.org/` replayed to
+ * neither `DOMContentLoaded` nor `load`.
+ *
+ * A real HTTP status is >= 100, so this catches Playwright's `-1` and a `0` without guessing at
+ * which sentinel a future version picks.
+ */
+function unservableUrlsIn(har: unknown): Set<string> {
+  const urls = new Set<string>();
+  for (const entry of entriesOf(har)) {
+    const record = entry as { request?: { url?: unknown }; response?: { status?: unknown } };
+    const status = record.response?.status;
+    if (typeof status === "number" && status >= 100) continue;
+    if (typeof record.request?.url === "string") urls.add(record.request.url);
+  }
+  return urls;
 }
 
 function replayContextFrom(environment: unknown): Partial<ReplayContext> {
@@ -89,6 +126,21 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
   const context = await options.browser.newContext({ ...replayContextFrom(archive.documents.environment) });
   await context.routeFromHAR(archive.harPath, { notFound: "abort", url: "**/*" });
 
+  // Registered **after** `routeFromHAR` on purpose: the later handler is offered the request first,
+  // so this one aborts the entries the archive has no response for and hands everything else back
+  // with `fallback()`. Filtering the HAR file instead would mean copying it, and the response
+  // bodies are sibling files it references by relative name — a copy elsewhere resolves to nothing.
+  const unservable = unservableUrlsIn(har);
+  if (unservable.size > 0) {
+    await context.route("**/*", async (route) => {
+      if (unservable.has(route.request().url())) {
+        await route.abort();
+        return;
+      }
+      await route.fallback();
+    });
+  }
+
   const page = await context.newPage();
   const aborted: string[] = [];
   page.on("requestfailed", (request) => {
@@ -100,6 +152,7 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
   return {
     url,
     aborted,
+    unservable: unservable.size,
     page,
     close: () => context.close(),
   };

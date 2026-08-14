@@ -24,6 +24,12 @@ export interface ReplayPageResult {
    */
   aborted: string[];
   /**
+   * How many HAR entries the archive holds no response for (#155). This is a fact about the
+   * archive rather than about this replay: capture recorded the request and never got an answer,
+   * so replay cannot serve it either. Non-zero means the page ran without something it asked for.
+   */
+  unservable: number;
+  /**
    * Motion observed running after load. Counts, not a description: describing how the page moves
    * is extract's job, and this only answers whether it moves at all.
    */
@@ -56,7 +62,7 @@ export async function replayPage(
           scrollTriggers: win.ScrollTrigger?.getAll().length ?? 0,
         };
       });
-      return { url: replay.url, aborted: replay.aborted, motion };
+      return { url: replay.url, aborted: replay.aborted, unservable: replay.unservable, motion };
     } finally {
       await replay.close();
     }
