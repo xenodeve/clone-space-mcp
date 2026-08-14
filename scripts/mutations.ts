@@ -293,6 +293,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "refuses to reach a live origin for what the archive is missing",
   },
   {
+    id: "inspector-grades-capture-fidelity-cases-as-animations",
+    why: "#128 - the fixture manifest declares nine cases and only four are animations. Grading the carousel, the lazy asset and the cross-origin stylesheet as missing animations turns a complete archive into a page full of red.",
+    file: "src/serve/inspector.ts",
+    find: '.filter((entry) => entry.kind === "animation")',
+    replace: ".filter(() => true)",
+    suite: "bun",
+    expect: "shows a gap as a row, not as a count nobody compared",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",
