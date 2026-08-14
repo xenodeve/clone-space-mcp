@@ -428,12 +428,6 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         [...discoveredMapUrls].map((url) => context.request.get(url).catch(() => undefined)),
         DRAIN_DEADLINE_MS,
       );
-      // #156, second deliverable. Everything above waits for work *this process* started. This
-      // waits for the page's own: the sweep can end on a quiet DOM while responses are still
-      // arriving, and the context teardown below is what turns those into HAR entries with no
-      // response. Bounded for the same reason the drain above is — a tracker that never answers is
-      // ordinary on a real page, and waiting for one is how capture stops terminating.
-      networkDrainSettled = await networkDrain.idle(NETWORK_DRAIN_DEADLINE_MS);
       // The checkpoint opens after the sweep and spans the environment collection, so the
       // epoch is read at open — the document that is live now, not the one the requested URL
       // asked for — and read again at close.
@@ -500,6 +494,17 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         chunks: drained.events.length > 0 ? [assembleChunk(drained.events, 1, 0).chunk] : [],
       };
 
+      // #156, second deliverable, and it belongs **here** rather than beside the post-sweep drains.
+      // Measured on `https://www.chaingpt.org/` with the wait placed right after the sweep: the
+      // drain reached zero and the archive still published 2 entries with no response, because the
+      // page kept issuing requests while the checkpoint and the environment were being collected.
+      // The observation boundary is the last moment anything can still arrive, so that is where
+      // the waiting goes.
+      //
+      // Everything above waits for work *this process* started. This waits for the page's own, and
+      // it is bounded for the same reason: a tracker that never answers is ordinary on a real page,
+      // and waiting for one is how capture stops terminating.
+      networkDrainSettled = await networkDrain.idle(NETWORK_DRAIN_DEADLINE_MS);
       observingDependencies = false;
       capabilities = {
         serviceWorkerDependent,
