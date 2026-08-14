@@ -15,6 +15,7 @@
     "build": "bun build src/index.ts --outdir dist --target bun",
     "verify": "bun run lint && bun run typecheck && bun test && bun run test:browser && bun run build",
     "mcp:call": "node scripts/mcp-call.ts",
+    "inspect": "node scripts/inspect.ts",
     "mcp:serve": "node scripts/mcp-server.ts",
     "fixture:serve": "bun run scripts/fixture-serve.ts",
     "spike": "node scripts/spike-cdp.ts"
