@@ -8,16 +8,24 @@
  * archive tool — which needs no browser — stays reachable from `bun test`.
  */
 
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { captureHar } from "../../capture/record.ts";
+import { assertReachableUrl, assertWritableOutDir } from "./capture-guards.ts";
 
 export interface CapturePageParams {
   /** The page to archive. Must be an absolute http(s) URL. */
   url: string;
-  /** Where to write the archive. Must not exist, or must be empty. */
+  /** Where to write the archive. Must not exist: the tool refuses an existing path. */
   outDir: string;
   /** Explicit volatile query keys (ADR 0007). Defaults to none. */
   volatileQueryKeys?: string[];
+  /**
+   * Allow the URL to resolve to a loopback, link-local or private address. Off by default: this
+   * process has the host's network position, not the caller's. The fixture site this repo tests
+   * against is on localhost, so the hatch has to exist — making it explicit is what turns reaching
+   * inside a network into a stated choice rather than an accident.
+   */
+  allowPrivateNetwork?: boolean;
 }
 
 export interface CapturePageResult {
@@ -41,10 +49,10 @@ export async function capturePage(
   params: CapturePageParams,
   launcher: BrowserLauncher,
 ): Promise<CapturePageResult> {
-  const url = new URL(params.url);
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`capture_page: unsupported protocol ${url.protocol}`);
-  }
+  // Both refusals happen before anything is launched or created: a rejected call leaves no
+  // browser process and no directory behind.
+  const outDir = assertWritableOutDir(params.outDir, existsSync);
+  await assertReachableUrl(params.url, params.allowPrivateNetwork === true);
 
   const browser = await launcher.launch();
   try {
@@ -54,10 +62,10 @@ export async function capturePage(
       // make the real browser unusable rather than making anything safer.
       browser: browser as never,
       url: params.url,
-      outDir: params.outDir,
+      outDir,
       volatileQueryKeys: params.volatileQueryKeys,
     });
-    return { archive: resolve(params.outDir), har, url: params.url };
+    return { archive: outDir, har, url: params.url };
   } finally {
     await browser.close();
   }

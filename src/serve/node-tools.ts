@@ -17,14 +17,20 @@ export const CAPTURE_TOOL: ToolDefinition = {
   name: "capture_page",
   title: "Capture a page",
   description:
-    "Archive a live web page into a directory that replays offline: the HAR plus the §6.x evidence artifacts. Launches a browser, so it needs network access to the page. The output directory must be empty or absent.",
+    "Archive a live web page into a directory that replays offline: the HAR plus the §6.x evidence artifacts. Launches a browser with this host's network position. WARNING: the archive contains the page — response bodies included. Credentials, cookies and known-sensitive headers are redacted, but anything the page itself renders or returns is written to disk in plain form, so do not point this at an authenticated or internal page you would not hand to whoever can read the output directory.",
   inputSchema: {
     url: z.string().describe("Absolute http(s) URL of the page to archive"),
-    outDir: z.string().describe("Directory to write the archive into; must be empty or absent"),
+    outDir: z.string().describe("Directory to write the archive into; must not already exist"),
     volatileQueryKeys: z
       .array(z.string())
       .optional()
       .describe("Query keys whose values vary per request and must not defeat replay matching"),
+    allowPrivateNetwork: z
+      .boolean()
+      .optional()
+      .describe(
+        "Allow the URL to resolve to a loopback, link-local or private address. Off by default, because this process has the host's network position and not the caller's.",
+      ),
   },
   run: (params) =>
     capturePage(
@@ -34,6 +40,7 @@ export const CAPTURE_TOOL: ToolDefinition = {
         volatileQueryKeys: Array.isArray(params.volatileQueryKeys)
           ? params.volatileQueryKeys.map(String)
           : undefined,
+        allowPrivateNetwork: params.allowPrivateNetwork === true,
       },
       { launch: () => chromium.launch() as never },
     ),
