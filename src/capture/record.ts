@@ -18,6 +18,14 @@ import {
   type TargetEntry,
   type TargetsV1,
 } from "./targets.ts";
+import {
+  assembleChunk,
+  drainedEvents,
+  TRANSCRIPT_DRAIN_SCRIPT,
+  TRANSCRIPT_INIT_SCRIPT,
+  TRANSCRIPT_SCHEMA_VERSION,
+  type InteractionTranscriptV1,
+} from "./transcript.ts";
 import { redactHarArchive } from "./redact.ts";
 import {
   buildCommit,
@@ -121,6 +129,7 @@ interface CaptureHarBrowser {
 const HAR_FILE_NAME = "network.har";
 const CAPABILITIES_FILE_NAME = "capabilities.json";
 const TARGETS_FILE_NAME = "targets.json";
+const TRANSCRIPT_FILE_NAME = "transcript.json";
 type CapabilityValue = boolean | "undetermined";
 
 function hasClosedShadowRoot(node: CaptureHarDomNode): boolean {
@@ -187,6 +196,11 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     let environment: EnvironmentV1;
     let documentEpoch: string;
     let targets: TargetEntry[] = [];
+    let transcript: InteractionTranscriptV1 = {
+      schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
+      droppedEvents: 0,
+      chunks: [],
+    };
     let sweepStats: {
       sweepCheckpoints: number;
       scrolls: number;
@@ -264,6 +278,12 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       });
 
       await page.goto(options.url, { waitUntil: "load" });
+
+      // §6.7/§6.11. Installed after navigation and before the sweep, so every scroll the sweep
+      // drives is recorded with the container that actually moved. Events during load are not
+      // captured — that needs an init script the browser interface does not expose, and saying so
+      // beats publishing a transcript that looks complete.
+      await page.evaluate(new Function(TRANSCRIPT_INIT_SCRIPT) as () => void);
 
       // §6.9 target discovery. Switched on after navigation and before the sweep: Chromium reports
       // `targetCreated` for targets that already exist at the moment discovery is enabled, so the
@@ -436,6 +456,15 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         );
       }
 
+      const drained = drainedEvents(
+        await page.evaluate(new Function(`return ${TRANSCRIPT_DRAIN_SCRIPT}`) as () => unknown),
+      );
+      transcript = {
+        schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
+        droppedEvents: drained.dropped,
+        chunks: drained.events.length > 0 ? [assembleChunk(drained.events, 1, 0).chunk] : [],
+      };
+
       observingDependencies = false;
       capabilities = {
         serviceWorkerDependent,
@@ -499,6 +528,12 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       { mode: 0o600 },
     );
     await writeFile(
+      resolve(stagingRoot, TRANSCRIPT_FILE_NAME),
+      `${JSON.stringify(transcript, null, 2)}
+`,
+      { mode: 0o600 },
+    );
+    await writeFile(
       resolve(stagingRoot, "checkpoints.json"),
       `${JSON.stringify(
         {
@@ -508,6 +543,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
           requestNormalization: { path: REQUEST_NORMALIZATION_FILE_NAME, scope: "run" },
           termination: { path: TERMINATION_FILE_NAME, scope: "run" },
           targets: { path: TARGETS_FILE_NAME, scope: "run" },
+          transcript: { path: TRANSCRIPT_FILE_NAME, scope: "run" },
           commit: { path: COMMIT_FILE_NAME, scope: "run" },
           checkpoints: [finalCheckpoint],
         },

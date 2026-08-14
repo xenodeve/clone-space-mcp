@@ -302,6 +302,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "shows a gap as a row, not as a count nobody compared",
   },
   {
+    id: "transcript-recorder-installed-too-late",
+    why: "#114 - the recorder has to be installed after goto and BEFORE the sweep. Installed later it records none of the scrolling the sweep drives, and the transcript is an empty file that looks like a page which never moved.",
+    file: "src/capture/record.ts",
+    find: "      await page.evaluate(new Function(TRANSCRIPT_INIT_SCRIPT) as () => void);",
+    replace: "      void TRANSCRIPT_INIT_SCRIPT;",
+    suite: "browser",
+    expect: "records the scrolling the adaptive sweep drove",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",

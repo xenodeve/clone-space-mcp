@@ -155,3 +155,69 @@ export function validateTranscript(doc: unknown): { ok: true } | { ok: false } {
   }
   return { ok: true };
 }
+
+/**
+ * The in-page recorder (S2, #114). Installed after navigation, it caps its own buffer and drops
+ * the **oldest** on overflow while bumping an explicit counter — so a loss is a number the host
+ * can read, never a silent reorder.
+ *
+ * §6.11's point is the container: a scroll event names the element that scrolled, not page
+ * coordinates. The listener is registered in the **capture phase** because a scroll on a nested
+ * container does not bubble to `window` — a listener on `window` alone records the page and misses
+ * every inner scroller, which is precisely the case §6.11 exists to record.
+ */
+export const TRANSCRIPT_GLOBAL = "__x";
+
+export const TRANSCRIPT_INIT_SCRIPT = `(() => {
+  if (window.${TRANSCRIPT_GLOBAL}) return;
+  const cap = 20000;
+  const state = { events: [], dropped: 0, seq: 0 };
+  window.${TRANSCRIPT_GLOBAL} = state;
+  const started = performance.now();
+  const refFor = (node) => {
+    if (node === document || node === window || node === document.scrollingElement) return "window";
+    const chain = [];
+    let current = node;
+    while (current && current.tagName) {
+      const parent = current.parentElement;
+      const index = parent ? Array.prototype.indexOf.call(parent.children, current) : 0;
+      chain.unshift(current.tagName.toLowerCase() + "[" + index + "]");
+      current = parent;
+    }
+    return chain.join("/");
+  };
+  const push = (type, target, detail) => {
+    if (state.events.length >= cap) { state.events.shift(); state.dropped += 1; }
+    state.seq += 1;
+    state.events.push({ seq: state.seq, ts: performance.now() - started, type, target, detail });
+  };
+  document.addEventListener("scroll", (event) => {
+    const node = event.target;
+    const element = node === document ? document.scrollingElement : node;
+    push("scroll", refFor(node), { x: element ? element.scrollLeft : 0, y: element ? element.scrollTop : 0 });
+  }, true);
+  document.addEventListener("click", (event) => push("click", refFor(event.target), {}), true);
+  document.addEventListener("input", (event) => push("input", refFor(event.target), {}), true);
+})();`;
+
+export const TRANSCRIPT_DRAIN_SCRIPT = `(() => {
+  const state = window.${TRANSCRIPT_GLOBAL};
+  if (!state) return { events: [], dropped: 0 };
+  const events = state.events;
+  state.events = [];
+  return { events, dropped: state.dropped };
+})();`;
+
+/**
+ * Read a drain result, accepting that the page may not have had the recorder installed at all —
+ * a fake browser, or a document that navigated away. Anything that is not the drain's own shape is
+ * an empty transcript rather than a thrown error: §6.7 evidence is supplemental, and aborting a
+ * capture over it would trade a whole archive for one artifact.
+ */
+export function drainedEvents(value: unknown): { events: TranscriptEvent[]; dropped: number } {
+  if (typeof value !== "object" || value === null) return { events: [], dropped: 0 };
+  const record = value as { events?: unknown; dropped?: unknown };
+  if (!Array.isArray(record.events)) return { events: [], dropped: 0 };
+  const dropped = typeof record.dropped === "number" ? record.dropped : 0;
+  return { events: record.events as TranscriptEvent[], dropped };
+}

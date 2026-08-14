@@ -147,6 +147,7 @@ test("captureHar configures and drives a browser context", async () => {
       requestNormalization: { path: "request-normalization.json", scope: "run" },
       termination: { path: "termination.json", scope: "run" },
       targets: { path: "targets.json", scope: "run" },
+      transcript: { path: "transcript.json", scope: "run" },
       commit: { path: "commit.json", scope: "run" },
       checkpoints: [
         {
