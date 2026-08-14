@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
+import { isSweepEvaluate, refuseUnknownEvaluate } from "../serve/fixture-archive.ts";
 import { validateCommit } from "../../src/capture/commit.ts";
 import type { CdpTargetPayload } from "../../src/capture/targets.ts";
 
@@ -57,7 +58,6 @@ test("captureHar configures and drives a browser context", async () => {
     },
     newCDPSession: fakeCdpSession("A1B2C3D4E5F60718293A4B5C6D7E8F90"),
     async newPage() {
-      let evaluation = 0;
       let pageUrl = "";
       return {
         localStorage: { async items() { return []; } },
@@ -70,9 +70,9 @@ test("captureHar configures and drives a browser context", async () => {
         url() {
           return pageUrl;
         },
-        async evaluate<Result>() {
-          evaluation += 1;
-          if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+        async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+          if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+          if (arg !== undefined) refuseUnknownEvaluate(arg);
           return {
             origin: "https://example.com",
             viewport: { width: 1280, height: 720 },
@@ -203,7 +203,7 @@ test("publishes sourcemapDeclared as undetermined when a script body cannot be r
         url() {
           return pageUrl;
         },
-        async evaluate<Result>() {
+        async evaluate<Result>(_fn?: unknown, _arg?: unknown) {
           return {
             origin: "https://example.com",
             viewport: { width: 1280, height: 720 },
@@ -282,7 +282,7 @@ test("publishes a sourcemap declaration whose URL cannot be resolved", async () 
         url() {
           return pageUrl;
         },
-        async evaluate<Result>() {
+        async evaluate<Result>(_fn?: unknown, _arg?: unknown) {
           return {
             origin: "https://example.com",
             viewport: { width: 1280, height: 720 },
@@ -362,7 +362,7 @@ test("ignores dependency events delivered after capabilities are observed", asyn
         url() {
           return pageUrl;
         },
-        async evaluate<Result>() {
+        async evaluate<Result>(_fn?: unknown, _arg?: unknown) {
           return {
             origin: "https://example.com",
             viewport: { width: 1280, height: 720 },
@@ -489,7 +489,6 @@ test("captureHar publishes environment.json v1 with distinct surfaces and empty 
     },
     newCDPSession: fakeCdpSession("C3D4E5F60718293A4B5C6D7E8F901A2B"),
     async newPage() {
-      let evaluation = 0;
       let pageUrl = "";
       return {
         localStorage: { async items() { return []; } },
@@ -501,9 +500,9 @@ test("captureHar publishes environment.json v1 with distinct surfaces and empty 
         url() {
           return pageUrl;
         },
-        async evaluate<Result>() {
-          evaluation += 1;
-          if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+        async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+          if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+          if (arg !== undefined) refuseUnknownEvaluate(arg);
           return {
             origin: "https://example.com",
             viewport: { width: 1280, height: 720 },
@@ -607,7 +606,6 @@ test("captureHar publishes environment.json v1 with distinct surfaces and empty 
 test("captureHar publishes only explicitly allowlisted primary-origin storage", async () => {
   let harPath: string | undefined;
   const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-storage-"));
-  let evaluation = 0;
   const browser = {
     version() {
       return "Chromium/140.0.0.0";
@@ -643,9 +641,9 @@ test("captureHar publishes only explicitly allowlisted primary-origin storage", 
             url() {
               return pageUrl;
             },
-            async evaluate<Result>() {
-              evaluation += 1;
-              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+            async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+              if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+              if (arg !== undefined) refuseUnknownEvaluate(arg);
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -702,7 +700,6 @@ test("captureHar rejects duplicate storage allowlist keys without publishing an 
   let harPath: string | undefined;
   const root = mkdtempSync(join(tmpdir(), "clone-space-record-duplicate-"));
   const outDir = join(root, "archive");
-  let evaluation = 0;
   const browser = {
     version() {
       return "Chromium/140.0.0.0";
@@ -724,9 +721,9 @@ test("captureHar rejects duplicate storage allowlist keys without publishing an 
             url() {
               return pageUrl;
             },
-            async evaluate<Result>() {
-              evaluation += 1;
-              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+            async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+              if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+              if (arg !== undefined) refuseUnknownEvaluate(arg);
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -768,7 +765,6 @@ test("captureHar refuses to publish when the primary document changes while the 
   let harPath: string | undefined;
   const root = mkdtempSync(join(tmpdir(), "clone-space-record-document-change-"));
   const outDir = join(root, "archive");
-  let evaluation = 0;
   const browser = {
     version() {
       return "Chromium/140.0.0.0";
@@ -790,9 +786,9 @@ test("captureHar refuses to publish when the primary document changes while the 
             url() {
               return pageUrl;
             },
-            async evaluate<Result>() {
-              evaluation += 1;
-              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+            async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+              if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+              if (arg !== undefined) refuseUnknownEvaluate(arg);
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -832,7 +828,6 @@ test("captureHar refuses to publish when the primary document changes while the 
 test("captureHar publishes the document epoch built from the CDP loaderId", async () => {
   let harPath: string | undefined;
   const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-document-epoch-"));
-  let evaluation = 0;
   const browser = {
     version() {
       return "Chromium/140.0.0.0";
@@ -854,9 +849,9 @@ test("captureHar publishes the document epoch built from the CDP loaderId", asyn
             url() {
               return pageUrl;
             },
-            async evaluate<Result>() {
-              evaluation += 1;
-              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+            async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+              if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+              if (arg !== undefined) refuseUnknownEvaluate(arg);
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -899,7 +894,6 @@ test("captureHar refuses to publish when a HAR attachment corrupts a staged side
   let harPath: string | undefined;
   const root = mkdtempSync(join(tmpdir(), "clone-space-record-incoherent-"));
   const outDir = join(root, "archive");
-  let evaluation = 0;
   const browser = {
     version() {
       return "Chromium/140.0.0.0";
@@ -921,9 +915,9 @@ test("captureHar refuses to publish when a HAR attachment corrupts a staged side
             url() {
               return pageUrl;
             },
-            async evaluate<Result>() {
-              evaluation += 1;
-              if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+            async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+              if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+              if (arg !== undefined) refuseUnknownEvaluate(arg);
               return {
                 origin: "https://example.com",
                 viewport: { width: 1280, height: 720 },
@@ -1007,7 +1001,6 @@ function makeHarFakeBrowser(har: unknown) {
     newCDPSession: fakeCdpSession("A1B2C3D4E5F60718293A4B5C6D7E8F90"),
     async newPage() {
       let pageUrl = "";
-      let evaluation = 0;
       return {
         localStorage: { async items() { return []; } },
         sessionStorage: { async items() { return []; } },
@@ -1018,9 +1011,9 @@ function makeHarFakeBrowser(har: unknown) {
         url() {
           return pageUrl;
         },
-        async evaluate<Result>() {
-          evaluation += 1;
-          if (evaluation === 1) return SWEEP_EVALUATE_RESULT as Result;
+        async evaluate<Result>(_fn?: unknown, arg?: unknown) {
+          if (isSweepEvaluate(arg)) return SWEEP_EVALUATE_RESULT as Result;
+          if (arg !== undefined) refuseUnknownEvaluate(arg);
           return ENV_EVALUATE_RESULT as Result;
         },
       };
