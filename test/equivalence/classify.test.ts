@@ -109,3 +109,58 @@ describe("coverageOf", () => {
     expect(coverageOf({ canvas_realms: [0, 0] })).toEqual({ canvas_realms: 100 });
   });
 });
+
+/**
+ * The control that changed the gate's shape (#171).
+ *
+ * Driving the LIVE page twice and comparing it with itself, on three real sites, put most of the
+ * digest in the residual: `dom.elements` differed on all three, `motion.gsap.settled` by 198 to
+ * 142, and even ScrollTrigger registrations by 38 to 6. Every `FAIL` the gate had produced was
+ * noise. A field that differs when the same page is measured twice cannot be evidence about the
+ * clone — and the answer is not an allowlist, which would excuse the clone for something the clone
+ * did not do. It is to mark the field unstable, from a measurement, per run.
+ */
+describe("classify with a stability baseline", () => {
+  test("a field that differs against itself is unstable, not different", () => {
+    const result = classify({ "motion.gsap": 198 }, { "motion.gsap": 190 }, [], {
+      baselineA: { "motion.gsap": 198 },
+      baselineB: { "motion.gsap": 142 },
+    });
+    expect(result.fields[0]).toEqual({
+      field: "motion.gsap",
+      verdict: "unstable",
+      live: 198,
+      replay: 190,
+    });
+    expect(result.residual).toEqual([]);
+    expect(result.unstable).toEqual(["motion.gsap"]);
+  });
+
+  test("an unstable field cannot make the verdict PASS on its own", () => {
+    const result = classify({ a: 1 }, { a: 2 }, [], { baselineA: { a: 1 }, baselineB: { a: 3 } });
+    // Nothing was proven equal, so this is not agreement.
+    expect(result.verdict).toBe("INCOMPLETE");
+  });
+
+  test("a field stable against itself and differing against replay is still the residual", () => {
+    const result = classify({ a: 1 }, { a: 2 }, [], { baselineA: { a: 1 }, baselineB: { a: 1 } });
+    expect(result.residual).toEqual(["a"]);
+    expect(result.verdict).toBe("FAIL");
+  });
+
+  test("with no baseline supplied, nothing is excused as unstable", () => {
+    const result = classify({ a: 1 }, { a: 2 }, []);
+    expect(result.residual).toEqual(["a"]);
+    expect(result.unstable).toEqual([]);
+  });
+
+  // An allowlist is a claim about the world; instability is a measurement of this run. Letting an
+  // entry declare a field unstable would turn the mechanism back into the judgement it replaced.
+  test("instability comes from the baseline, never from an allowlist entry", () => {
+    const result = classify({ a: 1 }, { a: 2 }, [
+      { field: "a", category: 2, rationale: "time-dependent" },
+    ]);
+    expect(result.fields[0]!.verdict).toBe("allowed");
+    expect(result.unstable).toEqual([]);
+  });
+});

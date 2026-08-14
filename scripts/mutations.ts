@@ -544,4 +544,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "reports a verdict and a coverage vector for the fixture",
   },
+  {
+    id: "stability-baseline-ignored",
+    why: "#171 - measured on three real sites: comparing the live page with itself put dom.elements, motion.gsap and even ScrollTrigger registrations in the residual. Without the baseline the gate reports those as clone defects, which is a detector that cries wolf on every run and therefore gets switched off.",
+    file: "src/equivalence/classify.ts",
+    find: "      baseline !== undefined &&",
+    replace: "      false &&",
+    suite: "bun",
+    expect: "a field that differs against itself is unstable, not different",
+  },
 ];

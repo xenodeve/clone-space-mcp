@@ -15,6 +15,11 @@ import { captureHar } from "../capture/record.ts";
 import { replayArchive, type ReplayBrowser } from "../replay/replay.ts";
 import { classify, coverageOf, type AllowlistEntry, type ClassifyResult, type Digest } from "./classify.ts";
 
+/** Two readings agree when every motion count in them does. */
+function sameMotion(a: MotionSample, b: MotionSample): boolean {
+  return a.css === b.css && a.waapi === b.waapi && a.gsap === b.gsap && a.st === b.st;
+}
+
 /** The slice of a page the driver needs. Structural, so a fake can stand in. */
 export interface EquivalencePage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
@@ -49,8 +54,21 @@ export interface EquivalenceReport extends ClassifyResult {
   coverage: Record<string, number>;
 }
 
-/** How many points the driver samples motion at. One is not a measurement of a moving page. */
-const SAMPLES = 4;
+/**
+ * Sampling until the page stops changing, rather than at a fixed count.
+ *
+ * The plan's rule is to compare at *normalised progress*, never at a wall-clock instant, and a
+ * fixed sample count does not obey it: a page's entry animations settle whenever they settle, and
+ * live and replay do not reach that point together. Measured — the first real-site run had
+ * `motion.gsap.settled` differing 196 against 190 on `www.chaingpt.org` and 49 against 50 on
+ * `labs.chaingpt.org`, while an earlier six-sample probe showed both sides converging on the same
+ * value. Those were readings taken mid-flight, not differences.
+ *
+ * So the driver waits for two consecutive identical readings and uses that, bounded so a page that
+ * never settles cannot hold the gate open.
+ */
+const STABLE_REPEATS = 2;
+const MAX_SAMPLES = 12;
 const SAMPLE_GAP_MS = 400;
 /** Scroll steps the driver takes, on both sides, so the scroll dimension is genuinely covered. */
 const SCROLL_STEPS = 4;
@@ -62,9 +80,19 @@ const SCROLL_STEPS = 4;
  * sample got wrong — so motion is sampled repeatedly and the *settled* value is what enters the
  * digest, with the peak kept beside it.
  */
+interface MotionSample {
+  css: number;
+  waapi: number;
+  gsap: number;
+  st: number;
+  height: number;
+}
+
 async function collectDigest(page: EquivalencePage): Promise<Digest> {
-  const samples: { css: number; waapi: number; gsap: number; st: number; height: number }[] = [];
-  for (let i = 0; i < SAMPLES; i += 1) {
+  const samples: MotionSample[] = [];
+  let stableFor = 0;
+  let settledAfter = MAX_SAMPLES;
+  for (let i = 0; i < MAX_SAMPLES; i += 1) {
     samples.push(
       await page.evaluate(() => {
         const win = globalThis as unknown as {
@@ -81,7 +109,14 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
         };
       }),
     );
-    if (i < SAMPLES - 1) await page.waitForTimeout(SAMPLE_GAP_MS);
+    const previous = samples[samples.length - 2];
+    const latest = samples[samples.length - 1]!;
+    stableFor = previous !== undefined && sameMotion(previous, latest) ? stableFor + 1 : 0;
+    if (stableFor >= STABLE_REPEATS - 1 && samples.length > 1) {
+      settledAfter = samples.length;
+      break;
+    }
+    await page.waitForTimeout(SAMPLE_GAP_MS);
   }
 
   // The scroll half of the driver, identical on both sides.
@@ -111,6 +146,9 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
 
   const settled = samples[samples.length - 1]!;
   return {
+    // Whether the page settled at all is itself a comparable fact: one side settling and the other
+    // not is a real difference, where the sample index it happened at is not.
+    "motion.settled": settledAfter < MAX_SAMPLES,
     "motion.css.settled": settled.css,
     "motion.css.peak": Math.max(...samples.map((s) => s.css)),
     "motion.gsap.settled": settled.gsap,
@@ -127,16 +165,22 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
 }
 
 export async function runEquivalence(options: EquivalenceOptions): Promise<EquivalenceReport> {
-  // Live first, and from the same process, so the two sides see one moment of the site.
-  const liveContext = (await options.browser.newContext({})) as unknown as LiveContext;
-  let live: Digest;
-  try {
-    const page = await liveContext.newPage();
-    await page.goto(options.url, { waitUntil: "load" });
-    live = { ...(await collectDigest(page)), ...(options.extraLiveField ?? {}) };
-  } finally {
-    await liveContext.close();
+  // The live side is driven **twice**, and the second pass is not redundancy — it is the control
+  // that decides which fields carry any signal at all. Measured on three real sites: comparing the
+  // live page with itself put `dom.elements`, `motion.gsap` and even ScrollTrigger registrations
+  // in the residual, so every verdict the gate produced before this control existed was noise.
+  const passes: Digest[] = [];
+  for (let pass = 0; pass < 2; pass += 1) {
+    const context = (await options.browser.newContext({})) as unknown as LiveContext;
+    try {
+      const page = await context.newPage();
+      await page.goto(options.url, { waitUntil: "load" });
+      passes.push(await collectDigest(page));
+    } finally {
+      await context.close();
+    }
   }
+  const live: Digest = { ...passes[0]!, ...(options.extraLiveField ?? {}) };
 
   const har = await captureHar({
     browser: options.browser as never,
@@ -153,7 +197,10 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
     await replay.close();
   }
 
-  const result = classify(live, replayed, options.allowlist ?? []);
+  const result = classify(live, replayed, options.allowlist ?? [], {
+    baselineA: passes[0]!,
+    baselineB: passes[1]!,
+  });
   return {
     ...result,
     url: options.url,
@@ -163,7 +210,17 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
     // and scrolling, and about nothing else.
     coverage: coverageOf({
       scroll: [SCROLL_STEPS, SCROLL_STEPS],
-      motion_samples: [SAMPLES, SAMPLES],
+      motion_settled: [
+        live["motion.settled"] === true && replayed["motion.settled"] === true ? 1 : 0,
+        1,
+      ],
+      // How much of the digest carried signal at all. A field the live page could not reproduce
+      // against itself is excluded from the verdict, so the share that survived is the honest
+      // measure of how much this run actually compared.
+      stable_fields: [
+        result.fields.length - result.unstable.length,
+        result.fields.length,
+      ],
       interaction: [0, 1],
       listener_execution: [0, 1],
     }),

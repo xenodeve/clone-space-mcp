@@ -32,7 +32,29 @@ export interface AllowlistEntry {
   rationale: string;
 }
 
-export type Verdict = "equal" | "allowed" | "different" | "unobserved";
+export type Verdict = "equal" | "allowed" | "different" | "unobserved" | "unstable";
+
+/**
+ * Two digests of the **same side**, taken under the same driver. A field that differs between them
+ * cannot be evidence about the clone, and the gate must not report it as one.
+ *
+ * This is a measurement, taken per run, not a declaration. Measured on three real sites by driving
+ * the live page twice: `dom.elements` differed on all three, `motion.gsap.settled` by 198 to 142,
+ * and ScrollTrigger registrations by 38 to 6. Every `FAIL` the gate produced before this existed
+ * was noise — and an allowlist would have been the wrong instrument for it, because it would
+ * excuse the clone for something the clone did not do.
+ *
+ * **Two passes do not catch a bimodal field, and this is measured too.** A later run of the same
+ * site saw both baseline passes report 6 ScrollTriggers while replay reported 38 — the field
+ * settles at one of two values, so a two-sample baseline can agree with itself and still be
+ * comparing nothing. The control raises the floor; it does not make a `different` verdict certain,
+ * and a caller should read `unstable` as *"this many fields carried no signal"* rather than as a
+ * guarantee about the rest.
+ */
+export interface StabilityBaseline {
+  baselineA: Digest;
+  baselineB: Digest;
+}
 
 export interface FieldResult {
   field: string;
@@ -45,12 +67,15 @@ export interface FieldResult {
 
 export interface ClassifyResult {
   fields: FieldResult[];
+  /** Fields the baseline showed cannot be compared. Reported, never silently dropped. */
+  unstable: string[];
   /** Fields that differ and nothing covers. Empty is the only shape a `PASS` may have. */
   residual: string[];
   /**
    * `PASS` when nothing differs uncovered and every field was observed on both sides.
-   * `INCOMPLETE` when the residual is empty but something was only half observed — **that is not
-   * agreement**, and a caller reading a boolean would have been told it was.
+   * `INCOMPLETE` when the residual is empty but a field was only half observed, or could not be
+   * measured twice the same way — **neither is agreement**, and a caller reading a boolean would
+   * have been told it was.
    * `FAIL` when the residual is non-empty.
    */
   verdict: "PASS" | "INCOMPLETE" | "FAIL";
@@ -80,13 +105,15 @@ export function classify(
   live: Digest,
   replay: Digest,
   allowlist: readonly AllowlistEntry[],
+  baseline?: StabilityBaseline,
 ): ClassifyResult {
   for (const entry of allowlist) assertUsable(entry);
   const excuses = new Map(allowlist.map((entry) => [entry.field, entry]));
 
   const fields: FieldResult[] = [];
   const residual: string[] = [];
-  let anyUnobserved = false;
+  const unstable: string[] = [];
+  let inconclusive = false;
 
   for (const field of [...new Set([...Object.keys(live), ...Object.keys(replay)])].sort()) {
     const onLive = Object.hasOwn(live, field);
@@ -96,13 +123,28 @@ export function classify(
     // agreement. A page whose 242 click listeners are never fired produces exactly this, and
     // reading it as `equal` is how a scroll-only clone comes to look complete.
     if (!onLive || !onReplay) {
-      anyUnobserved = true;
+      inconclusive = true;
       fields.push({ field, verdict: "unobserved", live: live[field], replay: replay[field] });
       continue;
     }
 
     if (Object.is(live[field], replay[field])) {
       fields.push({ field, verdict: "equal" });
+      continue;
+    }
+
+    // Checked before the allowlist on purpose. A field this run could not measure twice the same
+    // way is not a difference anybody excused — it is a field that carries no signal at all, and
+    // calling it `allowed` would credit an entry for work the measurement did.
+    if (
+      baseline !== undefined &&
+      Object.hasOwn(baseline.baselineA, field) &&
+      Object.hasOwn(baseline.baselineB, field) &&
+      !Object.is(baseline.baselineA[field], baseline.baselineB[field])
+    ) {
+      inconclusive = true;
+      unstable.push(field);
+      fields.push({ field, verdict: "unstable", live: live[field], replay: replay[field] });
       continue;
     }
 
@@ -122,8 +164,8 @@ export function classify(
     residual.push(field);
   }
 
-  const verdict = residual.length > 0 ? "FAIL" : anyUnobserved ? "INCOMPLETE" : "PASS";
-  return { fields, residual, verdict };
+  const verdict = residual.length > 0 ? "FAIL" : inconclusive ? "INCOMPLETE" : "PASS";
+  return { fields, residual, unstable, verdict };
 }
 
 /**
