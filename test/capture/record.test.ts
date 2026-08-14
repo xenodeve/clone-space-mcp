@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
 import { validateCommit } from "../../src/capture/commit.ts";
+import type { CdpTargetPayload } from "../../src/capture/targets.ts";
 
 function fakeCdpSession(loaderId: string) {
   return async () => ({
@@ -1261,7 +1262,11 @@ test("captureHar records budget-exceeded when the wall-clock cap is crossed", as
  * already exist the moment discovery is switched on, so the fake does the same: enabling
  * discovery replays the scripted events through whatever handlers were registered.
  */
-function fakeBrowserCdpSession(events: readonly { method: string; payload: unknown }[]) {
+function fakeBrowserCdpSession(
+  events: readonly { method: string; payload: unknown }[],
+  snapshot: readonly CdpTargetPayload[] = [],
+  duringSnapshot: readonly { method: string; payload: unknown }[] = [],
+) {
   const handlers = new Map<string, (payload: unknown) => void>();
   const sent: string[] = [];
   return {
@@ -1275,7 +1280,12 @@ function fakeBrowserCdpSession(events: readonly { method: string; payload: unkno
         if (method === "Target.setDiscoverTargets") {
           for (const event of events) handlers.get(event.method)?.(event.payload);
         }
-        if (method === "Target.getTargets") return { targetInfos: [] };
+        if (method === "Target.getTargets") {
+          // Chromium enumerates its targets, then the response travels back. Anything created in
+          // that window is reported by an event but is not in the snapshot that was already built.
+          for (const event of duringSnapshot) handlers.get(event.method)?.(event.payload);
+          return { targetInfos: snapshot };
+        }
         return {};
       },
       on(method: string, handler: (payload: unknown) => void) {
@@ -1329,6 +1339,16 @@ test("captureHar publishes the targets discovered over the browser-level CDP ses
           openerId: "PAGE-0",
         },
       },
+    },
+  ],
+  // Both are still live at the boundary, which is what the snapshot reports.
+  [
+    { targetId: "PAGE-0", type: "page", url: "https://example.com" },
+    {
+      targetId: "OOPIF-1",
+      type: "iframe",
+      url: "https://cdn.example.com/frame.html",
+      openerId: "PAGE-0",
     },
   ]);
   const browser = {
@@ -1396,12 +1416,17 @@ test("captureHar records closedAt for a target that opens and then goes away", a
 
 test("captureHar stops recording targets once the observation window closes", async () => {
   const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-boundary-"));
-  const session = fakeBrowserCdpSession([
-    {
-      method: "Target.targetCreated",
-      payload: { targetInfo: { targetId: "PAGE-0", type: "page", url: "https://example.com" } },
-    },
-  ]);
+  const session = fakeBrowserCdpSession(
+    [
+      {
+        method: "Target.targetCreated",
+        payload: { targetInfo: { targetId: "PAGE-0", type: "page", url: "https://example.com" } },
+      },
+    ],
+    // PAGE-0 is still live at the boundary, so the snapshot lists it. An empty snapshot here would
+    // make the drain close it and the test would stop isolating the guard it names.
+    [{ targetId: "PAGE-0", type: "page", url: "https://example.com" }],
+  );
   // The capabilities gathered from the page stop at `observingDependencies = false`; the inventory
   // has to stop at the same instant, or it attributes our own teardown to the page.
   const browser = browserEmittingDuringClose(session, {
@@ -1419,14 +1444,186 @@ test("captureHar stops recording targets once the observation window closes", as
   }
 });
 
-test("captureHar does not close a target on a destroy that arrives after the observation window", async () => {
-  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-late-destroy-"));
+test("captureHar records a target the snapshot reports but discovery never announced", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-snapshot-"));
+  // Discovery announces nothing. `Target.getTargets` is the fallback deliverable 2 asks for: a
+  // worker that existed before discovery was enabled is still evidence about this run.
+  const session = fakeBrowserCdpSession(
+    [],
+    [{ targetId: "WORKER-1", type: "service_worker", url: "https://example.com/sw.js" }],
+  );
+  const browser = {
+    ...makeHarFakeBrowser({ log: { entries: [] } }),
+    newBrowserCDPSession: session.open,
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    expect(session.sent).toContain("Target.getTargets");
+    const [target] = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8")).targets;
+    expect(target).toMatchObject({
+      targetId: "WORKER-1",
+      type: "service_worker",
+      url: "https://example.com/sw.js",
+    });
+    expect(target.openedAt).toBeGreaterThanOrEqual(0);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar does not close a target created while the snapshot was in flight", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-inflight-"));
+  // The snapshot is not atomic: Chromium enumerates, then the response travels back. A popup
+  // opened in that window is reported by an event and is legitimately absent from the enumeration
+  // — the drain must not read that absence as proof it closed.
+  const session = fakeBrowserCdpSession(
+    [
+      {
+        method: "Target.targetCreated",
+        payload: { targetInfo: { targetId: "PAGE-0", type: "page", url: "https://example.com" } },
+      },
+    ],
+    [{ targetId: "PAGE-0", type: "page", url: "https://example.com" }],
+    [
+      {
+        method: "Target.targetCreated",
+        payload: { targetInfo: { targetId: "LATE-1", type: "page", url: "https://example.com/x" } },
+      },
+    ],
+  );
+  const browser = {
+    ...makeHarFakeBrowser({ log: { entries: [] } }),
+    newBrowserCDPSession: session.open,
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    const { targets } = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8"));
+    const late = targets.find((entry: { targetId: string }) => entry.targetId === "LATE-1");
+    expect(late).toBeDefined();
+    expect(late.closedAt).toBeUndefined();
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar publishes a target whose opener closed before discovery started", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-event-opener-"));
+  // Discovery announces surviving targets when it is switched on. A child whose opener closed
+  // before that moment carries an `openerId` naming a target this run never records, and
+  // `validateTargets` refuses a dangling reference — so the event path needs the same sanitising
+  // the snapshot path has.
   const session = fakeBrowserCdpSession([
     {
       method: "Target.targetCreated",
-      payload: { targetInfo: { targetId: "PAGE-0", type: "page", url: "https://example.com" } },
+      payload: {
+        targetInfo: {
+          targetId: "CHILD-1",
+          type: "page",
+          url: "https://example.com/c",
+          openerId: "GONE-0",
+        },
+      },
     },
   ]);
+  const browser = {
+    ...makeHarFakeBrowser({ log: { entries: [] } }),
+    newBrowserCDPSession: session.open,
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    const [target] = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8")).targets;
+    expect(target.targetId).toBe("CHILD-1");
+    expect(target.openerId).toBeUndefined();
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar keeps a snapshot target whose opener the run never recorded, without the relationship", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-dangling-"));
+  // `Target.getTargets` reports whatever exists, in no guaranteed order, and an opener that closed
+  // before the snapshot is not in it. `validateTargets` refuses a dangling `openerId`, so merging
+  // one verbatim would abort the whole capture over evidence §6.9 calls supplemental.
+  const session = fakeBrowserCdpSession(
+    [],
+    [
+      {
+        targetId: "OOPIF-9",
+        type: "iframe",
+        url: "https://cdn.example.com/f.html",
+        openerId: "GONE-0",
+      },
+    ],
+  );
+  const browser = {
+    ...makeHarFakeBrowser({ log: { entries: [] } }),
+    newBrowserCDPSession: session.open,
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    const [target] = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8")).targets;
+    expect(target.targetId).toBe("OOPIF-9");
+    // The target existed — that is real evidence. The parent relationship is not something this
+    // run can vouch for, so it is dropped rather than asserted.
+    expect(target.openerId).toBeUndefined();
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar closes a target the snapshot proves is gone, with no destroy event at all", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-drain-"));
+  // POPUP-1 is announced open and never destroyed. The boundary snapshot does not list it, which
+  // is proof it closed inside the window — the `targetDestroyed` event either never arrived or
+  // arrived too late to be observed. The event stream cannot establish this; only the pull can.
+  const session = fakeBrowserCdpSession(
+    [
+      {
+        method: "Target.targetCreated",
+        payload: { targetInfo: { targetId: "POPUP-1", type: "page", url: "https://example.com/p" } },
+      },
+    ],
+    [{ targetId: "PAGE-0", type: "page", url: "https://example.com" }],
+  );
+  const browser = {
+    ...makeHarFakeBrowser({ log: { entries: [] } }),
+    newBrowserCDPSession: session.open,
+  };
+
+  try {
+    await captureHar({ browser, url: "https://example.com", outDir });
+
+    const { targets } = JSON.parse(readFileSync(join(outDir, "targets.json"), "utf8"));
+    const popup = targets.find((entry: { targetId: string }) => entry.targetId === "POPUP-1");
+    expect(popup.closedAt).toBeGreaterThanOrEqual(popup.openedAt);
+    // The target the snapshot still lists is open, and stays open.
+    const page = targets.find((entry: { targetId: string }) => entry.targetId === "PAGE-0");
+    expect(page.closedAt).toBeUndefined();
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("captureHar does not close a target on a destroy that arrives after the observation window", async () => {
+  const outDir = mkdtempSync(join(tmpdir(), "clone-space-record-targets-late-destroy-"));
+  const session = fakeBrowserCdpSession(
+    [
+      {
+        method: "Target.targetCreated",
+        payload: { targetInfo: { targetId: "PAGE-0", type: "page", url: "https://example.com" } },
+      },
+    ],
+    // PAGE-0 is still live when the snapshot is taken; the destroy arrives later, during close.
+    [{ targetId: "PAGE-0", type: "page", url: "https://example.com" }],
+  );
   // Closing the context destroys every target it owns. Recording that as a `closedAt` would report
   // our own teardown as a window the page closed.
   const browser = browserEmittingDuringClose(session, {

@@ -11,8 +11,9 @@ import {
 import { validateStagedArchive } from "./checkpoints.ts";
 import {
   TARGETS_SCHEMA_VERSION,
+  appendDiscovered,
   markClosed,
-  targetEntryFromCreated,
+  reconcileWithSnapshot,
   type CdpTargetPayload,
   type TargetEntry,
   type TargetsV1,
@@ -277,13 +278,14 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // — an absent `closedAt` says the target was still open when the window closed — never a
       // false one. Deliverable 2 of #117, a `Target.getTargets` snapshot taken at the boundary, is
       // what closes that gap, because a recorded target missing from the snapshot is known closed.
+      let browserCdp: CaptureHarBrowserCdpSession | undefined;
       if (options.browser.newBrowserCDPSession !== undefined) {
-        const browserCdp = await options.browser.newBrowserCDPSession();
+        browserCdp = await options.browser.newBrowserCDPSession();
         browserCdp.on("Target.targetCreated", (payload) => {
           if (!observingDependencies) return;
           const info = (payload as { targetInfo?: CdpTargetPayload }).targetInfo;
           if (info === undefined) return;
-          targets = [...targets, targetEntryFromCreated(info, performance.now() - runStartedAt)];
+          targets = appendDiscovered(targets, info, performance.now() - runStartedAt);
         });
         browserCdp.on("Target.targetDestroyed", (payload) => {
           if (!observingDependencies) return;
@@ -413,6 +415,27 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         throw new Error("the primary document changed while the checkpoint was open");
       }
       documentEpoch = `epoch:${loaderIdAtOpen}`;
+
+      // §6.9 deliverable 2. A pull at a known instant, where the event stream is a filter on
+      // pushes: a target that existed before discovery was enabled — or whose `targetCreated`
+      // never arrived — is still evidence about this run, and the snapshot is the only thing that
+      // can report it.
+      if (browserCdp !== undefined) {
+        // Taken before the await: the enumeration Chromium is about to build cannot contain a
+        // target that does not exist yet, so only what is already recorded may be closed by its
+        // absence from the result.
+        const drainable = new Set(targets.map((entry) => entry.targetId));
+        const snapshot =
+          ((await browserCdp.send("Target.getTargets")) as { targetInfos?: CdpTargetPayload[] })
+            .targetInfos ?? [];
+        targets = reconcileWithSnapshot(
+          targets,
+          snapshot,
+          performance.now() - runStartedAt,
+          drainable,
+        );
+      }
+
       observingDependencies = false;
       capabilities = {
         serviceWorkerDependent,

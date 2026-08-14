@@ -102,6 +102,77 @@ export function markClosed(entries: TargetEntry[], targetId: string, closedAt: n
 }
 
 /**
+ * Append a discovered target, from either the event stream or a snapshot.
+ *
+ * Two rules, and both exist because `validateTargets` refuses the document rather than dropping
+ * the bad part — a refusal aborts the whole capture over evidence §6.9 treats as supplemental.
+ *
+ * - A target already recorded is left alone; a repeated announcement is not a second target.
+ * - `openerId` is asserted only when this run already recorded the opener. An opener that closed
+ *   before discovery was switched on is never announced and is absent from the snapshot, so the
+ *   reference would dangle. The target existed, which is real evidence; the relationship is not
+ *   something this run can vouch for.
+ *
+ * Returns a new array; the input is never mutated.
+ */
+export function appendDiscovered(
+  entries: TargetEntry[],
+  info: CdpTargetPayload,
+  openedAt: number,
+): TargetEntry[] {
+  if (entries.some((entry) => entry.targetId === info.targetId)) return entries;
+  const openerRecorded =
+    info.openerId !== undefined && entries.some((entry) => entry.targetId === info.openerId);
+  return [
+    ...entries,
+    targetEntryFromCreated(openerRecorded ? info : { ...info, openerId: undefined }, openedAt),
+  ];
+}
+
+/**
+ * Reconcile the event-built inventory against a `Target.getTargets` snapshot taken at the
+ * observation boundary. The events are a filter on pushes; the snapshot is a pull at a known
+ * instant, and each sees what the other cannot.
+ *
+ * - A snapshot target the run never recorded is appended, under `appendDiscovered`'s rules. It
+ *   existed before discovery was enabled, or its `targetCreated` never arrived.
+ * - A recorded target the snapshot does not list is *known* closed, whether or not its
+ *   `targetDestroyed` was ever delivered. This is what makes the boundary exact: the listeners can
+ *   only filter on delivery time, and a close the page caused just before the boundary can arrive
+ *   after it.
+ *
+ * `drainable` is the set of target ids the run had recorded **before the snapshot was requested**,
+ * and only those may be closed by absence. Enumeration is not atomic: Chromium builds the list,
+ * then the response travels back, and a target opened in that window is announced by an event yet
+ * legitimately missing from the list. Draining it would stamp a close that never happened.
+ *
+ * Returns a new array; the input is never mutated.
+ */
+export function reconcileWithSnapshot(
+  entries: TargetEntry[],
+  snapshot: readonly CdpTargetPayload[],
+  observedAt: number,
+  drainable: ReadonlySet<string>,
+): TargetEntry[] {
+  let result = entries;
+  for (const info of snapshot) {
+    result = appendDiscovered(result, info, observedAt);
+  }
+
+  const live = new Set(snapshot.map((info) => info.targetId));
+  const goneIds = result
+    .filter(
+      (entry) =>
+        entry.closedAt === undefined && drainable.has(entry.targetId) && !live.has(entry.targetId),
+    )
+    .map((entry) => entry.targetId);
+  for (const targetId of goneIds) {
+    result = markClosed(result, targetId, observedAt);
+  }
+  return result;
+}
+
+/**
  * What a stored entry may carry, which is not the same set `normalizeType` recognises: everything
  * it does not recognise becomes "other", so refusing "other" here would refuse documents this
  * module produced — Chromium's own `browser` target among them.
