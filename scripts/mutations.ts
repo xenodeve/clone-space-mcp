@@ -329,6 +329,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "keeps an opener relationship the snapshot happened to list out of order",
   },
   {
+    id: "discovery-not-scoped-to-this-run",
+    why: "#122 - Target.setDiscoverTargets is browser-wide. Without scoping to this run's browserContextId, a concurrent capture sharing the browser pours its targets into this inventory and the archive describes a page it never visited.",
+    file: "src/capture/targets.ts",
+    find: "  return info.browserContextId === runContextId;",
+    replace: "  return true;",
+    suite: "browser",
+    expect: "does not report targets from a concurrent capture sharing the browser",
+  },
+  {
     id: "fingerprint-key-gates-on-ordinal-and-text",
     why: "Issue #20, fixed in 44e2671 — ordinal and text hash were equality components of the bucket key, so one node inserted above a target made an element with a unique stable attribute unmatchable. It was reported `missing` and `replayOnly` at once.",
     file: "src/identity/fingerprint.ts",

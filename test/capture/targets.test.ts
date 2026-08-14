@@ -4,6 +4,7 @@ import {
   normalizeType,
   TARGETS_SCHEMA_VERSION,
   targetEntryFromCreated,
+  belongsToRun,
   reconcileWithSnapshot,
   validateTargets,
   type TargetEntry,
@@ -230,4 +231,24 @@ test("keeps an opener relationship the snapshot happened to list out of order", 
   expect(child?.openerId).toBe("PARENT");
   // And the document still validates: the opener has to be an *earlier* entry.
   expect(validateTargets({ schemaVersion: 1, targets: result })).toEqual({ ok: true });
+});
+
+describe("browser context scoping", () => {
+  test("keeps a target whose context matches this run", () => {
+    expect(belongsToRun({ targetId: "A", type: "page", browserContextId: "CTX" }, "CTX")).toBe(true);
+  });
+
+  test("drops a target belonging to another capture sharing the browser", () => {
+    // Discovery is browser-wide. Two captures in one browser would otherwise pour each other's
+    // targets into both inventories, and an archive would describe a page it never visited.
+    expect(belongsToRun({ targetId: "B", type: "page", browserContextId: "OTHER" }, "CTX")).toBe(false);
+  });
+
+  test("keeps a target with no context when this run has no context either", () => {
+    // A fake browser, or a CDP build that does not report one. Filtering on an unknown context
+    // would empty the inventory over a capability, which §6.9 treats as supplemental.
+    expect(belongsToRun({ targetId: "C", type: "page" }, undefined)).toBe(true);
+    expect(belongsToRun({ targetId: "D", type: "page", browserContextId: "CTX" }, undefined)).toBe(true);
+    expect(belongsToRun({ targetId: "E", type: "page" }, "CTX")).toBe(true);
+  });
 });

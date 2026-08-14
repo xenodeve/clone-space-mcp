@@ -50,6 +50,29 @@ test("reports the page target with a real Chromium id", () => {
   assert.ok(page.openedAt >= 0, "a capture-relative timestamp cannot be negative");
 });
 
+test("does not report targets from a concurrent capture sharing the browser", async () => {
+  // Discovery is browser-wide. A second context open at the same time reports its targets to this
+  // session too, and without context scoping the archive would describe a page it never visited.
+  const other = await browser.newContext();
+  try {
+    await (await other.newPage()).goto("about:blank");
+    const servers: FixtureServers = await startFixtureServers();
+    const archive = join(tempDir, "scoped");
+    try {
+      await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+    } finally {
+      await servers.stop();
+    }
+    const scoped = JSON.parse(readFileSync(join(archive, "targets.json"), "utf8")) as TargetsV1;
+    assert.ok(
+      !scoped.targets.some((target) => target.url === "about:blank"),
+      `the other context leaked in: ${scoped.targets.map((t) => t.url ?? t.type).join(",")}`,
+    );
+  } finally {
+    await other.close();
+  }
+});
+
 test("reports the dedicated worker the page created", () => {
   // The fixture declares `dedicated-worker`. A worker is invisible to the page CDP session, so
   // this is the case that distinguishes a browser-level inventory from one that only sees the
