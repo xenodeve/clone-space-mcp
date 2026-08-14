@@ -27,6 +27,7 @@ import {
   TRANSCRIPT_SCHEMA_VERSION,
   type InteractionTranscriptV1,
 } from "./transcript.ts";
+import { createNetworkDrain, NETWORK_DRAIN_DEADLINE_MS } from "./network-drain.ts";
 import { redactHarArchive } from "./redact.ts";
 import {
   buildCommit,
@@ -61,6 +62,12 @@ interface CaptureHarPage extends EnvironmentPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
   on(event: "response", handler: (response: CaptureHarResponse) => void): void;
   on(event: "websocket", handler: () => void): void;
+  // #156. Counting requests in and out is the only way capture can tell "the DOM went quiet" from
+  // "the page has nothing outstanding" — the sweep's own quiet window measures the first and is
+  // routinely wrong about the second.
+  on(event: "request", handler: () => void): void;
+  on(event: "requestfinished", handler: () => void): void;
+  on(event: "requestfailed", handler: () => void): void;
   evaluate<Result, Arg>(pageFunction: (arg: Arg) => Result | Promise<Result>, arg?: Arg): Promise<Result>;
 }
 
@@ -190,6 +197,8 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
   const stagingRoot = await mkdtemp(join(archiveParent, `.${basename(archiveRoot)}-capture-`));
   const stagingHarPath = resolve(stagingRoot, HAR_FILE_NAME);
   const runStartedAt = performance.now();
+  const networkDrain = createNetworkDrain();
+  let networkDrainSettled = true;
 
   try {
     const context = await options.browser.newContext({
@@ -286,6 +295,10 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
             ),
         );
       });
+
+      page.on("request", () => networkDrain.started());
+      page.on("requestfinished", () => networkDrain.settled());
+      page.on("requestfailed", () => networkDrain.settled());
 
       await page.goto(options.url, { waitUntil: "load" });
 
@@ -415,6 +428,12 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         [...discoveredMapUrls].map((url) => context.request.get(url).catch(() => undefined)),
         DRAIN_DEADLINE_MS,
       );
+      // #156, second deliverable. Everything above waits for work *this process* started. This
+      // waits for the page's own: the sweep can end on a quiet DOM while responses are still
+      // arriving, and the context teardown below is what turns those into HAR entries with no
+      // response. Bounded for the same reason the drain above is — a tracker that never answers is
+      // ordinary on a real page, and waiting for one is how capture stops terminating.
+      networkDrainSettled = await networkDrain.idle(NETWORK_DRAIN_DEADLINE_MS);
       // The checkpoint opens after the sweep and spans the environment collection, so the
       // epoch is read at open — the document that is live now, not the one the requested URL
       // asked for — and read again at close.
@@ -605,6 +624,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       height: sweepStats.height,
       unansweredRequests,
       failedRequests,
+      networkDrainSettled,
     };
     const terminationDecision = evaluateBudget(sweepBudgets, terminationStats);
     const terminationOutcomeValue = terminationOutcome(terminationDecision, terminationStats);

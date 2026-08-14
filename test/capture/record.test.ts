@@ -192,14 +192,17 @@ test("publishes sourcemapDeclared as undetermined when a script body cannot be r
           });
         },
         on(
-          _event: string,
+          event: string,
           handler: (response: {
             request(): { resourceType(): string };
             url(): string;
             text(): Promise<string>;
           }) => void,
         ) {
-          responseHandler = handler;
+          // Dispatch on the event, not on the call order. Ignoring the name made every `page.on`
+          // overwrite this one, so adding a listener anywhere in `captureHar` silently unhooked
+          // the response feed these tests are built on — the failure `issue-fake.md` describes.
+          if (event === "response") responseHandler = handler;
         },
         url() {
           return pageUrl;
@@ -271,14 +274,17 @@ test("publishes a sourcemap declaration whose URL cannot be resolved", async () 
           });
         },
         on(
-          _event: string,
+          event: string,
           handler: (response: {
             request(): { resourceType(): string };
             url(): string;
             text(): Promise<string>;
           }) => void,
         ) {
-          responseHandler = handler;
+          // Dispatch on the event, not on the call order. Ignoring the name made every `page.on`
+          // overwrite this one, so adding a listener anywhere in `captureHar` silently unhooked
+          // the response feed these tests are built on — the failure `issue-fake.md` describes.
+          if (event === "response") responseHandler = handler;
         },
         url() {
           return pageUrl;
