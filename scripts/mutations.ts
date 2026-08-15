@@ -512,7 +512,7 @@ export const MUTATIONS: Mutation[] = [
     id: "incomplete-verdict-collapsed-into-pass",
     why: "#171 - a residual that is empty only because half the fields were never observed is not a pass. Collapsing INCOMPLETE into PASS hands a caller reading one value the opposite of what the run showed.",
     file: "src/equivalence/classify.ts",
-    find: "  const verdict = residual.length > 0 ? \"FAIL\" : anyUnobserved ? \"INCOMPLETE\" : \"PASS\";",
+    find: "  const verdict = residual.length > 0 ? \"FAIL\" : inconclusive ? \"INCOMPLETE\" : \"PASS\";",
     replace: "  const verdict = residual.length > 0 ? \"FAIL\" : \"PASS\";",
     suite: "bun",
     expect: "unobserved does not enter the residual, and does not let the verdict claim PASS either",
