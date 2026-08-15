@@ -29,6 +29,9 @@ describe("evaluateBudget", () => {
     bytes: 0,
     nodes: 0,
     height: 0,
+    unansweredRequests: 0,
+    failedRequests: 0,
+    networkDrainSettled: true,
   };
 
   test("does not stop when nothing is exceeded", () => {
@@ -100,26 +103,59 @@ describe("terminationOutcome", () => {
     bytes: 0,
     nodes: 0,
     height: 0,
+    unansweredRequests: 0,
+    failedRequests: 0,
+    networkDrainSettled: true,
   };
 
   test("quiet-window maps to complete (the page settled naturally)", () => {
     const decision = evaluateBudget(DEFAULTS, { ...baseStats, sweepCheckpoints: 3 });
-    expect(terminationOutcome(decision)).toEqual({ outcome: "complete", reason: "quiet-window" });
+    expect(terminationOutcome(decision, baseStats)).toEqual({ outcome: "complete", reason: "quiet-window" });
   });
 
   test("budget-exceeded maps to incomplete (a truncated capture)", () => {
     const decision = evaluateBudget({ ...DEFAULTS, wallClockMs: 100 }, { ...baseStats, wallClockMs: 101 });
-    expect(terminationOutcome(decision)).toEqual({ outcome: "incomplete", reason: "budget-exceeded" });
+    expect(terminationOutcome(decision, baseStats)).toEqual({ outcome: "incomplete", reason: "budget-exceeded" });
   });
 
   test("navigation maps to incomplete", () => {
     const decision = evaluateBudget(DEFAULTS, baseStats, true);
-    expect(terminationOutcome(decision)).toEqual({ outcome: "incomplete", reason: "navigation" });
+    expect(terminationOutcome(decision, baseStats)).toEqual({ outcome: "incomplete", reason: "navigation" });
   });
 
   test("no stop maps to complete with no reason", () => {
     const decision = evaluateBudget(DEFAULTS, baseStats);
-    expect(terminationOutcome(decision)).toEqual({ outcome: "complete" });
+    expect(terminationOutcome(decision, baseStats)).toEqual({ outcome: "complete" });
+  });
+
+  // #156. `reason` answers why the sweep stopped and stays `quiet-window`; `outcome` is a claim
+  // about the archive, and one missing a response the page asked for is not a complete archive.
+  test("an unanswered request makes a natural end incomplete, keeping its reason", () => {
+    const stats = { ...baseStats, sweepCheckpoints: 3, unansweredRequests: 1 };
+    const decision = evaluateBudget(DEFAULTS, stats);
+    expect(terminationOutcome(decision, stats)).toEqual({
+      outcome: "incomplete",
+      reason: "quiet-window",
+    });
+  });
+
+  test("an unanswered request makes an unstopped run incomplete too", () => {
+    const stats = { ...baseStats, unansweredRequests: 2 };
+    expect(terminationOutcome(evaluateBudget(DEFAULTS, stats), stats)).toEqual({
+      outcome: "incomplete",
+    });
+  });
+
+  // #156. A request that failed — DNS, ORB, a refused connection — failed for the live browser
+  // too, so the archive is faithful for recording it. Measured across four captures of two real
+  // sites: 24 of 30 responseless entries were failures. Feeding those into the outcome would mark
+  // nearly every real capture incomplete forever, which teaches a reader to ignore the field.
+  test("a failed request does not make the capture incomplete", () => {
+    const stats = { ...baseStats, sweepCheckpoints: 3, failedRequests: 8 };
+    expect(terminationOutcome(evaluateBudget(DEFAULTS, stats), stats)).toEqual({
+      outcome: "complete",
+      reason: "quiet-window",
+    });
   });
 });
 

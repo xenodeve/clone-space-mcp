@@ -41,9 +41,14 @@ function isPrivateAddress(address: string): string | undefined {
  * process. Deny by default, with an explicit opt-in — the same shape as the storage allowlist
  * §6.2 already uses, rather than a new stance.
  *
- * This is a pre-flight check and cannot by itself stop a redirect into a private network. It does
- * not need to: a redirect to a different host is cross-origin, and `collectEnvironment` refuses to
- * publish a capture whose final origin differs from the requested one. The pair is what bounds it.
+ * This is a pre-flight check and cannot by itself stop a redirect into a private network. The
+ * other half of the pair is `capture_page` passing this same function to `captureHar` as
+ * `assertFinalOrigin`, so the policy is applied again to wherever the page landed (#157).
+ *
+ * That used to be covered incidentally, by `collectEnvironment` refusing to publish any capture
+ * whose final origin differed from the requested one. It bounded the redirect leg and also made
+ * every apex-to-www site unarchivable, which is why it was replaced by something that checks the
+ * address rather than the mere fact of a redirect.
  */
 /** Resolve a hostname to addresses. Injected so a test does not depend on live DNS. */
 export type HostResolver = (hostname: string) => Promise<string[]>;

@@ -9,3 +9,4 @@ Architecture and implementation plans. Status: `LIVING` = keep current · `SNAPS
 | File | Status | What it planned |
 |------|--------|-----------------|
 | `2026-07-31-pipeline-architecture.md` | LIVING | The capture → replay → extract → serve design and why it is this way: the load-bearing commitment and what it rejects, element identity, measured performance rules, exit criteria, what is cut from v1, and where the schedule will slip |
+| `2026-08-14-deep-client-comprehension.md` | PROPOSED | Deep client-side comprehension: the acceptance criterion is **online ≡ offline for client code**, not a checklist. The equivalence gate's comparison surface, the six difference classes that must be allowed, six measured false greens, eight ordered slices starting with the differential harness, and the three honest provenance levels |

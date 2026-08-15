@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureHar } from "../../src/capture/record.ts";
+import type { Budgets } from "../../src/capture/budget.ts";
 
 /**
  * Which `page.evaluate` call this is, decided by **what is being evaluated** rather than by how
@@ -94,12 +95,15 @@ export function fakeBrowser(har: unknown) {
   };
 }
 
-export async function captureFixtureArchive(): Promise<string> {
+export async function captureFixtureArchive(
+  options: { budgets?: Partial<Budgets> } = {},
+): Promise<string> {
   const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-archive-")), "archive");
   await captureHar({
     browser: fakeBrowser({ log: { entries: [] } }),
     url: "https://example.com",
     outDir,
+    ...options,
   });
   return outDir;
 }
