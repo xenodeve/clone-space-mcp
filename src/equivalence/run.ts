@@ -36,6 +36,7 @@ export type EquivalenceBrowser = ReplayBrowser;
 
 interface LiveContext {
   newPage(): Promise<EquivalencePage>;
+  addInitScript(script: { content: string }): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -103,6 +104,23 @@ const SAMPLE_FRAMES = 40;
  * than reading early and saying the run was short.
  */
 const FRAME_ADVANCE_CAP_MS = 2_000;
+
+/**
+ * Counts animation frames from **page start**, installed before any page script.
+ *
+ * The reference point is the whole point. A first attempt at #182 counted frames from the moment
+ * sampling began, which is after `goto` resolves — and `goto` takes different times on the live
+ * page and on the archive, so the same frame number landed at a different page-phase on each side.
+ * Three runs of the gate then gave PASS, FAIL, PASS, which is the original defect in a new unit.
+ *
+ * The probe that found frames 480 and 600 reproducible across five loads counted from here.
+ */
+export const FRAME_COUNTER_SCRIPT = `(() => {
+  if (window.__csFrames !== undefined) return;
+  window.__csFrames = 0;
+  const tick = () => { window.__csFrames += 1; requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+})()`;
 /** Scroll steps the driver takes, on both sides, so the scroll dimension is genuinely covered. */
 const SCROLL_STEPS = 4;
 
@@ -127,25 +145,24 @@ interface MotionSample {
  * The cap is inside the page rather than around the call so a stalled `requestAnimationFrame`
  * resolves rather than rejects: the gate should read a page that stopped painting, not fail on it.
  */
-async function advanceFrames(page: EquivalencePage, frames: number): Promise<void> {
+async function waitForFrame(page: EquivalencePage, target: number): Promise<void> {
   await page.evaluate(
-    (request: { frames: number; capMs: number }) =>
+    (request: { target: number; capMs: number }) =>
       new Promise<void>((resolve) => {
-        let remaining = request.frames;
+        const counter = window as unknown as { __csFrames?: number };
         const done = () => resolve();
         const timer = setTimeout(done, request.capMs);
-        const tick = () => {
-          remaining -= 1;
-          if (remaining <= 0) {
+        const check = () => {
+          if ((counter.__csFrames ?? Number.POSITIVE_INFINITY) >= request.target) {
             clearTimeout(timer);
             done();
             return;
           }
-          requestAnimationFrame(tick);
+          requestAnimationFrame(check);
         };
-        requestAnimationFrame(tick);
+        check();
       }),
-    { frames, capMs: FRAME_ADVANCE_CAP_MS },
+    { target, capMs: FRAME_ADVANCE_CAP_MS },
   );
 }
 
@@ -154,6 +171,7 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
   let stableFor = 0;
   let settledAfter = MAX_SAMPLES;
   for (let i = 0; i < MAX_SAMPLES; i += 1) {
+    await waitForFrame(page, (i + 1) * SAMPLE_FRAMES);
     samples.push(
       await page.evaluate(() => {
         const win = globalThis as unknown as {
@@ -177,7 +195,6 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
       settledAfter = samples.length;
       break;
     }
-    await advanceFrames(page, SAMPLE_FRAMES);
   }
 
   // The scroll half of the driver, identical on both sides.
@@ -185,7 +202,7 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
     await page.evaluate((fraction: number) => {
       window.scrollTo(0, document.documentElement.scrollHeight * fraction);
     }, step / SCROLL_STEPS);
-    await advanceFrames(page, SAMPLE_FRAMES);
+    await waitForFrame(page, MAX_SAMPLES * SAMPLE_FRAMES + (step + 1) * SAMPLE_FRAMES);
   }
 
   const afterScroll = await page.evaluate(() => {
@@ -234,6 +251,7 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   for (let pass = 0; pass < 2; pass += 1) {
     const context = (await options.browser.newContext({})) as unknown as LiveContext;
     try {
+      await context.addInitScript({ content: FRAME_COUNTER_SCRIPT });
       const page = await context.newPage();
       await page.goto(options.url, { waitUntil: "load" });
       passes.push(await collectDigest(page));
@@ -250,7 +268,11 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   });
   const archive = har.slice(0, har.lastIndexOf("network.har") - 1);
 
-  const replay = await replayArchive({ archive, browser: options.browser });
+  const replay = await replayArchive({
+    archive,
+    browser: options.browser,
+    initScripts: [FRAME_COUNTER_SCRIPT],
+  });
   let replayed: Digest;
   try {
     replayed = await collectDigest(replay.page as unknown as EquivalencePage);

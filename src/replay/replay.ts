@@ -20,6 +20,15 @@ export interface ReplayArchiveOptions {
   /** Path to a published archive directory. */
   archive: string;
   browser: ReplayBrowser;
+  /**
+   * Scripts installed **before any page script runs**, so a caller measuring from "page start"
+   * measures the same instant here as on a live page.
+   *
+   * The equivalence gate needs it: a clock started after `goto` resolves is a different clock on
+   * each side, because the live page and the archive take different times to get there, and that
+   * difference is #182.
+   */
+  initScripts?: readonly string[];
 }
 
 /** The structural slice of Playwright's Browser this needs. */
@@ -30,6 +39,7 @@ export interface ReplayBrowser {
 export interface ReplayBrowserContext {
   routeFromHAR(har: string, options: { notFound: "abort"; url?: string }): Promise<void>;
   newPage(): Promise<ReplayPage>;
+  addInitScript(script: { content: string }): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -87,6 +97,12 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
   // §6.2: the replay surface is the half of `environment.json` that describes what a faithful
   // replay must reproduce, as opposed to what capture merely observed.
   const context = await options.browser.newContext({ ...replayContextFrom(archive.documents.environment) });
+  // Installed before the page's own scripts, so anything measuring from "page start" measures the
+  // same instant here as it does on a live page. #182 needed this: a clock started after `goto`
+  // resolves is a different clock on each side, because they take different times to get there.
+  for (const content of options.initScripts ?? []) {
+    await context.addInitScript({ content });
+  }
   await context.routeFromHAR(archive.harPath, { notFound: "abort", url: "**/*" });
 
   const page = await context.newPage();
