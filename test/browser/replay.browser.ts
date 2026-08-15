@@ -85,6 +85,98 @@ test("replays the motion fixture offline with every declared mechanism live", as
   }
 });
 
+/**
+ * #155. Playwright writes a request it recorded but never got a response for as a HAR entry with
+ * `response.status: -1`. `routeFromHAR` matches such an entry by URL — so it never reaches the
+ * `notFound: "abort"` path — and then has nothing to fulfil with, leaving the request pending
+ * forever. Measured on `https://labs.chaingpt.org/`: five of 114 entries, all `<script>`, and
+ * neither `DOMContentLoaded` nor `load` ever fired.
+ *
+ * The entry is rewritten here rather than produced by a stalling fixture route, because this is a
+ * claim about **replay** and a fixture that never answers would make the test a capture test with
+ * a timing dependency. Capture publishing them at all is #156.
+ */
+test("does not stall on a HAR entry the archive has no response for", async () => {
+  const archive = await captureThenTakeTheOriginDown();
+  const harPath = join(archive, "network.har");
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: { entries: { request: { url: string }; response: Record<string, unknown> }[] };
+  };
+
+  // A blocking classic `<script>` in the document: with no response and no abort, DOMContentLoaded
+  // never fires, which is what makes this fatal rather than cosmetic.
+  const stalled = har.log.entries.find((entry) => entry.request.url.endsWith("/gsap-scene.js"));
+  assert.ok(stalled !== undefined, "fixture no longer loads /gsap-scene.js");
+  stalled.response = {
+    ...stalled.response,
+    status: -1,
+    statusText: "",
+    httpVersion: "",
+    headers: [],
+    content: { size: -1, mimeType: "x-unknown" },
+  };
+  writeFileSync(harPath, JSON.stringify(har));
+
+  const replay = await replayArchive({ archive, browser: browser as never });
+  try {
+    // Aborted, not pending: a request the archive cannot answer has to fail loudly. That is the
+    // same contract `notFound: "abort"` already carries, applied to an entry that matched.
+    assert.ok(
+      replay.aborted.some((url) => url.endsWith("/gsap-scene.js")),
+      `the entry with no response was not aborted. aborted=${JSON.stringify(replay.aborted)}`,
+    );
+    assert.equal(replay.unservable, 1, "the count of entries the archive cannot serve is wrong");
+  } finally {
+    await replay.close();
+  }
+
+  // The published archive is the record of what capture observed, including that this never
+  // completed. Replay filters a copy; it does not rewrite the evidence.
+  const after = JSON.parse(readFileSync(harPath, "utf8")) as { log: { entries: unknown[] } };
+  assert.equal(after.log.entries.length, har.log.entries.length, "replay rewrote the published HAR");
+});
+
+/**
+ * #155, the case a URL-keyed refusal gets wrong. A HAR can hold two entries for one URL — a
+ * `GET` that succeeded and a `POST` that was still open at teardown, or a second fetch of the
+ * same asset. Refusing every URL that appears in *any* entry with no response would then abort a
+ * request the archive can answer perfectly well, which is a worse failure than the one being
+ * fixed: it removes a working asset from a replay that used to serve it.
+ */
+test("still serves a URL the archive has a good entry for, alongside a bad one", async () => {
+  const archive = await captureThenTakeTheOriginDown();
+  const harPath = join(archive, "network.har");
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: { entries: { request: { url: string; method?: string }; response: Record<string, unknown> }[] };
+  };
+
+  const good = har.log.entries.find((entry) => entry.request.url.endsWith("/gsap-scene.js"));
+  assert.ok(good !== undefined, "fixture no longer loads /gsap-scene.js");
+  har.log.entries.push({
+    ...good,
+    request: { ...good.request, method: "POST" },
+    response: { status: -1, statusText: "", httpVersion: "", headers: [], content: { size: -1, mimeType: "x-unknown" } },
+  });
+  writeFileSync(harPath, JSON.stringify(har));
+
+  const replay = await replayArchive({ archive, browser: browser as never });
+  try {
+    assert.ok(
+      !replay.aborted.some((url) => url.endsWith("/gsap-scene.js")),
+      "a URL the archive can serve was refused because another entry for it had no response",
+    );
+    // Served is not enough — the script has to have run, which is the fidelity this protects.
+    const tweens = await replay.page.evaluate(() => {
+      const win = globalThis as unknown as { gsap?: { globalTimeline: { getChildren(): unknown[] } } };
+      return win.gsap?.globalTimeline.getChildren().length ?? 0;
+    });
+    assert.ok(tweens > 0, "the scene script was served but never executed");
+    assert.equal(replay.unservable, 0, "a URL with a good entry counted as unservable");
+  } finally {
+    await replay.close();
+  }
+});
+
 test("refuses to reach a live origin for what the archive is missing", async () => {
   // The origin stays **up** here, and that is the whole point. With it down, `abort` and
   // `fallback` are indistinguishable — both leave the request failed — and the corpus measured
@@ -115,6 +207,68 @@ test("refuses to reach a live origin for what the archive is missing", async () 
       assert.ok(
         refusedAsset !== undefined,
         `no same-origin asset was refused; replay reached the live server. aborted=${JSON.stringify(replay.aborted)}`,
+      );
+    } finally {
+      await replay.close();
+    }
+  } finally {
+    await servers.stop();
+  }
+});
+
+/**
+ * #155. The test above proves the no-live-network guarantee on the path where **no** entry is
+ * unservable — and on that path `replayArchive` never registers its route at all, so it exercises
+ * the code as it was before this change. Every other request now passes through `route.fallback()`
+ * instead of reaching `routeFromHAR` directly, and if `fallback()` ever stopped deferring, the
+ * request would leak to the internet with nothing watching. This installs the handler and repeats
+ * the measurement, with the origin **up**.
+ */
+test("still refuses a live origin when the unservable handler is installed", async () => {
+  const servers: FixtureServers = await startFixtureServers();
+  const archive = join(tempDir, `archive-${(archiveCounter += 1)}`);
+  try {
+    await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+
+    const harPath = join(archive, "network.har");
+    const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+      log: { entries: { request: { url: string }; response: Record<string, unknown> }[] };
+    };
+    // One same-origin asset kept, with no response — that is what installs the handler. Everything
+    // else the page asks for is dropped, so it can only come from the archive or the live server.
+    const asset = har.log.entries.find((entry) => /\.(css|js)(\?|$)/.test(entry.request.url));
+    assert.ok(asset !== undefined, "the fixture capture recorded no css or js asset");
+    asset.response = {
+      status: -1,
+      statusText: "",
+      httpVersion: "",
+      headers: [],
+      content: { size: -1, mimeType: "x-unknown" },
+    };
+    har.log.entries = [har.log.entries[0]!, asset];
+    writeFileSync(harPath, JSON.stringify(har));
+
+    const replay = await replayArchive({ archive, browser: browser as never });
+    try {
+      assert.equal(replay.unservable, 1, "the handler was not installed, so this proves nothing");
+      // The handler's own path: an asset the live server would serve, refused.
+      assert.ok(
+        replay.aborted.includes(asset.request.url),
+        `the unservable asset was not refused. aborted=${JSON.stringify(replay.aborted)}`,
+      );
+      // The fallback path: a different same-origin asset, dropped from the HAR entirely, must also
+      // be refused. If `fallback()` stopped deferring to the HAR router, this one would be fetched
+      // from the origin that is still listening, and nothing else in the suite would notice.
+      const origin = new URL(servers.primary.url).origin;
+      const otherRefused = replay.aborted.find(
+        (candidate) =>
+          candidate !== asset.request.url &&
+          candidate.startsWith(origin) &&
+          /\.(css|js|png|svg)(\?|$)/.test(candidate),
+      );
+      assert.ok(
+        otherRefused !== undefined,
+        `fallback reached the live server instead of the archive. aborted=${JSON.stringify(replay.aborted)}`,
       );
     } finally {
       await replay.close();

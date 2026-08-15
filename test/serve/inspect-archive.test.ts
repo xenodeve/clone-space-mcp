@@ -89,3 +89,29 @@ test("reads any path when a deployment sets no roots — the documented default"
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+/**
+ * #159. `complete` answered the integrity question — every file still hashes to what `commit.json`
+ * recorded — while the tool documents itself as answering "is this capture complete?". The two
+ * used to agree by accident, because `termination.outcome` was `complete` on essentially every
+ * capture. Measured on three real sites after that stopped being true: `inspectComplete: true`
+ * alongside `outcome: "incomplete"` on labs.chaingpt.org, www.chaingpt.org and firecrawl.dev —
+ * archives measured to be missing GSAP plugins and hero videos.
+ *
+ * An agent that reads `complete` and stops has been told the opposite of what the archive knows.
+ */
+test("inspectArchive does not call an archive complete when the capture terminated incomplete", async () => {
+  // A wall clock the sweep cannot finish inside ends the run on `budget-exceeded`, which §6.10
+  // already maps to `incomplete`. Every file is still written and hashed, so integrity is intact —
+  // which is exactly the combination the old answer got wrong.
+  const root = await captureFixtureArchive({ budgets: { wallClockMs: 1 } });
+  try {
+    const result = await inspectArchive({ path: root });
+
+    expect(result.integrity.ok).toBe(true);
+    expect(result.termination.outcome).toBe("incomplete");
+    expect(result.complete).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

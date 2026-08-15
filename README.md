@@ -73,7 +73,7 @@ sidecars, all written `0600`:
 | `capabilities.json` | Four tri-state flags: service worker, WebSocket, closed shadow root, declared sourcemap |
 | `request-normalization.json` | The explicit volatile-query-key policy replay matches against |
 | `targets.json` | Which targets existed during capture — OOPIFs, popups, workers — and when |
-| `termination.json` | Why the sweep stopped, and the budget it stopped against |
+| `termination.json` | Why the sweep stopped, the budget it stopped against, and how many requests the archive holds no response for — a non-zero count makes the outcome `incomplete` whatever the sweep's own reason was |
 | `checkpoints.json` | The associations binding all of the above to one coherent run |
 | `commit.json` | A SHA-256 of every other file, written last, after validation |
 

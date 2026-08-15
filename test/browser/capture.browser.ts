@@ -371,19 +371,49 @@ test("publishes the requested and observed environment without non-allowlisted s
   assert.doesNotMatch(environmentText, /redirect-secret|CROSS_ORIGIN_VALUE/);
 });
 
-test("refuses to publish storage captured after a cross-origin redirect", async () => {
+/**
+ * #157. The refusal this replaces aborted the **whole capture** on any cross-origin redirect,
+ * which made `https://firecrawl.dev/` and `https://chaingpt.org/` unarchivable — an apex domain
+ * redirecting to `www` is one of the most common configurations on the web, and an agent handed
+ * the URL a human would type got an error that reads like a security incident.
+ *
+ * The property the refusal actually protected is narrower and is asserted directly here rather
+ * than inferred from a throw: storage read after landing on a different origin belongs to that
+ * origin, and publishing it under the requested one mislabels whose data it is.
+ */
+test("publishes a capture that redirected cross-origin, without that origin's storage", async () => {
   const outDir = nextCaptureOutDir();
+  const harPath = await captureHar({
+    browser,
+    url: new URL("/cross-origin-redirect.html", servers.primary.url).href,
+    outDir,
+    // The redirect target writes `redirect-secret` into ITS localStorage. Allowlisting the key is
+    // what makes this a real test: the allowlist was written for the requested origin, so if the
+    // read still happened the value would be published under a label that is not its own.
+    storageAllowlist: { localStorage: ["redirect-secret"] },
+    // `captureHar` refuses an origin change unless the caller supplies a policy — the default-deny
+    // that keeps a library consumer where it was before #157. `capture_page` supplies its address
+    // check; this test supplies "any origin is fine", which is what makes the redirect reachable.
+    assertOriginAllowed: async () => {},
+  });
 
-  await assert.rejects(
-    captureHar({
-      browser,
-      url: new URL("/cross-origin-redirect.html", servers.primary.url).href,
-      outDir,
-      storageAllowlist: { localStorage: ["redirect-secret"] },
-    }),
-    /cross-origin redirect/,
-  );
-  assert.equal(existsSync(outDir), false);
+  const environmentText = readFileSync(join(dirname(harPath), "environment.json"), "utf8");
+  const environment = JSON.parse(environmentText) as {
+    primaryOrigin: string;
+    finalOrigin: string;
+    replay: { storage: { localStorage: unknown[]; sessionStorage: unknown[] } };
+  };
+
+  assert.equal(environment.primaryOrigin, new URL(servers.primary.url).origin);
+  assert.equal(environment.finalOrigin, new URL(servers.crossOrigin.url).origin);
+  assert.notEqual(environment.finalOrigin, environment.primaryOrigin);
+
+  assert.deepEqual(environment.replay.storage.localStorage, [], "published another origin's localStorage");
+  assert.deepEqual(environment.replay.storage.sessionStorage, [], "published another origin's sessionStorage");
+  // Belt and braces: the stored **value** must not appear anywhere in the artifact, under any key.
+  // The allowlisted key name is a different thing — the caller supplied it and recording the
+  // policy that was applied is the point of publishing it.
+  assert.doesNotMatch(environmentText, /CROSS_ORIGIN_VALUE/);
 });
 
 test("does not publish raw credentials when a failed capture is retried", async () => {
@@ -689,4 +719,99 @@ test("does not fetch a sourcemap that is published inline as a data URI", async 
     readFileSync(join(dirname(harPath), "capabilities.json"), "utf8"),
   ) as { flags: { sourcemapDeclared: unknown } };
   assert.equal(capabilities.flags.sourcemapDeclared, true, "an inline map is still a declaration");
+});
+
+/**
+ * #156. `termination.json` said `complete` on runs whose archive was missing responses the page
+ * needed. Three captures of `https://labs.chaingpt.org/` produced 5, 1 and 3 HAR entries with
+ * `response.status: -1` — one of them `jquery-3.5.1.min.js`, which that Webflow page's entire
+ * interaction layer depends on — and every run reported `complete` / `quiet-window`.
+ *
+ * The sweep's termination test runs inside `page.evaluate` and measures DOM activity. It has no
+ * view of the network, so the quiet window can close while responses are still outstanding.
+ */
+test("does not report complete when a response was never received", async () => {
+  const url = new URL("/unanswered-request.html", servers.primary.url);
+  const harPath = await captureHar({ browser, url: url.href, outDir: nextCaptureOutDir() });
+
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: {
+      entries: {
+        request: { url: string };
+        response: { status?: unknown; _failureText?: unknown };
+      }[];
+    };
+  };
+  // The same predicate `src/capture/record.ts` uses, so this checks the published number rather
+  // than a second definition of it that could agree by luck.
+  const responseless = har.log.entries.filter(
+    (entry) => typeof entry.response.status !== "number" || entry.response.status < 100,
+  );
+  const outstanding = responseless.filter((entry) => entry.response._failureText === undefined);
+
+  // The fixture route accepts the connection and never replies, so this is the archive defect
+  // being reported on — if it is absent the assertions below would pass vacuously. It must be
+  // *outstanding*, not failed: a failure is what the live browser saw and is faithful to record.
+  assert.ok(
+    outstanding.some((entry) => entry.request.url.endsWith("/never-answers")),
+    `the fixture's unanswered request is not outstanding in the HAR. responseless=${JSON.stringify(
+      responseless.map((entry) => [entry.request.url, entry.response._failureText]),
+    )}`,
+  );
+
+  const termination = JSON.parse(
+    readFileSync(join(dirname(harPath), "termination.json"), "utf8"),
+  ) as {
+    outcome: string;
+    reason?: string;
+    stats: { unansweredRequests?: number; failedRequests?: number };
+  };
+
+  assert.equal(
+    termination.stats.unansweredRequests,
+    outstanding.length,
+    "termination.json does not count the responses that were still outstanding",
+  );
+  assert.equal(
+    termination.stats.failedRequests,
+    responseless.length - outstanding.length,
+    "termination.json does not count the requests that failed outright",
+  );
+  // An archive whose responses were still arriving is not a complete capture, whatever the
+  // sweep's own reason for stopping was. Asserting the reason too is what makes this exercise
+  // the #156 override rather than an ordinary budget truncation that would satisfy the line above.
+  assert.equal(termination.outcome, "incomplete", "a run with responses outstanding said complete");
+  assert.equal(termination.reason, "quiet-window", "the sweep did not end on a quiet window, so the override was not what produced the incomplete verdict");
+});
+
+/**
+ * #156, second deliverable. The sweep's quiet window measures DOM activity, so it can close while
+ * responses are still arriving — and the context teardown then writes them into the HAR with no
+ * response at all. Measured through the tool entry points on `https://firecrawl.dev/` before this:
+ * 4 entries with no response and **no recorded failure**, four answers that were on their way.
+ *
+ * The wall-clock budget is set to 1 ms so the sweep is over before the fixture's 300 ms response
+ * can land. Without the drain that response is lost by construction rather than by a lost race.
+ */
+test("waits for a response that arrives after the sweep has ended", async () => {
+  const url = new URL("/late-response.html", servers.primary.url);
+  const harPath = await captureHar({
+    browser,
+    url: url.href,
+    outDir: nextCaptureOutDir(),
+    budgets: { wallClockMs: 1 },
+  });
+
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: { entries: { request: { url: string }; response: { status?: unknown } }[] };
+  };
+  const answered = har.log.entries.find((entry) => entry.request.url.endsWith("/slow-answer.js"));
+  assert.ok(answered !== undefined, "the fixture's late request is not in the HAR at all");
+  assert.equal(answered.response.status, 200, "the late response was not waited for");
+
+  const termination = JSON.parse(
+    readFileSync(join(dirname(harPath), "termination.json"), "utf8"),
+  ) as { stats: { unansweredRequests: number; networkDrainSettled: boolean } };
+  assert.equal(termination.stats.unansweredRequests, 0, "an answered request was counted as outstanding");
+  assert.equal(termination.stats.networkDrainSettled, true, "the drain reported that it gave up");
 });
