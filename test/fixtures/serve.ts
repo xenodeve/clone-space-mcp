@@ -218,6 +218,59 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           },
         });
       }
+      if (pathname === "/interaction-case.html") {
+        // Ground truth for #176: one element per refusal rule, plus three the policy must allow.
+        // The refusals are asserted by rule against a real DOM, so a rule that only ever fires on
+        // a hand-built candidate object cannot pass for a working policy.
+        const offsite = new URL("/redirect-target.html", crossOriginUrl).href;
+        const html = `<!doctype html><html><body>
+          <form action="/interaction-endpoint">
+            <button id="r-submit" type="submit">Go</button>
+            <button id="r-typeless">Continue</button>
+          </form>
+          <a id="r-navigation" href="/redirect-target.html">Other page</a>
+          <a id="r-download" href="#top" download>Get the file</a>
+          <a id="r-new-context" href="#top" target="_blank">New tab</a>
+          <input id="r-file" type="file">
+          <a id="r-cross-origin" href="${offsite}">Elsewhere</a>
+          <button id="r-auth" type="button">Sign in</button>
+          <button id="r-destructive" type="button">Delete account</button>
+          <form id="detached-form" action="/interaction-endpoint"></form>
+          <button id="r-form-attribute" form="detached-form">Continue</button>
+          <button id="r-icon-title" type="button" title="Delete account"><span>&#9679;</span></button>
+          <button id="skip-aria-disabled" type="button" aria-disabled="true">Show more</button>
+          <button id="skip-transparent" type="button" style="opacity:0">Show more</button>
+          <pay-button id="throwing-element" role="button">Continue</pay-button>
+
+          <button id="ok-toggle" type="button">Show details</button>
+          <button id="r-text-under-title" type="button" title="Open panel">Delete account</button>
+          <div id="ok-hover" style="cursor:pointer">Read more
+            <span id="inherited-cursor">inner</span>
+            <svg width="8" height="8"><g id="inherited-svg"><path d="M0 0h8v8H0z"/></g></svg>
+          </div>
+          <div id="ok-scroller" style="overflow:auto;height:40px;width:120px">
+            <div style="height:600px">tall</div>
+          </div>
+          <script>
+            // A valid custom element whose innerText getter throws. Discovery reads innerText for
+            // the label, so without per-element isolation this one element rejects the whole
+            // evaluate and no candidate is returned at all.
+            customElements.define("pay-button", class extends HTMLElement {
+              get innerText() { throw new Error("not ready"); }
+            });
+            document.getElementById("ok-toggle").addEventListener("click", () => {
+              document.body.dataset.toggled = "yes";
+            });
+            document.getElementById("ok-hover").addEventListener("mouseenter", () => {
+              document.body.dataset.hovered = "yes";
+            });
+            document.getElementById("ok-scroller").addEventListener("scroll", () => {
+              document.body.dataset.scrolled = "yes";
+            });
+          </script>
+        </body></html>`;
+        return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
+      }
       if (pathname === "/environment-probe.html") {
         const crossOriginFrame = new URL("/redirect-target.html", crossOriginUrl);
         const html = `<iframe src="${crossOriginFrame.href}"></iframe><script>
