@@ -939,4 +939,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "ignores a declared map whose body is not a sourcemap",
   },
+  {
+    id: "archive-sources-redirect-not-followed",
+    why: "Issue #178 - a stack names the URL the page asked for, and a CDN often answers a redirect. Measured on www.chaingpt.org: unpkg answers 301 for the bare package URL, the map lives at the target, and indexing only the target left 2 of that site's 6 shaders uncitable.",
+    file: "src/extract/archive-sources.ts",
+    find: "        maps.set(from, map);",
+    replace: "        void map;",
+    suite: "bun",
+    expect: "follows a redirect, so a stack naming the requested URL still resolves",
+  },
 ];

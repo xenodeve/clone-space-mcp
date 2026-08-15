@@ -32,8 +32,11 @@ export interface SourceIndex {
 
 interface HarEntry {
   request?: { url?: unknown };
-  response?: { content?: { text?: unknown; _file?: unknown } };
+  response?: { redirectURL?: unknown; content?: { text?: unknown; _file?: unknown } };
 }
+
+/** Redirect hops followed before giving up, so a cycle in a captured HAR cannot spin. */
+const MAX_REDIRECT_HOPS = 10;
 
 function entriesOf(har: unknown): HarEntry[] {
   const log = (har as { log?: { entries?: unknown } } | undefined)?.log;
@@ -87,9 +90,12 @@ export async function indexArchiveSources(archiveRoot: string): Promise<SourceIn
   }
 
   const bodies = new Map<string, string>();
+  const redirects = new Map<string, string>();
   for (const entry of entriesOf(har)) {
     const url = entry.request?.url;
     if (typeof url !== "string") continue;
+    const target = entry.response?.redirectURL;
+    if (typeof target === "string" && target !== "") redirects.set(url, target);
     const body = await bodyOf(archiveRoot, entry);
     if (body !== undefined) bodies.set(url, body);
   }
@@ -104,6 +110,25 @@ export async function indexArchiveSources(archiveRoot: string): Promise<SourceIn
     if (text === undefined) continue;
     const map = parseSourceMap(text);
     if (map !== undefined) maps.set(url, map);
+  }
+
+  // A stack names the URL the page **asked for**, and a CDN often answers a redirect. Measured on
+  // `www.chaingpt.org`: the page requests `https://unpkg.com/@rive-app/canvas@2.35.0`, unpkg answers
+  // 301 to `.../rive.js`, and the map lives there. Indexing only the final URL left 2 of that
+  // site's 6 shaders with a map in the archive and no citation.
+  for (const [from] of redirects) {
+    if (maps.has(from)) continue;
+    let current = from;
+    for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop += 1) {
+      const next = redirects.get(current);
+      if (next === undefined || next === current) break;
+      current = next;
+      const map = maps.get(current);
+      if (map !== undefined) {
+        maps.set(from, map);
+        break;
+      }
+    }
   }
 
   return {

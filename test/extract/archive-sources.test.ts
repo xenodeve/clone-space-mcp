@@ -158,6 +158,42 @@ describe("indexArchiveSources", () => {
     expect(index.mapped).toEqual([]);
   });
 
+  test("follows a redirect, so a stack naming the requested URL still resolves", async () => {
+    // Measured on www.chaingpt.org: the page requests `https://unpkg.com/@rive-app/canvas@2.35.0`,
+    // unpkg answers 301 to `.../rive.js`, and that is where the map lives. The runtime stack names
+    // the URL the page asked for, so indexing only the final URL leaves those frames uncitable —
+    // 2 of that site's 6 shaders had a map in the archive and no citation.
+    writeFileSync(
+      join(root, "network.har"),
+      har([
+        {
+          request: { url: "https://x.test/pkg" },
+          response: { status: 301, redirectURL: "https://x.test/pkg/app.js", content: {} },
+        },
+        entry("https://x.test/pkg/app.js", { text: "function r(){}\n//# sourceMappingURL=app.js.map" }),
+        entry("https://x.test/pkg/app.js.map", { text: MAP }, "application/json"),
+      ]),
+    );
+    const index = await indexArchiveSources(root);
+    expect(index.resolve("https://x.test/pkg", 1, 1)).toMatchObject({ source: "a.ts" });
+  });
+
+  test("follows a chain of redirects, and does not hang on a cycle", async () => {
+    writeFileSync(
+      join(root, "network.har"),
+      har([
+        { request: { url: "https://x.test/a" }, response: { status: 302, redirectURL: "https://x.test/b", content: {} } },
+        { request: { url: "https://x.test/b" }, response: { status: 302, redirectURL: "https://x.test/c.js", content: {} } },
+        { request: { url: "https://x.test/loop" }, response: { status: 302, redirectURL: "https://x.test/loop", content: {} } },
+        entry("https://x.test/c.js", { text: "function r(){}\n//# sourceMappingURL=c.js.map" }),
+        entry("https://x.test/c.js.map", { text: MAP }, "application/json"),
+      ]),
+    );
+    const index = await indexArchiveSources(root);
+    expect(index.resolve("https://x.test/a", 1, 1)).toMatchObject({ source: "a.ts" });
+    expect(index.resolve("https://x.test/loop", 1, 1)).toBeUndefined();
+  });
+
   test("takes the last sourceMappingURL, which is the one a bundler appends", async () => {
     writeFileSync(
       join(root, "network.har"),
