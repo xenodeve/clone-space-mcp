@@ -30,6 +30,34 @@ export type TerminationStats = {
   bytes: number;
   nodes: number;
   height: number;
+  /**
+   * HAR entries still outstanding when capture tore the context down (#156): no response, and no
+   * recorded failure either. **This is the archive defect** — a response was on its way and
+   * capture stopped waiting for it.
+   *
+   * Counted from the published HAR rather than from an event counter, because the HAR is what
+   * replay reads: the same number a reader of the archive can recompute, not an approximation.
+   */
+  unansweredRequests: number;
+  /**
+   * HAR entries whose request failed outright (#156) — Playwright records `_failureText` such as
+   * `net::ERR_NAME_NOT_RESOLVED`. **Not a capture defect and deliberately not part of the
+   * outcome:** the live browser did not get these either, so an archive that records the failure
+   * is faithful to the run, and a replay that refuses them reproduces what the page actually saw.
+   *
+   * Published because it is still archive quality a caller needs. Measured on
+   * `https://labs.chaingpt.org/` with flaky DNS on the capturing host: 8 failures in one run,
+   * including two GSAP plugins and three hero videos. The page was archived as it loaded, which
+   * is not the same as the page the site serves.
+   */
+  failedRequests: number;
+  /**
+   * Whether the post-sweep network drain reached zero outstanding requests before its deadline
+   * (#156). `false` means capture published while something was still in flight, which is the
+   * condition `unansweredRequests` then counts — the two answer "did we wait long enough" and
+   * "what did we lose by not waiting".
+   */
+  networkDrainSettled: boolean;
 };
 
 export type TerminationOutcome = {
@@ -82,13 +110,24 @@ export function evaluateBudget(
  * Map a termination decision to the published outcome. `quiet-window` is a natural end — the
  * page settled — so it is **complete**; `budget-exceeded` and `navigation` are **incomplete**
  * (a truncated capture that must be distinguishable from a complete one, §6.10).
+ *
+ * **Outstanding responses override a natural end** (#156). `reason` says why the *sweep* stopped
+ * and stays what it was; `outcome` is a claim about the *archive*, and one whose responses were
+ * still arriving when capture tore down is not complete however gracefully the sweep finished.
+ *
+ * `failedRequests` deliberately does **not** feed this. A request that failed — DNS, ORB, a
+ * refused connection — failed for the live browser too, so recording the failure is faithful and
+ * calling the archive incomplete for it would mark almost every real capture incomplete forever,
+ * which teaches readers to ignore the field. Measured: of 30 responseless entries across four
+ * captures of two real sites, 24 carried `_failureText` and only 6 were genuinely outstanding.
  */
 export function terminationOutcome(
   decision: ReturnType<typeof evaluateBudget>,
+  stats: Pick<TerminationStats, "unansweredRequests">,
 ): TerminationOutcome {
-  if (decision.reason === undefined) return { outcome: "complete" };
-  if (decision.reason === "quiet-window") return { outcome: "complete", reason: "quiet-window" };
-  return { outcome: "incomplete", reason: decision.reason };
+  const naturalEnd = decision.reason === undefined || decision.reason === "quiet-window";
+  const outcome = naturalEnd && stats.unansweredRequests === 0 ? "complete" : "incomplete";
+  return decision.reason === undefined ? { outcome } : { outcome, reason: decision.reason };
 }
 
 /** How long the post-sweep drain may take before capture stops waiting for it. */
