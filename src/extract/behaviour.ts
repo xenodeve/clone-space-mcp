@@ -26,7 +26,7 @@ export interface BehaviourNode {
    * a target that is not one — GSAP animates plain objects too.
    */
   target: string;
-  /** What the page calls it — a `@keyframes` name, a tween id, or the empty string. */
+  /** What the page calls it — a `@keyframes` name, a tween name, or the empty string. */
   name: string;
   timing: { durationMs: number | null; delayMs: number | null; iterations: number | null };
   easing: string | null;
@@ -112,7 +112,7 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
    *
    * The field always claimed that and did not keep it. Measured on `https://labs.chaingpt.org/`:
    * 154 of 203 gsap-timeline nodes — 76% — reported `div`, because an element animated by GSAP
-   * frequently has neither an id nor a class of its own. The class that positions it lives on a
+   * frequently has neither a DOM id nor a class of its own. The class that positions it lives on a
    * parent, and the animated child is a bare element a splitting plugin produced, one per line.
    *
    * So every candidate is **verified against the document** before it is returned, and an ambiguous
