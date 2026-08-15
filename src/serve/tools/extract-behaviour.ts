@@ -8,6 +8,28 @@
 import { extractBehaviour, type BehaviourGraph } from "../../extract/behaviour.ts";
 import { replayArchive } from "../../replay/replay.ts";
 import type { ReplayLauncher } from "./replay-page.ts";
+import { parseStackFrames, type StackFrame } from "../../capture/instrument.ts";
+
+/** How much of one shader's GLSL travels in a tool result before it is truncated. */
+const SHADER_EXCERPT = 8_000;
+
+/**
+ * What the page *did*, as an agent can act on it (#173).
+ *
+ * Summarised rather than raw: one page produced 1,510 listener registrations, and handing that
+ * back whole spends a caller's context on repetition. Counts by type answer the question the raw
+ * list was going to be reduced to anyway.
+ */
+export interface ObservedSummary {
+  /** Compiled shaders, with the frame that compiled each — the "which line" half of the goal. */
+  shaders: { chars: number; source: string; truncated: boolean; origin?: StackFrame }[];
+  /** Canvas realms the page asked for, by kind: `2d`, `webgl`, `webgl2`, `bitmaprenderer`. */
+  canvasContexts: Record<string, number>;
+  /** The interaction surface, by event type. **Registration evidence, never behaviour.** */
+  listeners: Record<string, number>;
+  /** Observations the bounded in-page buffer dropped. Non-zero means this summary is partial. */
+  dropped: number;
+}
 
 export interface ExtractBehaviourParams {
   archive: string;
@@ -16,16 +38,48 @@ export interface ExtractBehaviourParams {
 export async function extractBehaviourFromArchive(
   params: ExtractBehaviourParams,
   launcher: ReplayLauncher,
-): Promise<BehaviourGraph & { aborted: string[] }> {
+): Promise<BehaviourGraph & { aborted: string[]; observed: ObservedSummary }> {
   const browser = await launcher.launch();
   try {
-    const replay = await replayArchive({ archive: params.archive, browser });
+    // Instrumented on purpose. The graph says what moves; the observation layer says what the page
+    // does — the shader it assembled at runtime, the canvas realms it opened, the interaction
+    // surface it registered. Neither is reachable from the other.
+    const replay = await replayArchive({ archive: params.archive, browser, instrument: true });
     try {
       const graph = await extractBehaviour(replay);
+      const drained = await replay.drainObservations();
+      const canvasContexts: Record<string, number> = {};
+      const listeners: Record<string, number> = {};
+      const shaders: ObservedSummary["shaders"] = [];
+      for (const observation of drained.observations) {
+        if (observation.type === "canvas-context") {
+          const kind = String(observation.detail.kind ?? "unknown");
+          canvasContexts[kind] = (canvasContexts[kind] ?? 0) + 1;
+        } else if (observation.type === "listener") {
+          const type = String(observation.detail.type ?? "unknown");
+          listeners[type] = (listeners[type] ?? 0) + 1;
+        } else if (observation.type === "shader") {
+          const source = String(observation.detail.source ?? "");
+          shaders.push({
+            chars: source.length,
+            source: source.slice(0, SHADER_EXCERPT),
+            truncated: source.length > SHADER_EXCERPT,
+            // The innermost readable frame. Absent rather than invented when the stack names no
+            // coordinate — a guessed origin is a fabricated citation.
+            origin: parseStackFrames(observation.stack)[0],
+          });
+        }
+      }
+      const observed: ObservedSummary = {
+        shaders,
+        canvasContexts,
+        listeners,
+        dropped: drained.dropped,
+      };
       // The aborted list travels with the graph on purpose: a graph extracted from a replay that
       // could not serve everything describes a page that did not fully run, and a caller reading
       // the nodes without that number would not know.
-      return { ...graph, aborted: replay.aborted };
+      return { ...graph, aborted: replay.aborted, observed };
     } finally {
       await replay.close();
     }
