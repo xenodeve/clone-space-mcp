@@ -691,6 +691,37 @@ test("an in-place live page is not misreported as complete before its budget fir
 });
 
 /**
+ * #165. A `sourceMappingURL` published inline as a `data:` URI is ordinary and correct — the map
+ * is the URL. Capture fetched it anyway, through `context.request.get`, which can never be
+ * answered, so the published HAR carried an entry with no response and no recorded failure. That
+ * is indistinguishable from a response capture stopped waiting for, and with #156 it forces the
+ * whole archive to report `incomplete`.
+ *
+ * Measured on `https://www.chaingpt.org/`: two such entries, both `_apiRequest: true`, while the
+ * network drain correctly reported the page had nothing outstanding.
+ */
+test("does not fetch a sourcemap that is published inline as a data URI", async () => {
+  const url = new URL("/inline-sourcemap.html", servers.primary.url);
+  const harPath = await captureHar({ browser, url: url.href, outDir: nextCaptureOutDir() });
+
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: { entries: { request: { url: string } }[] };
+  };
+  const dataEntries = har.log.entries.filter((entry) => entry.request.url.startsWith("data:"));
+  assert.deepEqual(
+    dataEntries.map((entry) => entry.request.url.slice(0, 60)),
+    [],
+    "capture asked a data: URI for a response, which can never arrive",
+  );
+
+  // The declaration is still evidence, and the flag is about the declaration rather than a fetch.
+  const capabilities = JSON.parse(
+    readFileSync(join(dirname(harPath), "capabilities.json"), "utf8"),
+  ) as { flags: { sourcemapDeclared: unknown } };
+  assert.equal(capabilities.flags.sourcemapDeclared, true, "an inline map is still a declaration");
+});
+
+/**
  * #156. `termination.json` said `complete` on runs whose archive was missing responses the page
  * needed. Three captures of `https://labs.chaingpt.org/` produced 5, 1 and 3 HAR entries with
  * `response.status: -1` — one of them `jquery-3.5.1.min.js`, which that Webflow page's entire

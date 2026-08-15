@@ -500,6 +500,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "refuses a target that closed before it opened",
   },
   {
+    id: "data-sourcemap-fetched-anyway",
+    why: "#165 - an inline `data:` sourcemap needs no fetch, and asking `context.request.get` for one can never be answered. Measured on www.chaingpt.org: two entries in the published HAR with no response and no failure, while the network drain correctly reported the page had nothing outstanding. With #156 that is enough on its own to report the whole archive incomplete.",
+    file: "src/capture/record.ts",
+    find: "                    if (resolved.protocol === \"http:\" || resolved.protocol === \"https:\") {",
+    replace: "                    if (true) {",
+    suite: "browser",
+    expect: "does not fetch a sourcemap that is published inline as a data URI",
+  },
+  {
     id: "inspect-complete-ignores-termination",
     why: "#159 - `complete` answered the integrity question while the tool documents itself as answering whether the capture is complete. Measured on three real sites: `complete: true` next to `outcome: \"incomplete\"`, for archives missing GSAP plugins and hero videos. An agent that reads the headline boolean and stops is told the opposite of what the archive knows.",
     file: "src/serve/tools/inspect-archive.ts",
