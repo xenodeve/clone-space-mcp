@@ -31,6 +31,7 @@ describe("evaluateBudget", () => {
     height: 0,
     unansweredRequests: 0,
     failedRequests: 0,
+    networkDrainSettled: true,
   };
 
   test("does not stop when nothing is exceeded", () => {
@@ -104,6 +105,7 @@ describe("terminationOutcome", () => {
     height: 0,
     unansweredRequests: 0,
     failedRequests: 0,
+    networkDrainSettled: true,
   };
 
   test("quiet-window maps to complete (the page settled naturally)", () => {

@@ -51,6 +51,13 @@ export type TerminationStats = {
    * is not the same as the page the site serves.
    */
   failedRequests: number;
+  /**
+   * Whether the post-sweep network drain reached zero outstanding requests before its deadline
+   * (#156). `false` means capture published while something was still in flight, which is the
+   * condition `unansweredRequests` then counts — the two answer "did we wait long enough" and
+   * "what did we lose by not waiting".
+   */
+  networkDrainSettled: boolean;
 };
 
 export type TerminationOutcome = {
