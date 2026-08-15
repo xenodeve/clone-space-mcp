@@ -500,6 +500,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "refuses a target that closed before it opened",
   },
   {
+    id: "inspect-complete-ignores-termination",
+    why: "#159 - `complete` answered the integrity question while the tool documents itself as answering whether the capture is complete. Measured on three real sites: `complete: true` next to `outcome: \"incomplete\"`, for archives missing GSAP plugins and hero videos. An agent that reads the headline boolean and stops is told the opposite of what the archive knows.",
+    file: "src/serve/tools/inspect-archive.ts",
+    find: "    complete: archive.integrity.ok && termination.outcome === \"complete\",",
+    replace: "    complete: archive.integrity.ok,",
+    suite: "bun",
+    expect: "inspectArchive does not call an archive complete when the capture terminated incomplete",
+  },
+  {
     id: "storage-read-after-a-cross-origin-redirect",
     why: "#157 - storage is read from the page after navigation. When the page landed on a different origin those entries belong to that origin, and the allowlist was written for the requested one. Reading anyway publishes another origin's data under a label that is not its own - which is exactly what the whole-capture refusal this replaced existed to prevent.",
     file: "src/capture/environment.ts",
