@@ -39,7 +39,7 @@ is the whole point. See `docs/adr/`.
 UBIQUITOUS_LANGUAGE.md     canonical term glossary — it wins on any naming conflict
 src/            pipeline stages: capture · replay · extract · serve (see src/index.ts)
 test/           bun test suite; test/fixtures/ holds the controlled fixture site
-docs/agents/    how agents work here — workflow, tracker, labels, domain
+docs/agents/    how agents work here — workflow, tracker, labels, domain, using-the-tools
 docs/adr/       architecture decision records
 docs/superpowers/plans/    the pipeline design and its reasoning — read before proposing a change to it
 docs/OPEN-WORK-LEDGER.md   every open item, tracked AND untracked — read at session start
