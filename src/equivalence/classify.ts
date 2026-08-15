@@ -52,8 +52,20 @@ export type Verdict = "equal" | "allowed" | "different" | "unobserved" | "unstab
  * guarantee about the rest.
  */
 export interface StabilityBaseline {
-  baselineA: Digest;
-  baselineB: Digest;
+  /**
+   * Live passes, driven identically. A field is unstable when **any two of them disagree**.
+   *
+   * Two passes was the first shape and this file already recorded why it is not enough — a field
+   * that settles at one of two values can have both passes land on the same one. #182 measured
+   * that happening: three consecutive runs of the gate on `labs.chaingpt.org` returned FAIL, PASS
+   * and INCOMPLETE, and the FAIL's `unstable` list was **empty** for fields the INCOMPLETE run
+   * reported as unstable. The two passes had agreed by luck, and the residual then accused the
+   * clone of a difference a live-against-replay listing showed did not exist.
+   *
+   * More passes cost live drives, which is the honest price: the control is the only thing standing
+   * between a plateau and a false accusation, and it is worth more than it costs.
+   */
+  passes: readonly Digest[];
 }
 
 export interface FieldResult {
@@ -138,9 +150,9 @@ export function classify(
     // calling it `allowed` would credit an entry for work the measurement did.
     if (
       baseline !== undefined &&
-      Object.hasOwn(baseline.baselineA, field) &&
-      Object.hasOwn(baseline.baselineB, field) &&
-      !Object.is(baseline.baselineA[field], baseline.baselineB[field])
+      baseline.passes.length > 1 &&
+      baseline.passes.every((pass) => Object.hasOwn(pass, field)) &&
+      baseline.passes.some((pass) => !Object.is(pass[field], baseline.passes[0]![field]))
     ) {
       inconclusive = true;
       unstable.push(field);
