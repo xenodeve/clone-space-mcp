@@ -82,7 +82,8 @@ export function renderInspector(report: InspectorReport): string {
  .ok{border-color:#0a0;color:#0a0} .bad{border-color:#c00;color:#c00}
 </style>
 <h1>${escapeHtml(archive.root)}</h1>
-<p class="verdict ${archive.complete ? "ok" : "bad"}">${archive.complete ? "intact" : "NOT INTACT"}</p>
+<p class="verdict ${archive.complete ? "ok" : "bad"}">${archive.complete ? "complete" : "NOT COMPLETE"}</p>
+${archive.integrity.ok ? "" : `<p class="missing">NOT INTACT — the bytes on disk are not the bytes the commit validated</p>`}
 ${mismatched.length > 0 ? `<p class="missing">artifacts that no longer match the commit: ${mismatched.map(escapeHtml).join(", ")}</p>` : ""}
 <p>terminated <strong>${escapeHtml(archive.termination.outcome)}</strong>${archive.termination.reason ? ` (${escapeHtml(archive.termination.reason)})` : ""}${abortedCount === undefined ? "" : ` · replay could not serve <strong>${abortedCount}</strong> request(s)`}</p>
 
