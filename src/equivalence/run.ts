@@ -74,6 +74,18 @@ const SAMPLE_GAP_MS = 400;
 const SCROLL_STEPS = 4;
 
 /**
+ * Live passes driven to establish which fields carry signal at all (#182).
+ *
+ * Two was the original number and it is measurably too few: a field that plateaus at one of two
+ * values can have both passes land on the same plateau, and the gate then reports it as stable and
+ * puts the difference in the residual as the clone's fault. Three consecutive gate runs on
+ * `labs.chaingpt.org` returned FAIL, PASS and INCOMPLETE for that reason.
+ *
+ * The cost is one more live drive per run, paid on every run. That is the control doing its job.
+ */
+const BASELINE_PASSES = 3;
+
+/**
  * The digest, collected identically on both sides.
  *
  * Counts alone are refused as a pass condition — the plan's §3 records three claims that a single
@@ -170,7 +182,7 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   // live page with itself put `dom.elements`, `motion.gsap` and even ScrollTrigger registrations
   // in the residual, so every verdict the gate produced before this control existed was noise.
   const passes: Digest[] = [];
-  for (let pass = 0; pass < 2; pass += 1) {
+  for (let pass = 0; pass < BASELINE_PASSES; pass += 1) {
     const context = (await options.browser.newContext({})) as unknown as LiveContext;
     try {
       const page = await context.newPage();
@@ -189,17 +201,23 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   });
   const archive = har.slice(0, har.lastIndexOf("network.har") - 1);
 
-  const replay = await replayArchive({ archive, browser: options.browser });
-  let replayed: Digest;
-  try {
-    replayed = await collectDigest(replay.page as unknown as EquivalencePage);
-  } finally {
-    await replay.close();
+  // The clone is driven as many times as the live page, for the same reason: a field that is
+  // steady live and moves on the clone is invisible to a live-only control, and `layout.scrollHeight`
+  // was measured doing exactly that.
+  const replayPasses: Digest[] = [];
+  for (let pass = 0; pass < BASELINE_PASSES; pass += 1) {
+    const replay = await replayArchive({ archive, browser: options.browser });
+    try {
+      replayPasses.push(await collectDigest(replay.page as unknown as EquivalencePage));
+    } finally {
+      await replay.close();
+    }
   }
+  const replayed: Digest = replayPasses[0]!;
 
   const result = classify(live, replayed, options.allowlist ?? [], {
-    baselineA: passes[0]!,
-    baselineB: passes[1]!,
+    livePasses: passes,
+    replayPasses,
   });
   return {
     ...result,

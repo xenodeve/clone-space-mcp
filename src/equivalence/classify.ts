@@ -52,8 +52,46 @@ export type Verdict = "equal" | "allowed" | "different" | "unobserved" | "unstab
  * guarantee about the rest.
  */
 export interface StabilityBaseline {
-  baselineA: Digest;
-  baselineB: Digest;
+  /**
+   * Live passes, driven identically. A field is unstable when **any two of them disagree**.
+   *
+   * Two passes was the first shape and this file already recorded why it is not enough — a field
+   * that settles at one of two values can have both passes land on the same one. #182 measured
+   * that happening: three consecutive runs of the gate on `labs.chaingpt.org` returned FAIL, PASS
+   * and INCOMPLETE, and the FAIL's `unstable` list was **empty** for fields the INCOMPLETE run
+   * reported as unstable. The two passes had agreed by luck, and the residual then accused the
+   * clone of a difference a live-against-replay listing showed did not exist.
+   *
+   * More passes cost live drives, which is the honest price: the control is the only thing standing
+   * between a plateau and a false accusation, and it is worth more than it costs.
+   */
+  livePasses: readonly Digest[];
+  /**
+   * Replay passes, driven identically to each other.
+   *
+   * **The control measured only the live side, and that is not where the instability was.** Measured
+   * on `labs.chaingpt.org`, three drives each: `layout.scrollHeight` read 8544, 8544, 8544 live and
+   * 8486, 8544, 8486 on the clone. A live-only baseline calls that field stable, so the difference
+   * goes to the residual as the clone's fault — and no number of extra live passes can ever catch
+   * it, because the live side is not the one that moves.
+   *
+   * The two groups are compared **within** themselves and never against each other. Pooling them
+   * would make every genuine live-against-replay difference look like instability, which is the
+   * control excusing exactly what it exists to detect.
+   */
+  replayPasses: readonly Digest[];
+}
+
+/**
+ * Whether a field disagrees with itself across passes driven the same way.
+ *
+ * A field absent from any pass says nothing about stability: guessing from a subset is how a
+ * control starts excusing differences it never measured.
+ */
+function variesWithin(passes: readonly Digest[], field: string): boolean {
+  if (passes.length < 2) return false;
+  if (!passes.every((pass) => Object.hasOwn(pass, field))) return false;
+  return passes.some((pass) => !Object.is(pass[field], passes[0]![field]));
 }
 
 export interface FieldResult {
@@ -138,9 +176,7 @@ export function classify(
     // calling it `allowed` would credit an entry for work the measurement did.
     if (
       baseline !== undefined &&
-      Object.hasOwn(baseline.baselineA, field) &&
-      Object.hasOwn(baseline.baselineB, field) &&
-      !Object.is(baseline.baselineA[field], baseline.baselineB[field])
+      (variesWithin(baseline.livePasses, field) || variesWithin(baseline.replayPasses, field))
     ) {
       inconclusive = true;
       unstable.push(field);

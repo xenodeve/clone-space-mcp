@@ -123,8 +123,8 @@ describe("coverageOf", () => {
 describe("classify with a stability baseline", () => {
   test("a field that differs against itself is unstable, not different", () => {
     const result = classify({ "motion.gsap": 198 }, { "motion.gsap": 190 }, [], {
-      baselineA: { "motion.gsap": 198 },
-      baselineB: { "motion.gsap": 142 },
+      livePasses: [{ "motion.gsap": 198 }, { "motion.gsap": 142 }],
+      replayPasses: [],
     });
     expect(result.fields[0]).toEqual({
       field: "motion.gsap",
@@ -137,13 +137,13 @@ describe("classify with a stability baseline", () => {
   });
 
   test("an unstable field cannot make the verdict PASS on its own", () => {
-    const result = classify({ a: 1 }, { a: 2 }, [], { baselineA: { a: 1 }, baselineB: { a: 3 } });
+    const result = classify({ a: 1 }, { a: 2 }, [], { livePasses: [{ a: 1 }, { a: 3 }], replayPasses: [] });
     // Nothing was proven equal, so this is not agreement.
     expect(result.verdict).toBe("INCOMPLETE");
   });
 
   test("a field stable against itself and differing against replay is still the residual", () => {
-    const result = classify({ a: 1 }, { a: 2 }, [], { baselineA: { a: 1 }, baselineB: { a: 1 } });
+    const result = classify({ a: 1 }, { a: 2 }, [], { livePasses: [{ a: 1 }, { a: 1 }], replayPasses: [] });
     expect(result.residual).toEqual(["a"]);
     expect(result.verdict).toBe("FAIL");
   });
@@ -162,5 +162,71 @@ describe("classify with a stability baseline", () => {
     ]);
     expect(result.fields[0]!.verdict).toBe("allowed");
     expect(result.unstable).toEqual([]);
+  });
+});
+
+/**
+ * #182. Two baseline passes can agree by luck on a field that settles at one of two values, and the
+ * gate then reports it as stable and blames the clone for the difference. Measured: three
+ * consecutive gate runs on `labs.chaingpt.org` returned FAIL, PASS and INCOMPLETE, and the FAIL's
+ * `unstable` list was empty for fields the INCOMPLETE run called unstable.
+ */
+describe("a baseline of more than two passes", () => {
+  test("catches a field two passes agreed on by luck", () => {
+    // Passes 1 and 2 both landed on 52; the third shows the field also settles at 59.
+    const baseline = { livePasses: [{ a: 52 }, { a: 52 }, { a: 59 }], replayPasses: [] };
+    const result = classify({ a: 52 }, { a: 59 }, [], baseline);
+    expect(result.unstable).toEqual(["a"]);
+    expect(result.residual).toEqual([]);
+  });
+
+  test("still calls a field stable when every pass agrees", () => {
+    const baseline = { livePasses: [{ a: 52 }, { a: 52 }, { a: 52 }], replayPasses: [] };
+    const result = classify({ a: 52 }, { a: 59 }, [], baseline);
+    expect(result.unstable).toEqual([]);
+    expect(result.residual).toEqual(["a"]);
+  });
+
+  test("needs a field in every pass before it can call it unstable", () => {
+    // A field only some passes produced says nothing about stability, and guessing from a subset
+    // is how a control starts excusing differences it never measured.
+    const baseline = { livePasses: [{ a: 52 }, {}, { a: 59 }], replayPasses: [] };
+    expect(classify({ a: 52 }, { a: 59 }, [], baseline).unstable).toEqual([]);
+  });
+});
+
+/**
+ * #182, the part a live-only control could never see. Measured on `labs.chaingpt.org`, three drives
+ * each: `layout.scrollHeight` read 8544, 8544, 8544 live and 8486, 8544, 8486 on the clone. The
+ * live side is rock steady, so no number of extra live passes catches it, and the difference goes
+ * to the residual as the clone's fault.
+ */
+describe("stability measured on both sides", () => {
+  test("catches a field that is steady live and moves on the clone", () => {
+    const baseline = {
+      livePasses: [{ a: 8544 }, { a: 8544 }, { a: 8544 }],
+      replayPasses: [{ a: 8486 }, { a: 8544 }, { a: 8486 }],
+    };
+    const result = classify({ a: 8544 }, { a: 8486 }, [], baseline);
+    expect(result.unstable).toEqual(["a"]);
+    expect(result.residual).toEqual([]);
+  });
+
+  test("still accuses when both sides are steady and they disagree", () => {
+    // The control must not excuse a real difference. Both sides reproduce their own value.
+    const baseline = {
+      livePasses: [{ a: 1 }, { a: 1 }, { a: 1 }],
+      replayPasses: [{ a: 2 }, { a: 2 }, { a: 2 }],
+    };
+    const result = classify({ a: 1 }, { a: 2 }, [], baseline);
+    expect(result.unstable).toEqual([]);
+    expect(result.residual).toEqual(["a"]);
+  });
+
+  test("never compares a live pass against a replay pass", () => {
+    // Pooling the two groups would make every genuine difference look like instability — the
+    // control excusing exactly what it exists to detect.
+    const baseline = { livePasses: [{ a: 1 }, { a: 1 }], replayPasses: [{ a: 2 }, { a: 2 }] };
+    expect(classify({ a: 1 }, { a: 2 }, [], baseline).residual).toEqual(["a"]);
   });
 });
