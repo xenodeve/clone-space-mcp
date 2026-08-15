@@ -143,6 +143,28 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         );
         return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
       }
+      // #167 + #168. Three class-less siblings animated by GSAP — the shape SplitText produces and
+      // the shape that made 76% of a real page's nodes report `div` — plus a ScrollTrigger whose
+      // configuration is stated, so there is ground truth for start/end/scrub/pin.
+      if (pathname === "/discriminating-case.html") {
+        return new Response(
+          `<!doctype html><title>discriminating</title>
+           <style>body{margin:0} .tall{height:3000px} .line{height:20px}</style>
+           <body><section id="hero"><div class="line"></div><div class="line"></div><div class="line"></div></section>
+           <div class="tall"></div><section id="reveal">reveal</section>
+           <script src="/vendor/gsap.min.js"></script>
+           <script src="/vendor/ScrollTrigger.min.js"></script>
+           <script>
+             gsap.registerPlugin(ScrollTrigger);
+             gsap.to("#hero div", { y: 10, duration: 1, repeat: -1, ease: "power2.out" });
+             gsap.to("#reveal", {
+               opacity: 0.5, duration: 1,
+               scrollTrigger: { trigger: "#reveal", start: "top 80%", end: "bottom 20%", scrub: true, pin: false, toggleActions: "play none none reverse" }
+             });
+           </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
       // #173. The three things the observation layer hooks, in one page: a WebGL context, a
       // compiled shader whose GLSL is assembled at runtime, and a listener registration. The
       // fixture had none of these — every WebGL measurement so far came from a real site, which
