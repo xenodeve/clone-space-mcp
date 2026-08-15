@@ -42,8 +42,30 @@ test("reports a verdict and a coverage vector for the fixture", async () => {
 
     // Coverage travels with the verdict, always, and is a vector.
     assert.ok(report.coverage.scroll !== undefined, "coverage does not report the scroll dimension");
-    assert.equal(report.coverage.interaction, 0, "v1 drives no interaction and must say so");
     assert.equal(typeof report.coverage, "object");
+
+    // #176 is wired in: the gate drives a bounded interaction plan on both sides and reports what
+    // it actually reached. This asserted 0 while the gate drove nothing; asserting it still does
+    // would now be asserting that the wiring is absent.
+    assert.ok(
+      (report.coverage.interaction ?? 0) > 0,
+      `interaction coverage is ${report.coverage.interaction} — the plan reached nothing`,
+    );
+
+    // Zero is still the honest number for this one, and saying so is the point: a driven click runs
+    // the listeners on the elements the plan reached, and the gate does not yet count which of the
+    // page's registered listeners those were.
+    assert.equal(report.coverage.listener_execution, 0);
+
+    // The clone resolved every selector the live page offered, and drove every planned action.
+    // On a controlled fixture that is ground truth, not a tolerance: anything below 100 means the
+    // archive is missing an element the live page has, which is what `interaction.stale` exists to
+    // surface. The verdict `equal` alone would be satisfied by both sides failing identically.
+    assert.equal(report.coverage.interaction, 100, "the clone did not drive every planned action");
+    assert.equal(
+      report.fields.find((field) => field.field === "interaction.stale")?.verdict,
+      "equal",
+    );
   } finally {
     await servers.stop();
   }

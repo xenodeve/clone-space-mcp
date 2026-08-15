@@ -208,6 +208,24 @@ test("extract_behaviour returns the observation summary an agent can act on", as
     assert.match(graph.observed.shaders[0]!.source, /gl_Position/);
     // A shader without its origin is the half of the goal that says "which line", missing.
     assert.ok(graph.observed.shaders[0]!.origin !== undefined, "the shader carries no origin frame");
+
+    // The whole chain, end to end, through the product surface an agent actually calls (#178).
+    // The shader is compiled inside a minified module, so `origin` names a position no reader can
+    // use; `original` is that same point carried back through a sourcemap the capture archived.
+    assert.ok(
+      graph.observed.mappedScripts.some((url) => url.endsWith("/build/instrumented.js")),
+      `no usable sourcemap was indexed: ${JSON.stringify(graph.observed.mappedScripts)}`,
+    );
+    const cited = graph.observed.shaders[0]!.original;
+    assert.ok(cited !== undefined, "the shader's origin was never resolved to a source line");
+    assert.match(cited.source, /instrumented\.ts$/);
+    // The cited line, read out of the archived map's own sourcesContent, is the shaderSource call.
+    const centre = cited.excerpt.find((line) => line.line === cited.line);
+    assert.match(
+      centre?.text ?? "",
+      /gl\.shaderSource|compileFixtureShader|gl_Position/,
+      `cited ${cited.source}:${cited.line} but the line reads ${JSON.stringify(centre?.text)}`,
+    );
     assert.deepEqual(graph.observed.canvasContexts, { webgl: 1 });
     assert.ok(
       (graph.observed.listeners.pointerdown ?? 0) >= 1,
@@ -217,3 +235,4 @@ test("extract_behaviour returns the observation summary an agent can act on", as
     rmSync(dir, { recursive: true, force: true });
   }
 });
+

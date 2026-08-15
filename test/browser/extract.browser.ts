@@ -96,3 +96,60 @@ test("extracts every mechanism the fixture declares, from a replayed archive", a
     await replay.close();
   }
 });
+
+/**
+ * A node count reads as completeness unless something says otherwise, and this graph is not
+ * complete by construction: it reports what `document.getAnimations()` knows plus GSAP's own
+ * registries, and a CSS transition is in neither — it enters `getAnimations()` only while running.
+ *
+ * Measured on real sites, replayed and scrolled to the bottom: `www.firecrawl.dev` produced 12
+ * nodes against 12 animations and **318** elements carrying a transition; `www.chaingpt.org`
+ * produced 121 nodes and **1,028**. The extractor misses nothing the browser tracks — the first
+ * two numbers match exactly — but a caller who cannot see the third would read "12 nodes" as
+ * "this page barely animates".
+ */
+test("states the motion it has no node for, so a node count cannot read as completeness", async () => {
+  const servers: FixtureServers = await startFixtureServers();
+  const archive = join(tempDir, "archive-unrepresented");
+  try {
+    await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+  } finally {
+    await servers.stop();
+  }
+
+  const replay = await replayArchive({ archive, browser: browser as never });
+  try {
+    const graph = await extractBehaviour(replay);
+
+    // Counted independently, in the page, rather than trusting the number the graph reports about
+    // itself. A fabricated or stale count fails here.
+    // Only `transition-duration` is compared, because only it is stable. A transformed-element
+    // count was written here first and measured 4 against 5 a moment apart, with GSAP mid-flight;
+    // it was removed from the schema rather than asserted with a tolerance.
+    const transitions = await replay.page.evaluate(() => {
+      let count = 0;
+      for (const element of document.querySelectorAll("*")) {
+        const style = getComputedStyle(element);
+        if (style.transitionDuration !== "" && style.transitionDuration !== "0s") count += 1;
+      }
+      return count;
+    });
+
+    assert.equal(graph.unrepresented.cssTransitionElements, transitions);
+
+    // The fixture declares `transition: transform 420ms` in style.css, so this is not vacuously
+    // zero — a zero here would mean the count is measuring nothing.
+    assert.ok(
+      graph.unrepresented.cssTransitionElements > 0,
+      "the fixture declares a CSS transition and none was counted",
+    );
+
+    // And it is genuinely unrepresented: no mechanism in this graph stands for a transition.
+    assert.deepEqual(
+      graph.mechanisms.filter((mechanism) => mechanism.includes("transition")),
+      [],
+    );
+  } finally {
+    await replay.close();
+  }
+});
