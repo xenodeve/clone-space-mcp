@@ -16,6 +16,7 @@
 - [[python-text-mode-rewrites-every-line-ending]] — a one-line Python edit converted two files to CRLF and broke mutation anchors it never touched; git normalises on commit, so the diff is clean and only the working tree is wrong
 - [[an-observation-boundary-is-delivery-not-occurrence]] — a flag that ignores events after a point bounds when the callback ran, not when the thing happened; on #117 a reviewer showed the gap that `verify` and `mutate` both passed over
 - [[a-fixture-edit-can-delete-a-corpus-entry-silently]] — a mechanism has dependencies it does not declare; a fixture edit removed the only case one corpus entry could fail on, and only `mutate` said so
+- [[a-control-that-samples-one-side-is-blind-to-the-other]] — the gate proved stability on the live page and judged live-against-replay; four of five proposed fixes were refuted by building them
 - [[a-selector-is-a-position-not-an-identity]] — a plan decided at one moment and executed at another must re-validate; on #176 a live page invalidated 28 of 32 selectors while the plan ran
 
 ## project — ongoing goals / constraints not derivable from the code
