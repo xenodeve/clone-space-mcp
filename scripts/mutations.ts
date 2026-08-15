@@ -948,4 +948,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "follows a redirect, so a stack naming the requested URL still resolves",
   },
+  {
+    id: "behaviour-graph-hides-what-it-cannot-represent",
+    why: "Issue #169 - the graph reports what getAnimations() knows plus GSAP's registries, and a CSS transition is in neither. Measured: www.firecrawl.dev gives 12 nodes against 318 transition-carrying elements. A node count with nothing beside it reads as completeness.",
+    file: "src/extract/behaviour.ts",
+    find: "      cssTransitionElements += 1;",
+    replace: "      cssTransitionElements += 0;",
+    suite: "browser",
+    expect: "states the motion it has no node for, so a node count cannot read as completeness",
+  },
 ];

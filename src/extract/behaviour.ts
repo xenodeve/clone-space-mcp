@@ -61,6 +61,37 @@ export interface BehaviourGraph {
   nodes: BehaviourNode[];
   /** Mechanisms present, so a caller can compare against what a page was expected to declare. */
   mechanisms: BehaviourMechanism[];
+  /**
+   * Motion the page carries that this graph has **no node for**, counted rather than described.
+   *
+   * A node count reads as completeness unless something says otherwise, and this graph is not
+   * complete by construction: it reports what `document.getAnimations()` knows plus GSAP's own
+   * registries. **A CSS transition is in neither.** It appears in `getAnimations()` only while it
+   * is actually running, so a page whose motion is transitions fired by class changes — the
+   * Tailwind and Framer idiom — is almost invisible here.
+   *
+   * Measured, both replayed and scrolled to the bottom:
+   *
+   * | | `www.firecrawl.dev` | `www.chaingpt.org` |
+   * |---|---|---|
+   * | nodes in this graph | 12 | 121 |
+   * | `getAnimations()` | 12 | 12 |
+   * | elements with a transition | **318** | **1,028** |
+   *
+   * The extractor is not missing anything the browser tracks — the first two rows match exactly.
+   * The third row is the honest limit, and a caller that cannot see it would read "12 nodes" as
+   * "this page barely animates", which is false.
+   *
+   * **Only the transition count is here, and a transformed-element count was removed rather than
+   * shipped.** `transform` is animation *state*: counted twice a second apart on the fixture it
+   * gave 4 and 5, because GSAP was mid-flight. A field that disagrees with itself is noise wearing
+   * a measurement's clothes — the same lesson the equivalence gate's stability baseline exists for.
+   * `transition-duration` is a static computed style and does not move.
+   */
+  unrepresented: {
+    /** Elements whose computed `transition-duration` is non-zero. */
+    cssTransitionElements: number;
+  };
 }
 
 /**
@@ -73,6 +104,7 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
     gsap?: { globalTimeline: { getChildren(): unknown[] } };
     ScrollTrigger?: { getAll(): unknown[] };
     document: Document;
+    getComputedStyle(element: Element): CSSStyleDeclaration;
   };
 
   /**
@@ -234,8 +266,18 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
     });
   }
 
+  // One pass, one getComputedStyle per element: what the graph cannot represent, counted so a
+  // node count cannot read as completeness. See `unrepresented` on BehaviourGraph.
+  let cssTransitionElements = 0;
+  for (const element of win.document.querySelectorAll("*")) {
+    const style = win.getComputedStyle(element);
+    if (style.transitionDuration !== "" && style.transitionDuration !== "0s") {
+      cssTransitionElements += 1;
+    }
+  }
+
   const mechanisms = [...new Set(nodes.map((node) => node.mechanism))];
-  return { nodes, mechanisms };
+  return { nodes, mechanisms, unrepresented: { cssTransitionElements } };
 }
 /* eslint-enable */
 
