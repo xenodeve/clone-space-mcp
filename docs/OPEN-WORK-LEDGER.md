@@ -59,7 +59,8 @@ they land in any order — but nothing that needs two of them together can be bu
 | #167 / #168 Slice 2 — discriminating targets | ✅ | PR #175 awaiting merge | `selectorFor` verifies uniqueness and falls back to an `:nth-child` ancestor path; ScrollTrigger nodes carry `start/end/scrub/pin/toggleActions`, and `target` names the *animated* element with the trigger under `triggerTarget` |
 | #176 Slice 3 — bounded interaction | ✅ | PR #177 awaiting merge | The refusal policy is the load-bearing half. Live: `www.chaingpt.org` 32/32 both passes, `www.firecrawl.dev` 4/32 → 23/32 and 22/32 after the stale-selector work, never navigating. 21 corpus entries; `bun run mutate` 76/76 |
 | Slice 3 → gate wiring (`coverage.interaction`) | 🔴 | **needs #171 and #176 merged** | `src/equivalence/` does not exist on `main`, so the gate cannot be wired from either branch. File an issue the moment PR #172 merges — this is the highest miss-risk row in the track |
-| Slices 4–8 — visual milestones · archive evidence index · runtime→source provenance · symbol recovery · evidence graph | 🔴 | Slices 0–3 merged | Not filed as issues yet. Ordered in the plan; slice 6 is the one that completes the `file:line` chain slice 1 started |
+| #178 Slice 6 — runtime→source provenance | ✅ | PR #179 awaiting merge | The resolving half of "which line?", built from `main` because it needs no browser. Pure, no dependency; evidence is a map Bun's bundler produced, where **every segment round-trips** and one test cites the parallax helper by name from a minified position. The observing half is #173 |
+| Slices 4, 5, 7, 8 — visual milestones · archive evidence index · symbol recovery · evidence graph | 🔴 | Slices 0–3 merged | Not filed as issues yet. Ordered in the plan. Slice 6 jumped the queue because it was the only one of the five with no dependency on an unmerged branch |
 
 ## Track 3 — Deferred / untracked
 
