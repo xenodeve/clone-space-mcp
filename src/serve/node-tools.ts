@@ -52,7 +52,7 @@ export const REPLAY_TOOL: ToolDefinition = {
   name: "replay_page",
   title: "Replay an archived page",
   description:
-    "Open an archived page again with the network unplugged: the archive is the only source, and a request it cannot serve fails rather than reaching the internet. Returns the URL, anything the archive could not serve (empty is what you want), and counts of the motion actually running - CSS keyframes, WAAPI, GSAP tweens and ScrollTriggers. It answers whether the page still moves, not how; describing the motion is the extract stage.",
+    "Open an archived page again with the network unplugged: the archive is the only source, and a request it cannot serve fails rather than reaching the internet. Returns the URL, anything the archive could not serve (empty is what you want), how many distinct URLs the archive holds no usable response for at all, and counts of the motion actually running - CSS keyframes, WAAPI, GSAP tweens and ScrollTriggers. It answers whether the page still moves, not how; describing the motion is the extract stage.",
   inputSchema: { archive: z.string().describe("Path to a published archive directory") },
   run: (params) =>
     replayPage({ archive: String(params.archive) }, { launch: () => chromium.launch() as never }),
@@ -62,7 +62,7 @@ export const EXTRACT_TOOL: ToolDefinition = {
   name: "extract_behaviour",
   title: "Extract the behaviour graph",
   description:
-    "Replay the archive and report what moves on the page and what drives it: one node per animation with its mechanism (CSS keyframes, WAAPI, GSAP timeline, GSAP ScrollTrigger), a selector for its target, its timing and easing, and the library that owns it. It also returns anything the archive could not serve — a graph from an incomplete replay describes a page that did not fully run.",
+    "Replay the archive and report what moves on the page, what drives it, and what the page DID while running. Per animation: mechanism (CSS keyframes, WAAPI, GSAP timeline, GSAP ScrollTrigger), a selector for its target, timing, easing, and the owning library. Plus an observation summary recovered by instrumenting the replay: every shader the page compiled with its GLSL and the script coordinate that compiled it, the canvas realms it opened by kind, and its interaction surface counted by event type. A shader assembled at runtime exists in no archived file, so this is the only way to read it. Listener counts are REGISTRATION evidence, never proof a handler ever ran. It also returns anything the archive could not serve — a graph from an incomplete replay describes a page that did not fully run.",
   inputSchema: { archive: z.string().describe("Path to a published archive directory") },
   run: (params) =>
     extractBehaviourFromArchive({ archive: String(params.archive) }, {

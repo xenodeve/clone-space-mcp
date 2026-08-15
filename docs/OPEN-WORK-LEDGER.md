@@ -42,6 +42,26 @@ decision) · 🔴 **UNTRACKED** (MD-only, no GitHub issue — highest miss-risk)
 | P4 — extract | 🟡 | P3 | Exit: finds every animation the fixture declares |
 | P5 — MCP server | 🟡 | P4 | Exit: manifest <50 KB + 4 drill-down tools answer correctly |
 
+## Track 4 — #169 Deep client comprehension
+
+Plan: [`docs/superpowers/plans/2026-08-14-deep-client-comprehension.md`](superpowers/plans/2026-08-14-deep-client-comprehension.md).
+The acceptance criterion is the developer's own and it is an equivalence, not a checklist: *a clone
+that works offline exactly as it works online, for client-side code, makes the client codebase
+complete by implication.* Server-side is explicitly out of scope.
+
+**Every slice below is an open PR. None is merged, and each is cut from `main` independently**, so
+they land in any order — but nothing that needs two of them together can be built until they do.
+
+| Item | Status | Gate | Next action |
+|---|---|---|---|
+| #171 Slice 0 — equivalence gate | ✅ | PR #172 awaiting merge | `classify` + `run`; verdicts `equal / allowed / different / unobserved / unstable`, coverage as a vector. Its first FAILs on real sites were all noise, proven by driving the live page twice — the stability baseline is what makes a verdict mean anything |
+| #173 Slice 1 — observation layer | ✅ | PR #174 awaiting merge | Hooks at the **browser API** layer, so it is library-agnostic: 82,613 chars of GLSL off `www.chaingpt.org`, 9 canvases, 1,510 listener registrations, and a runtime call traced to `three@0.151.2:18723`. Stacks are in the schema from v1 because adding them later makes every earlier observation unresolvable |
+| #167 / #168 Slice 2 — discriminating targets | ✅ | PR #175 awaiting merge | `selectorFor` verifies uniqueness and falls back to an `:nth-child` ancestor path; ScrollTrigger nodes carry `start/end/scrub/pin/toggleActions`, and `target` names the *animated* element with the trigger under `triggerTarget` |
+| #176 Slice 3 — bounded interaction | ✅ | PR #177 awaiting merge | The refusal policy is the load-bearing half. Live: `www.chaingpt.org` 32/32 both passes, `www.firecrawl.dev` 4/32 → 23/32 and 22/32 after the stale-selector work, never navigating. 21 corpus entries; `bun run mutate` 76/76 |
+| Slice 3 → gate wiring (`coverage.interaction`) | 🔴 | **needs #171 and #176 merged** | `src/equivalence/` does not exist on `main`, so the gate cannot be wired from either branch. File an issue the moment PR #172 merges — this is the highest miss-risk row in the track |
+| #178 Slice 6 — runtime→source provenance | ✅ | PR #179 awaiting merge | The resolving half of "which line?", built from `main` because it needs no browser. Pure, no dependency; evidence is a map Bun's bundler produced, where **every segment round-trips** and one test cites the parallax helper by name from a minified position. The observing half is #173 |
+| Slices 4, 5, 7, 8 — visual milestones · archive evidence index · symbol recovery · evidence graph | 🔴 | Slices 0–3 merged | Not filed as issues yet. Ordered in the plan. Slice 6 jumped the queue because it was the only one of the five with no dependency on an unmerged branch |
+
 ## Track 3 — Deferred / untracked
 
 | Item | Status | Gate | Next action |

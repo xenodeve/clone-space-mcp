@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderInspector } from "../../src/serve/inspector.ts";
+import { BEHAVIOUR_SCHEMA_VERSION } from "../../src/extract/behaviour.ts";
 import { inspectArchive } from "../../src/serve/tools/inspect-archive.ts";
 import { captureFixtureArchive } from "./fixture-archive.ts";
 
@@ -19,7 +20,7 @@ test("the inspector shows a gap as a row, not as a count nobody compared", async
       archive,
       declared: DECLARED,
       behaviour: {
-        schemaVersion: 1,
+        schemaVersion: BEHAVIOUR_SCHEMA_VERSION,
         url: "https://example.com/",
         aborted: [],
         mechanisms: ["gsap-timeline"],
@@ -44,7 +45,10 @@ test("the inspector shows a gap as a row, not as a count nobody compared", async
     expect(html).not.toContain("lazy-asset");
     // Contract coverage distinguishes "this version publishes nothing" from "absent".
     expect(html).toContain("not-produced");
-    expect(html).toContain("intact");
+    // #159. The headline verdict answers "is this capture complete?", which is intact AND
+    // terminated complete. A word that only reports the bytes was the defect.
+    expect(html).toContain("complete");
+    expect(html).not.toContain("NOT COMPLETE");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -56,7 +60,10 @@ test("the inspector names the artifact that no longer matches the commit", async
     writeFileSync(join(root, "capabilities.json"), '{"schemaVersion":1,"flags":{}}');
     const html = renderInspector({ archive: await inspectArchive({ path: root }) });
 
+    // Both halves are said, because a reader needs to know which one failed: the bytes changed,
+    // and therefore the archive is not complete either.
     expect(html).toContain("NOT INTACT");
+    expect(html).toContain("NOT COMPLETE");
     // Naming the file is the whole difference between a diagnostic and a red dot.
     expect(html).toContain("capabilities.json");
   } finally {

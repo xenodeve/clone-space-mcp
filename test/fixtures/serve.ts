@@ -143,6 +143,95 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         );
         return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
       }
+      // #167 + #168. Three class-less siblings animated by GSAP — the shape SplitText produces and
+      // the shape that made 76% of a real page's nodes report `div` — plus a ScrollTrigger whose
+      // configuration is stated, so there is ground truth for start/end/scrub/pin.
+      if (pathname === "/discriminating-case.html") {
+        return new Response(
+          `<!doctype html><title>discriminating</title>
+           <style>body{margin:0} .tall{height:3000px} .line{height:20px}</style>
+           <body><section id="hero"><div class="line"></div><div class="line"></div><div class="line"></div></section>
+           <div class="tall"></div><section id="reveal">reveal</section>
+           <script src="/vendor/gsap.min.js"></script>
+           <script src="/vendor/ScrollTrigger.min.js"></script>
+           <script>
+             gsap.registerPlugin(ScrollTrigger);
+             gsap.to("#hero div", { y: 10, duration: 1, repeat: -1, ease: "power2.out" });
+             gsap.to("#reveal", {
+               opacity: 0.5, duration: 1,
+               scrollTrigger: { trigger: "#reveal", start: "top 80%", end: "bottom 20%", scrub: true, pin: false, toggleActions: "play none none reverse" }
+             });
+           </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      // #173. The three things the observation layer hooks, in one page: a WebGL context, a
+      // compiled shader whose GLSL is assembled at runtime, and a listener registration. The
+      // fixture had none of these — every WebGL measurement so far came from a real site, which
+      // makes it evidence and not a test.
+      if (pathname === "/instrumented-case.html") {
+        return new Response(
+          `<!doctype html><title>instrumented</title><body><canvas id="c" width="32" height="32"></canvas>
+           <script>
+             document.getElementById("c").addEventListener("pointerdown", () => {});
+             const gl = document.getElementById("c").getContext("webgl");
+             if (gl) {
+               const vs = gl.createShader(gl.VERTEX_SHADER);
+               gl.shaderSource(vs, "attribute vec2 p; void main(){ gl_Position = vec4(p,0,1); }");
+               gl.compileShader(vs);
+             }
+           </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      // #165. A script whose sourcemap is published inline as a `data:` URI — an ordinary and
+      // correct way to ship one. Capture used to fetch it through `context.request.get`, which can
+      // never be answered and left a permanently unanswered entry in the published HAR.
+      if (pathname === "/inline-sourcemap.html") {
+        return new Response(
+          `<!doctype html><title>inline map</title><body><p>fixture</p>
+           <script src="/inline-map.js"></script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/inline-map.js") {
+        return new Response(
+          `globalThis.inlineMapped = 1;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjogMywgInNvdXJjZXMiOiBbImlubGluZS1zb3VyY2UudHMiXSwgIm5hbWVzIjogW10sICJtYXBwaW5ncyI6ICJBQUFBIiwgInNvdXJjZXNDb250ZW50IjogWyJleHBvcnQgY29uc3QgaW5saW5lID0gMTtcbiJdfQ==
+`,
+          { headers: { "content-type": CONTENT_TYPES[".js"]! } },
+        );
+      }
+      // #156. Accepts the connection and never answers — what a third-party tracker does when
+      // capture closes before it replies. The request is fired from a timer rather than a tag so
+      // it cannot hold `load`, which is what capture navigates on: the point is a request still
+      // open at the observation boundary, not a page that never loads.
+      if (pathname === "/unanswered-request.html") {
+        return new Response(
+          `<!doctype html><title>unanswered</title><body><p>fixture</p>
+           <script>setTimeout(() => { fetch("/never-answers"); }, 50);</script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/never-answers") {
+        return await new Promise<Response>(() => {});
+      }
+      // #156. Answers, but later than the sweep runs — the case the bounded drain exists to
+      // recover. A test pairs this with a tiny wall-clock budget so the sweep is guaranteed to end
+      // before the response lands, rather than relying on it losing a race.
+      if (pathname === "/late-response.html") {
+        return new Response(
+          `<!doctype html><title>late</title><body><p>fixture</p>
+           <script>fetch("/slow-answer.js");</script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/slow-answer.js") {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return new Response("globalThis.slowAnswer = true;", {
+          headers: { "content-type": CONTENT_TYPES[".js"]! },
+        });
+      }
       if (pathname === "/cross-origin-script.html") {
         const script = new URL("/instrumented.js", crossOriginUrl);
         return new Response(`<script src="${script.href}"></script>`, {
@@ -176,6 +265,59 @@ export async function startFixtureServers(): Promise<FixtureServers> {
             "set-cookie": "session=FAKE_COOKIE_SENTINEL; HttpOnly",
           },
         });
+      }
+      if (pathname === "/interaction-case.html") {
+        // Ground truth for #176: one element per refusal rule, plus three the policy must allow.
+        // The refusals are asserted by rule against a real DOM, so a rule that only ever fires on
+        // a hand-built candidate object cannot pass for a working policy.
+        const offsite = new URL("/redirect-target.html", crossOriginUrl).href;
+        const html = `<!doctype html><html><body>
+          <form action="/interaction-endpoint">
+            <button id="r-submit" type="submit">Go</button>
+            <button id="r-typeless">Continue</button>
+          </form>
+          <a id="r-navigation" href="/redirect-target.html">Other page</a>
+          <a id="r-download" href="#top" download>Get the file</a>
+          <a id="r-new-context" href="#top" target="_blank">New tab</a>
+          <input id="r-file" type="file">
+          <a id="r-cross-origin" href="${offsite}">Elsewhere</a>
+          <button id="r-auth" type="button">Sign in</button>
+          <button id="r-destructive" type="button">Delete account</button>
+          <form id="detached-form" action="/interaction-endpoint"></form>
+          <button id="r-form-attribute" form="detached-form">Continue</button>
+          <button id="r-icon-title" type="button" title="Delete account"><span>&#9679;</span></button>
+          <button id="skip-aria-disabled" type="button" aria-disabled="true">Show more</button>
+          <button id="skip-transparent" type="button" style="opacity:0">Show more</button>
+          <pay-button id="throwing-element" role="button">Continue</pay-button>
+
+          <button id="ok-toggle" type="button">Show details</button>
+          <button id="r-text-under-title" type="button" title="Open panel">Delete account</button>
+          <div id="ok-hover" style="cursor:pointer">Read more
+            <span id="inherited-cursor">inner</span>
+            <svg width="8" height="8"><g id="inherited-svg"><path d="M0 0h8v8H0z"/></g></svg>
+          </div>
+          <div id="ok-scroller" style="overflow:auto;height:40px;width:120px">
+            <div style="height:600px">tall</div>
+          </div>
+          <script>
+            // A valid custom element whose innerText getter throws. Discovery reads innerText for
+            // the label, so without per-element isolation this one element rejects the whole
+            // evaluate and no candidate is returned at all.
+            customElements.define("pay-button", class extends HTMLElement {
+              get innerText() { throw new Error("not ready"); }
+            });
+            document.getElementById("ok-toggle").addEventListener("click", () => {
+              document.body.dataset.toggled = "yes";
+            });
+            document.getElementById("ok-hover").addEventListener("mouseenter", () => {
+              document.body.dataset.hovered = "yes";
+            });
+            document.getElementById("ok-scroller").addEventListener("scroll", () => {
+              document.body.dataset.scrolled = "yes";
+            });
+          </script>
+        </body></html>`;
+        return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
       }
       if (pathname === "/environment-probe.html") {
         const crossOriginFrame = new URL("/redirect-target.html", crossOriginUrl);
