@@ -201,15 +201,24 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   });
   const archive = har.slice(0, har.lastIndexOf("network.har") - 1);
 
-  const replay = await replayArchive({ archive, browser: options.browser });
-  let replayed: Digest;
-  try {
-    replayed = await collectDigest(replay.page as unknown as EquivalencePage);
-  } finally {
-    await replay.close();
+  // The clone is driven as many times as the live page, for the same reason: a field that is
+  // steady live and moves on the clone is invisible to a live-only control, and `layout.scrollHeight`
+  // was measured doing exactly that.
+  const replayPasses: Digest[] = [];
+  for (let pass = 0; pass < BASELINE_PASSES; pass += 1) {
+    const replay = await replayArchive({ archive, browser: options.browser });
+    try {
+      replayPasses.push(await collectDigest(replay.page as unknown as EquivalencePage));
+    } finally {
+      await replay.close();
+    }
   }
+  const replayed: Digest = replayPasses[0]!;
 
-  const result = classify(live, replayed, options.allowlist ?? [], { passes });
+  const result = classify(live, replayed, options.allowlist ?? [], {
+    livePasses: passes,
+    replayPasses,
+  });
   return {
     ...result,
     url: options.url,

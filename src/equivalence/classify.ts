@@ -65,7 +65,33 @@ export interface StabilityBaseline {
    * More passes cost live drives, which is the honest price: the control is the only thing standing
    * between a plateau and a false accusation, and it is worth more than it costs.
    */
-  passes: readonly Digest[];
+  livePasses: readonly Digest[];
+  /**
+   * Replay passes, driven identically to each other.
+   *
+   * **The control measured only the live side, and that is not where the instability was.** Measured
+   * on `labs.chaingpt.org`, three drives each: `layout.scrollHeight` read 8544, 8544, 8544 live and
+   * 8486, 8544, 8486 on the clone. A live-only baseline calls that field stable, so the difference
+   * goes to the residual as the clone's fault — and no number of extra live passes can ever catch
+   * it, because the live side is not the one that moves.
+   *
+   * The two groups are compared **within** themselves and never against each other. Pooling them
+   * would make every genuine live-against-replay difference look like instability, which is the
+   * control excusing exactly what it exists to detect.
+   */
+  replayPasses: readonly Digest[];
+}
+
+/**
+ * Whether a field disagrees with itself across passes driven the same way.
+ *
+ * A field absent from any pass says nothing about stability: guessing from a subset is how a
+ * control starts excusing differences it never measured.
+ */
+function variesWithin(passes: readonly Digest[], field: string): boolean {
+  if (passes.length < 2) return false;
+  if (!passes.every((pass) => Object.hasOwn(pass, field))) return false;
+  return passes.some((pass) => !Object.is(pass[field], passes[0]![field]));
 }
 
 export interface FieldResult {
@@ -150,9 +176,7 @@ export function classify(
     // calling it `allowed` would credit an entry for work the measurement did.
     if (
       baseline !== undefined &&
-      baseline.passes.length > 1 &&
-      baseline.passes.every((pass) => Object.hasOwn(pass, field)) &&
-      baseline.passes.some((pass) => !Object.is(pass[field], baseline.passes[0]![field]))
+      (variesWithin(baseline.livePasses, field) || variesWithin(baseline.replayPasses, field))
     ) {
       inconclusive = true;
       unstable.push(field);
