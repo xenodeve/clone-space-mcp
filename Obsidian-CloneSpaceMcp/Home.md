@@ -17,6 +17,8 @@
 - [[a-corpus-anchor-rots-when-review-feedback-edits-its-line]] — acting on a review finding invalidated an anchor written minutes earlier; `mutate` says FAILED, a third state that measures nothing and reads like noise beside forty CAUGHT
 - [[an-observation-boundary-is-delivery-not-occurrence]] — a flag that ignores events after a point bounds when the callback ran, not when the thing happened; on #117 a reviewer showed the gap that `verify` and `mutate` both passed over
 - [[a-selector-is-a-position-not-an-identity]] — a plan decided at one moment and executed at another must re-validate; on #176 a live page invalidated 28 of 32 selectors while the plan ran
+- [[a-fixture-edit-can-delete-a-corpus-entry-silently]] — a mechanism has dependencies it does not declare; a fixture edit removed the only case one corpus entry could fail on, and only `mutate` said so
+- [[a-control-that-samples-one-side-is-blind-to-the-other]] — the gate proved stability on the live page and judged live-against-replay; four of five proposed fixes were refuted by building them
 
 ## project — ongoing goals / constraints not derivable from the code
 - [[replay-reexecutes-original-js]] — the architectural commitment the whole project rests on, and the approach it rejects

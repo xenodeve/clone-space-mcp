@@ -23,6 +23,7 @@ test("the inspector shows a gap as a row, not as a count nobody compared", async
         schemaVersion: BEHAVIOUR_SCHEMA_VERSION,
         url: "https://example.com/",
         aborted: [],
+        unrepresented: { cssTransitionElements: 0 },
         mechanisms: ["gsap-timeline"],
         nodes: [
           {

@@ -165,21 +165,18 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           { headers: { "content-type": CONTENT_TYPES[".html"]! } },
         );
       }
-      // #173. The three things the observation layer hooks, in one page: a WebGL context, a
-      // compiled shader whose GLSL is assembled at runtime, and a listener registration. The
-      // fixture had none of these — every WebGL measurement so far came from a real site, which
-      // makes it evidence and not a test.
+      // #173 + #178. The three things the observation layer hooks — a WebGL context, a compiled
+      // shader, a listener registration — with the shader compiled from `/build/instrumented.js`,
+      // the minified module that carries a real published sourcemap. That is the point: the stack
+      // the observation layer captures then names a position in minified coordinates, which is
+      // exactly what slice 6 has to carry back to a readable line.
       if (pathname === "/instrumented-case.html") {
         return new Response(
           `<!doctype html><title>instrumented</title><body><canvas id="c" width="32" height="32"></canvas>
-           <script>
+           <script type="module">
+             import { compileFixtureShader } from "/build/instrumented.js";
              document.getElementById("c").addEventListener("pointerdown", () => {});
-             const gl = document.getElementById("c").getContext("webgl");
-             if (gl) {
-               const vs = gl.createShader(gl.VERTEX_SHADER);
-               gl.shaderSource(vs, "attribute vec2 p; void main(){ gl_Position = vec4(p,0,1); }");
-               gl.compileShader(vs);
-             }
+             compileFixtureShader(document.getElementById("c"));
            </script>`,
           { headers: { "content-type": CONTENT_TYPES[".html"]! } },
         );
