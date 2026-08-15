@@ -5,15 +5,31 @@
  * the same digest from both, and hands the pair to the pure classifier. One session matters: a
  * comparison run a day later measures how much the site changed, not how faithful the clone is.
  *
- * v1 deliberately drives navigation and a scroll pass and nothing else. That is not a shortcut
- * hidden in the verdict — it is published as the coverage vector, where `interaction: 0` says
- * plainly that 242 registered click listeners were never fired. A green verdict at low coverage is
- * a small claim, correctly reported.
+ * It drives navigation, a scroll pass, and a bounded interaction plan (#176). Whatever it does not
+ * reach is published as the coverage vector rather than hidden in the verdict — a green verdict at
+ * low coverage is a small claim, correctly reported.
+ *
+ * **The interaction plan is discovered once, on the live page, and driven unchanged on every pass,
+ * including the clone's.** Letting each side discover its own would have the two drive different
+ * elements and compare the results as though they were comparable, and would hide the finding that
+ * matters most: a selector the live page offers and the clone cannot resolve. That surfaces as
+ * `interaction.stale`.
  */
 
 import { captureHar } from "../capture/record.ts";
 import { replayArchive, type ReplayBrowser } from "../replay/replay.ts";
 import { classify, coverageOf, type AllowlistEntry, type ClassifyResult, type Digest } from "./classify.ts";
+import {
+  DEFAULT_LIMITS,
+  DISCOVERY_SCRIPT,
+  discoveredCandidates,
+  planActions,
+  type InteractionPlan,
+} from "../capture/interaction.ts";
+import { driveInteraction, type DriveReport, type DrivablePage } from "../capture/interaction-drive.ts";
+
+/** Settle time after each driven action, so the effect it triggers is observable before the next. */
+const INTERACTION_SETTLE_MS = 150;
 
 /** Two readings agree when every motion count in them does. */
 function sameMotion(a: MotionSample, b: MotionSample): boolean {
@@ -23,7 +39,13 @@ function sameMotion(a: MotionSample, b: MotionSample): boolean {
 /** The slice of a page the driver needs. Structural, so a fake can stand in. */
 export interface EquivalencePage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
-  evaluate<Result, Arg>(fn: (arg: Arg) => Result | Promise<Result>, arg?: Arg): Promise<Result>;
+  // A string is an expression evaluated in the page, which is how `DISCOVERY_SCRIPT` is passed.
+  // Playwright accepts both forms; note that the string form does NOT reliably receive `arg`, so
+  // anything taking one must be a real function (measured on #176's scroll).
+  evaluate<Result, Arg>(
+    fn: string | ((arg: Arg) => Result | Promise<Result>),
+    arg?: Arg,
+  ): Promise<Result>;
   waitForTimeout(ms: number): Promise<void>;
 }
 
@@ -88,7 +110,17 @@ interface MotionSample {
   height: number;
 }
 
-async function collectDigest(page: EquivalencePage): Promise<Digest> {
+interface DigestRun {
+  digest: Digest;
+  /** The plan this pass drove, so later passes can drive exactly the same one. */
+  plan: InteractionPlan;
+  drive: DriveReport;
+}
+
+async function collectDigest(
+  page: EquivalencePage,
+  interactionPlan?: InteractionPlan,
+): Promise<DigestRun> {
   const samples: MotionSample[] = [];
   let stableFor = 0;
   let settledAfter = MAX_SAMPLES;
@@ -144,8 +176,36 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
     };
   });
 
+  // The interaction half (#176). The plan is **discovered once, on the live page, and driven
+  // unchanged on every pass** — including the clone's. Letting each side discover its own would
+  // make the two sides drive different elements and compare the results as though they were
+  // comparable; worse, it would hide the finding that matters most, which is a selector the live
+  // page offers and the clone does not resolve. That shows up here as a stale skip.
+  const plan =
+    interactionPlan ??
+    planActions(discoveredCandidates(await page.evaluate(DISCOVERY_SCRIPT)), DEFAULT_LIMITS);
+  const drive = await driveInteraction(page as unknown as DrivablePage, plan, {
+    settleMs: INTERACTION_SETTLE_MS,
+  });
+  await page.waitForTimeout(SAMPLE_GAP_MS);
+
+  const afterInteraction = await page.evaluate(() => {
+    const win = globalThis as unknown as {
+      ScrollTrigger?: { getAll(): unknown[] };
+    };
+    return {
+      css: document.getAnimations().filter((a) => a.constructor.name === "CSSAnimation").length,
+      st: win.ScrollTrigger?.getAll().length ?? 0,
+      elements: document.querySelectorAll("*").length,
+      canvases: document.querySelectorAll("canvas").length,
+    };
+  });
+
   const settled = samples[samples.length - 1]!;
   return {
+    plan,
+    drive,
+    digest: {
     // Whether the page settled at all is itself a comparable fact: one side settling and the other
     // not is a real difference, where the sample index it happened at is not.
     "motion.settled": settledAfter < MAX_SAMPLES,
@@ -161,6 +221,19 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
     "dom.videos": afterScroll.videos,
     "dom.title": afterScroll.title,
     "layout.scrollHeight": settled.height,
+
+    // What the interaction actually did, and what the page became afterwards. These are the
+    // fields that can only differ because something *behind a click* differs — everything above
+    // is reachable by scrolling, which is the ceiling the gate had before #176.
+    "interaction.performed": drive.performed.filter((action) => action.ok).length,
+    "interaction.stale": drive.performed.filter((action) => action.note.startsWith("element is gone"))
+      .length,
+    "interaction.navigated": drive.navigatedTo !== "",
+    "motion.css.afterInteraction": afterInteraction.css,
+    "motion.scrollTriggers.afterInteraction": afterInteraction.st,
+    "dom.elements.afterInteraction": afterInteraction.elements,
+    "dom.canvases.afterInteraction": afterInteraction.canvases,
+    },
   };
 }
 
@@ -170,12 +243,15 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   // live page with itself put `dom.elements`, `motion.gsap` and even ScrollTrigger registrations
   // in the residual, so every verdict the gate produced before this control existed was noise.
   const passes: Digest[] = [];
+  let sharedPlan: InteractionPlan | undefined;
   for (let pass = 0; pass < 2; pass += 1) {
     const context = (await options.browser.newContext({})) as unknown as LiveContext;
     try {
       const page = await context.newPage();
       await page.goto(options.url, { waitUntil: "load" });
-      passes.push(await collectDigest(page));
+      const run = await collectDigest(page, sharedPlan);
+      sharedPlan ??= run.plan;
+      passes.push(run.digest);
     } finally {
       await context.close();
     }
@@ -192,7 +268,7 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   const replay = await replayArchive({ archive, browser: options.browser });
   let replayed: Digest;
   try {
-    replayed = await collectDigest(replay.page as unknown as EquivalencePage);
+    replayed = (await collectDigest(replay.page as unknown as EquivalencePage, sharedPlan)).digest;
   } finally {
     await replay.close();
   }
@@ -205,9 +281,7 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
     ...result,
     url: options.url,
     archive,
-    // Published with every verdict, never reduced to a score. `interaction` is zero because v1
-    // drives none, and saying so is the point: a green verdict here is a claim about navigation
-    // and scrolling, and about nothing else.
+    // Published with every verdict, never reduced to a score.
     coverage: coverageOf({
       scroll: [SCROLL_STEPS, SCROLL_STEPS],
       motion_settled: [
@@ -221,7 +295,14 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
         result.fields.length - result.unstable.length,
         result.fields.length,
       ],
-      interaction: [0, 1],
+      // What the plan actually drove, out of what it planned. Not "did we try" — a page whose
+      // controls all went stale reports near zero here, which is the honest number.
+      interaction: [
+        Number(replayed["interaction.performed"] ?? 0),
+        Math.max(1, sharedPlan?.actions.length ?? 1),
+      ],
+      // Still zero: a driven click runs the listeners on the elements the plan reached, and this
+      // gate does not yet count which of the page's registered listeners those were.
       listener_execution: [0, 1],
     }),
   };
