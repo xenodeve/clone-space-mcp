@@ -14,6 +14,7 @@
 - [[remove-the-write-dont-guard-it]] — four guards accumulated around one write, and the one added for the actual incident was measured not to fire; applying the defect in memory deleted the whole problem
 - [[tightening-is-not-a-policy-decision]] — a security review's three findings were all parked as the developer's call; two only ever narrowed what the tool may do, and over-asking has no corrective signal
 - [[python-text-mode-rewrites-every-line-ending]] — a one-line Python edit converted two files to CRLF and broke mutation anchors it never touched; git normalises on commit, so the diff is clean and only the working tree is wrong
+- [[a-corpus-anchor-rots-when-review-feedback-edits-its-line]] — acting on a review finding invalidated an anchor written minutes earlier; `mutate` says FAILED, a third state that measures nothing and reads like noise beside forty CAUGHT
 - [[an-observation-boundary-is-delivery-not-occurrence]] — a flag that ignores events after a point bounds when the callback ran, not when the thing happened; on #117 a reviewer showed the gap that `verify` and `mutate` both passed over
 
 ## project — ongoing goals / constraints not derivable from the code
