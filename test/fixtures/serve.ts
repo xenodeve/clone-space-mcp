@@ -143,6 +143,25 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         );
         return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
       }
+      // #173. The three things the observation layer hooks, in one page: a WebGL context, a
+      // compiled shader whose GLSL is assembled at runtime, and a listener registration. The
+      // fixture had none of these — every WebGL measurement so far came from a real site, which
+      // makes it evidence and not a test.
+      if (pathname === "/instrumented-case.html") {
+        return new Response(
+          `<!doctype html><title>instrumented</title><body><canvas id="c" width="32" height="32"></canvas>
+           <script>
+             document.getElementById("c").addEventListener("pointerdown", () => {});
+             const gl = document.getElementById("c").getContext("webgl");
+             if (gl) {
+               const vs = gl.createShader(gl.VERTEX_SHADER);
+               gl.shaderSource(vs, "attribute vec2 p; void main(){ gl_Position = vec4(p,0,1); }");
+               gl.compileShader(vs);
+             }
+           </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
       // #165. A script whose sourcemap is published inline as a `data:` URI — an ordinary and
       // correct way to ship one. Capture used to fetch it through `context.request.get`, which can
       // never be answered and left a permanently unanswered entry in the published HAR.

@@ -15,11 +15,27 @@
 
 import { readArchive } from "../archive/read.ts";
 import type { ReplayContext } from "../capture/environment.ts";
+import {
+  drainedObservations,
+  INSTRUMENT_DRAIN_SCRIPT,
+  INSTRUMENT_INIT_SCRIPT,
+  type Observation,
+} from "../capture/instrument.ts";
 
 export interface ReplayArchiveOptions {
   /** Path to a published archive directory. */
   archive: string;
   browser: ReplayBrowser;
+  /**
+   * Install the observation layer (#173) before any page script, so the replay records what the
+   * page *does* — shaders assembled at runtime, canvas realms, the listener surface — rather than
+   * only what it shipped.
+   *
+   * **Off by default.** Hooks change what they observe, and a caller comparing a replay against a
+   * live page must decide for itself whether both sides carry them; silently instrumenting one
+   * side would make the two incomparable without anything saying so.
+   */
+  instrument?: boolean;
 }
 
 /** The structural slice of Playwright's Browser this needs. */
@@ -29,6 +45,7 @@ export interface ReplayBrowser {
 
 export interface ReplayBrowserContext {
   routeFromHAR(har: string, options: { notFound: "abort"; url?: string }): Promise<void>;
+  addInitScript(script: { content: string }): Promise<void>;
   route(url: string, handler: (route: ReplayRoute) => Promise<void>): Promise<void>;
   newPage(): Promise<ReplayPage>;
   close(): Promise<void>;
@@ -60,6 +77,12 @@ export interface ReplayHandle {
    */
   unservable: number;
   page: ReplayPage;
+  /**
+   * Hand over what the observation layer recorded since the last call (#173). Empty when the
+   * replay was not instrumented — an honest empty rather than a thrown error, because "this
+   * replay carries no hooks" is a legitimate state a caller may not have chosen deliberately.
+   */
+  drainObservations(): Promise<{ observations: Observation[]; dropped: number }>;
   close(): Promise<void>;
 }
 
@@ -135,6 +158,10 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
   const context = await options.browser.newContext({ ...replayContextFrom(archive.documents.environment) });
   await context.routeFromHAR(archive.harPath, { notFound: "abort", url: "**/*" });
 
+  if (options.instrument === true) {
+    await context.addInitScript({ content: INSTRUMENT_INIT_SCRIPT });
+  }
+
   // Registered **after** `routeFromHAR` on purpose: the later handler is offered the request first,
   // so this one aborts the entries the archive has no response for and hands everything else back
   // with `fallback()`. Filtering the HAR file instead would mean copying it, and the response
@@ -163,6 +190,12 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
     aborted,
     unservable: unservable.size,
     page,
+    drainObservations: async () =>
+      options.instrument === true
+        ? drainedObservations(
+            await page.evaluate(new Function(`return ${INSTRUMENT_DRAIN_SCRIPT}`) as () => unknown),
+          )
+        : { observations: [], dropped: 0 },
     close: () => context.close(),
   };
 }
