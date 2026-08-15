@@ -30,14 +30,22 @@ export interface InspectArchiveParams {
 export interface InspectArchiveResult {
   root: string;
   /**
-   * Whether the archive is intact: `commit.json` lists every file under the root and every one
-   * still hashes to what was recorded. That is the completeness question, because the commit
-   * marker is written last, after validation — an aborted capture has no commit at all.
+   * Whether this archive can be trusted as a whole: it is **intact** *and* the capture that wrote
+   * it **terminated complete**. Both components are returned separately, so a caller that reads
+   * `false` can tell which half failed.
    *
-   * It deliberately does **not** fold in `contracts`. A missing artifact already fails the commit,
-   * so a second clause here could never fail on its own, and a guard that cannot fail alone is
-   * indistinguishable from one that works. What `contracts` answers is a different question —
-   * *what does this archive contain* — and the caller reads it directly.
+   * The two are different claims and both are needed (#159). `integrity` says every file still
+   * hashes to what `commit.json` recorded — the bytes on disk are the bytes that were validated.
+   * `termination.outcome` says whether capture actually got everything it went for. An archive can
+   * be perfectly intact and still be missing the GSAP plugins the page needs, and that is not a
+   * hypothetical: measured on labs.chaingpt.org, www.chaingpt.org and firecrawl.dev, all three
+   * reported `complete: true` next to `outcome: "incomplete"`.
+   *
+   * It still deliberately does **not** fold in `contracts`. A missing artifact already fails the
+   * commit, so that clause could never fail on its own, and a guard that cannot fail alone is
+   * indistinguishable from one that works. `termination` is different — it fails alone, which is
+   * what earns it a place here. What `contracts` answers is *what does this archive contain*, and
+   * the caller reads it directly.
    */
   complete: boolean;
   integrity: { ok: boolean; mismatched: string[] };
@@ -74,12 +82,13 @@ export async function inspectArchive(params: InspectArchiveParams): Promise<Insp
     throw new Error(`inspect_archive: ${params.path} is not an archive — no commit.json`);
   }
 
+  const termination = terminationOf(archive.documents.termination);
   return {
     root: archive.root,
-    complete: archive.integrity.ok,
+    complete: archive.integrity.ok && termination.outcome === "complete",
     integrity: archive.integrity,
     contracts: archive.contracts,
     documents: archive.contracts.filter((c) => c.status === "present").map((c) => c.artifact!),
-    termination: terminationOf(archive.documents.termination),
+    termination,
   };
 }

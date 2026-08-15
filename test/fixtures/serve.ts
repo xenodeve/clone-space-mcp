@@ -143,6 +143,95 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         );
         return new Response(html, { headers: { "content-type": CONTENT_TYPES[".html"]! } });
       }
+      // #167 + #168. Three class-less siblings animated by GSAP — the shape SplitText produces and
+      // the shape that made 76% of a real page's nodes report `div` — plus a ScrollTrigger whose
+      // configuration is stated, so there is ground truth for start/end/scrub/pin.
+      if (pathname === "/discriminating-case.html") {
+        return new Response(
+          `<!doctype html><title>discriminating</title>
+           <style>body{margin:0} .tall{height:3000px} .line{height:20px}</style>
+           <body><section id="hero"><div class="line"></div><div class="line"></div><div class="line"></div></section>
+           <div class="tall"></div><section id="reveal">reveal</section>
+           <script src="/vendor/gsap.min.js"></script>
+           <script src="/vendor/ScrollTrigger.min.js"></script>
+           <script>
+             gsap.registerPlugin(ScrollTrigger);
+             gsap.to("#hero div", { y: 10, duration: 1, repeat: -1, ease: "power2.out" });
+             gsap.to("#reveal", {
+               opacity: 0.5, duration: 1,
+               scrollTrigger: { trigger: "#reveal", start: "top 80%", end: "bottom 20%", scrub: true, pin: false, toggleActions: "play none none reverse" }
+             });
+           </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      // #173. The three things the observation layer hooks, in one page: a WebGL context, a
+      // compiled shader whose GLSL is assembled at runtime, and a listener registration. The
+      // fixture had none of these — every WebGL measurement so far came from a real site, which
+      // makes it evidence and not a test.
+      if (pathname === "/instrumented-case.html") {
+        return new Response(
+          `<!doctype html><title>instrumented</title><body><canvas id="c" width="32" height="32"></canvas>
+           <script>
+             document.getElementById("c").addEventListener("pointerdown", () => {});
+             const gl = document.getElementById("c").getContext("webgl");
+             if (gl) {
+               const vs = gl.createShader(gl.VERTEX_SHADER);
+               gl.shaderSource(vs, "attribute vec2 p; void main(){ gl_Position = vec4(p,0,1); }");
+               gl.compileShader(vs);
+             }
+           </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      // #165. A script whose sourcemap is published inline as a `data:` URI — an ordinary and
+      // correct way to ship one. Capture used to fetch it through `context.request.get`, which can
+      // never be answered and left a permanently unanswered entry in the published HAR.
+      if (pathname === "/inline-sourcemap.html") {
+        return new Response(
+          `<!doctype html><title>inline map</title><body><p>fixture</p>
+           <script src="/inline-map.js"></script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/inline-map.js") {
+        return new Response(
+          `globalThis.inlineMapped = 1;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjogMywgInNvdXJjZXMiOiBbImlubGluZS1zb3VyY2UudHMiXSwgIm5hbWVzIjogW10sICJtYXBwaW5ncyI6ICJBQUFBIiwgInNvdXJjZXNDb250ZW50IjogWyJleHBvcnQgY29uc3QgaW5saW5lID0gMTtcbiJdfQ==
+`,
+          { headers: { "content-type": CONTENT_TYPES[".js"]! } },
+        );
+      }
+      // #156. Accepts the connection and never answers — what a third-party tracker does when
+      // capture closes before it replies. The request is fired from a timer rather than a tag so
+      // it cannot hold `load`, which is what capture navigates on: the point is a request still
+      // open at the observation boundary, not a page that never loads.
+      if (pathname === "/unanswered-request.html") {
+        return new Response(
+          `<!doctype html><title>unanswered</title><body><p>fixture</p>
+           <script>setTimeout(() => { fetch("/never-answers"); }, 50);</script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/never-answers") {
+        return await new Promise<Response>(() => {});
+      }
+      // #156. Answers, but later than the sweep runs — the case the bounded drain exists to
+      // recover. A test pairs this with a tiny wall-clock budget so the sweep is guaranteed to end
+      // before the response lands, rather than relying on it losing a race.
+      if (pathname === "/late-response.html") {
+        return new Response(
+          `<!doctype html><title>late</title><body><p>fixture</p>
+           <script>fetch("/slow-answer.js");</script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/slow-answer.js") {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return new Response("globalThis.slowAnswer = true;", {
+          headers: { "content-type": CONTENT_TYPES[".js"]! },
+        });
+      }
       if (pathname === "/cross-origin-script.html") {
         const script = new URL("/instrumented.js", crossOriginUrl);
         return new Response(`<script src="${script.href}"></script>`, {

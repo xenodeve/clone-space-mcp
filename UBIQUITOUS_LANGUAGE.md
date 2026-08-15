@@ -98,6 +98,7 @@ The subdomain where a wrong word produces wrong code.
 - **"id"** was read as a cross-run key. It is not: a **wa: id** is a **handle** within one run. Reading it as a key produces a **ตัวจับคู่** that compares strings and reports total failure on a good **archive**.
 - **"capture"** was used as both a stage and a noun for its output. The stage is **capture**; its output is an **archive**.
 - **"archive"** was used as a verb. The verb is **capture**.
+- **"complete"** was two claims under one word. **intact** is `integrity.ok` — every file still hashes to what `commit.json` recorded. **terminated complete** is `termination.outcome` — the **capture run** got what it went for. An **archive** can be intact and not complete, and three real sites reported exactly that, so `inspect_archive`'s `complete` means **both** and unqualified "complete" is a defect.
 - **"pure"** — write `pure function` in English. A Thai calque for it communicates nothing; see the glossary in `CLAUDE.md`.
 <!-- lang:end -->
 
@@ -199,5 +200,6 @@ subdomain ที่ใช้คำผิดแล้วจะได้โค้�
 - **"id"** เคยถูกอ่านว่าเป็นกุญแจข้ามรอบ ซึ่งไม่ใช่: **wa: id** เป็น **handle** ภายในรอบเดียว การอ่านว่าเป็นกุญแจจะได้ **ตัวจับคู่** ที่เทียบสตริงแล้วรายงานว่าล้มเหลวทั้งหมด ทั้งที่ **archive** ดีอยู่
 - **"capture"** ถูกใช้ทั้งในฐานะ stage และในฐานะคำนามของผลลัพธ์ ตัว stage คือ **capture** ส่วนผลลัพธ์คือ **archive**
 - **"archive"** ถูกใช้เป็นคำกริยา คำกริยาที่ถูกคือ **capture**
+- **"complete"** เคยเป็นคำกล่าวสองอย่างใต้คำเดียว · **intact** คือ `integrity.ok` — ทุกไฟล์ยังแฮชตรงกับที่ `commit.json` บันทึกไว้ · **terminated complete** คือ `termination.outcome` — **capture run** ได้สิ่งที่ไปเอามาครบ · **archive** เป็น intact แต่ไม่ complete ได้ และเว็บจริงสามแห่งรายงานแบบนั้นพอดี · `complete` ของ `inspect_archive` จึงหมายถึง **ทั้งสองอย่าง** และการใช้คำว่า "complete" แบบไม่ขยายความคือข้อบกพร่อง
 - **"pure"** — ให้เขียนว่า `pure function` เป็นภาษาอังกฤษ คำแปลไทยที่ประดิษฐ์ขึ้นสื่อสารอะไรไม่ได้ ดู glossary ใน `CLAUDE.md`
 <!-- lang:end -->
