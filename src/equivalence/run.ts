@@ -69,7 +69,40 @@ export interface EquivalenceReport extends ClassifyResult {
  */
 const STABLE_REPEATS = 2;
 const MAX_SAMPLES = 12;
-const SAMPLE_GAP_MS = 400;
+
+/**
+ * Sampling advances on the **page's own animation clock**, not on the wall clock (#182).
+ *
+ * Measured on `https://labs.chaingpt.org/`, five loads each. Reading the digest after a fixed
+ * number of wall-clock milliseconds chose a different value almost every time, because the page
+ * holds an entry-animation set and then releases it, and whichever plateau the sampling phase lands
+ * on is what gets published:
+ *
+ * | rule | what it chose across five loads | |
+ * |---|---|---|
+ * | wall clock, two equal readings | 59, 59, 59, 59, 52 | varies |
+ * | frame 480 since load | 52, 52, 52, 52, 52 | reproducible |
+ * | frame 600 since load | 52, 52, 52, 52, 52 | reproducible |
+ *
+ * Three consecutive runs of the whole gate on that site returned FAIL, PASS and INCOMPLETE, and the
+ * FAIL accused the clone of a difference a live-against-replay listing showed did not exist.
+ *
+ * **A frame count is invariant to machine speed in a way milliseconds are not**: 40 frames is 40
+ * steps of the page's own animation clock whether the host is fast or loaded, while 400ms is fewer
+ * steps on a slow machine and more on a quick one. That is what the plan means by comparing at
+ * normalised progress. It is also why this fixes the *comparison* even where it does not fix the
+ * *value*: live and replay run at different speeds, and the frame clock is the same clock for both.
+ *
+ * `MAX_SAMPLES * SAMPLE_FRAMES` is 480, the point the measurement above found reproducible.
+ */
+const SAMPLE_FRAMES = 40;
+
+/**
+ * A ceiling in milliseconds for one frame advance, so a page that stops painting cannot hold the
+ * gate open. A tab that never paints has no animation clock, and waiting forever for one is worse
+ * than reading early and saying the run was short.
+ */
+const FRAME_ADVANCE_CAP_MS = 2_000;
 /** Scroll steps the driver takes, on both sides, so the scroll dimension is genuinely covered. */
 const SCROLL_STEPS = 4;
 
@@ -86,6 +119,34 @@ interface MotionSample {
   gsap: number;
   st: number;
   height: number;
+}
+
+/**
+ * Advance the page by `frames` animation frames, or give up after `FRAME_ADVANCE_CAP_MS`.
+ *
+ * The cap is inside the page rather than around the call so a stalled `requestAnimationFrame`
+ * resolves rather than rejects: the gate should read a page that stopped painting, not fail on it.
+ */
+async function advanceFrames(page: EquivalencePage, frames: number): Promise<void> {
+  await page.evaluate(
+    (request: { frames: number; capMs: number }) =>
+      new Promise<void>((resolve) => {
+        let remaining = request.frames;
+        const done = () => resolve();
+        const timer = setTimeout(done, request.capMs);
+        const tick = () => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearTimeout(timer);
+            done();
+            return;
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    { frames, capMs: FRAME_ADVANCE_CAP_MS },
+  );
 }
 
 async function collectDigest(page: EquivalencePage): Promise<Digest> {
@@ -116,7 +177,7 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
       settledAfter = samples.length;
       break;
     }
-    await page.waitForTimeout(SAMPLE_GAP_MS);
+    await advanceFrames(page, SAMPLE_FRAMES);
   }
 
   // The scroll half of the driver, identical on both sides.
@@ -124,7 +185,7 @@ async function collectDigest(page: EquivalencePage): Promise<Digest> {
     await page.evaluate((fraction: number) => {
       window.scrollTo(0, document.documentElement.scrollHeight * fraction);
     }, step / SCROLL_STEPS);
-    await page.waitForTimeout(SAMPLE_GAP_MS);
+    await advanceFrames(page, SAMPLE_FRAMES);
   }
 
   const afterScroll = await page.evaluate(() => {
