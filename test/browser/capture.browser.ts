@@ -722,3 +722,35 @@ test("does not report complete when a response was never received", async () => 
   assert.equal(termination.outcome, "incomplete", "a run with responses outstanding said complete");
   assert.equal(termination.reason, "quiet-window", "the sweep did not end on a quiet window, so the override was not what produced the incomplete verdict");
 });
+
+/**
+ * #156, second deliverable. The sweep's quiet window measures DOM activity, so it can close while
+ * responses are still arriving — and the context teardown then writes them into the HAR with no
+ * response at all. Measured through the tool entry points on `https://firecrawl.dev/` before this:
+ * 4 entries with no response and **no recorded failure**, four answers that were on their way.
+ *
+ * The wall-clock budget is set to 1 ms so the sweep is over before the fixture's 300 ms response
+ * can land. Without the drain that response is lost by construction rather than by a lost race.
+ */
+test("waits for a response that arrives after the sweep has ended", async () => {
+  const url = new URL("/late-response.html", servers.primary.url);
+  const harPath = await captureHar({
+    browser,
+    url: url.href,
+    outDir: nextCaptureOutDir(),
+    budgets: { wallClockMs: 1 },
+  });
+
+  const har = JSON.parse(readFileSync(harPath, "utf8")) as {
+    log: { entries: { request: { url: string }; response: { status?: unknown } }[] };
+  };
+  const answered = har.log.entries.find((entry) => entry.request.url.endsWith("/slow-answer.js"));
+  assert.ok(answered !== undefined, "the fixture's late request is not in the HAR at all");
+  assert.equal(answered.response.status, 200, "the late response was not waited for");
+
+  const termination = JSON.parse(
+    readFileSync(join(dirname(harPath), "termination.json"), "utf8"),
+  ) as { stats: { unansweredRequests: number; networkDrainSettled: boolean } };
+  assert.equal(termination.stats.unansweredRequests, 0, "an answered request was counted as outstanding");
+  assert.equal(termination.stats.networkDrainSettled, true, "the drain reported that it gave up");
+});

@@ -157,6 +157,22 @@ export async function startFixtureServers(): Promise<FixtureServers> {
       if (pathname === "/never-answers") {
         return await new Promise<Response>(() => {});
       }
+      // #156. Answers, but later than the sweep runs — the case the bounded drain exists to
+      // recover. A test pairs this with a tiny wall-clock budget so the sweep is guaranteed to end
+      // before the response lands, rather than relying on it losing a race.
+      if (pathname === "/late-response.html") {
+        return new Response(
+          `<!doctype html><title>late</title><body><p>fixture</p>
+           <script>fetch("/slow-answer.js");</script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/slow-answer.js") {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return new Response("globalThis.slowAnswer = true;", {
+          headers: { "content-type": CONTENT_TYPES[".js"]! },
+        });
+      }
       if (pathname === "/cross-origin-script.html") {
         const script = new URL("/instrumented.js", crossOriginUrl);
         return new Response(`<script src="${script.href}"></script>`, {

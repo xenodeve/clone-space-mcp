@@ -526,4 +526,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "does not report complete when a response was never received",
   },
+  {
+    id: "network-drain-not-awaited",
+    why: "#156 second deliverable - without waiting for in-flight responses at the observation boundary, the context teardown turns them into HAR entries with no response. Measured on firecrawl.dev before this: 4 entries with no response and no recorded failure.",
+    file: "src/capture/record.ts",
+    find: "      networkDrainSettled = await networkDrain.idle(NETWORK_DRAIN_DEADLINE_MS);",
+    replace: "      networkDrainSettled = networkDrain.inFlight() === 0;",
+    suite: "browser",
+    expect: "waits for a response that arrives after the sweep has ended",
+  },
+  {
+    id: "network-drain-counts-only-completions",
+    why: "#156 - a drain that never learns a request started is idle from the first instant and returns immediately, which looks exactly like a page with nothing outstanding. The failure is silent in every offline test.",
+    file: "src/capture/record.ts",
+    find: "      page.on(\"request\", () => networkDrain.started());",
+    replace: "      page.on(\"request\", () => {});",
+    suite: "browser",
+    expect: "waits for a response that arrives after the sweep has ended",
+  },
 ];
