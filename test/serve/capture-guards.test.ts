@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capturePage } from "../../src/serve/tools/capture-page.ts";
@@ -45,12 +45,47 @@ test("capturePage reaches a private address only when the caller says so explici
     // The fixture site this repo tests against is on localhost, so the escape hatch has to exist.
     // Making it explicit is the point: the default denies, and reaching inside is a stated choice.
     //
-    // The fake browser always reports `https://example.com` as the page's origin, so this call
-    // still fails — at the cross-origin refusal, which is *after* the guard. That is the
-    // assertion: the address check let it through and something later stopped it.
+    // It succeeds, and that is the assertion: the address check let a loopback URL through because
+    // the caller said so, and nothing downstream second-guessed it.
+    //
+    // This used to assert that the call *failed* with `/cross-origin redirect/` — using the next
+    // stage's refusal as a proxy for "the guard let it through". #157 replaced that refusal, and
+    // a proxy assertion breaks whenever the stage it borrowed changes while saying nothing more
+    // about the guard it covers. The outcome the test is actually about is this one.
+    const result = await capturePage(
+      { url: "http://127.0.0.1:1/", outDir, allowPrivateNetwork: true },
+      launcher() as never,
+    );
+    expect(result.archive).toBe(outDir);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("capturePage refuses when a redirect lands on a private address", async () => {
+  // #157. The pre-flight check above only sees the URL the caller asked for. Until this, the
+  // pairing that covered the redirect leg was `collectEnvironment` refusing any cross-origin
+  // final origin outright — which also made every apex-to-www site unarchivable. With that
+  // refusal replaced, the address policy has to reach the origin the page actually landed on, or
+  // a public URL redirecting to cloud metadata is archived to disk instead of thrown away.
+  //
+  // The fake page always reports `https://example.com` as its origin, so asking for a different
+  // host makes this a redirect; resolving that host to a link-local address makes it the
+  // dangerous kind.
+  const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-redirect-")), "archive");
+  try {
     await expect(
-      capturePage({ url: "http://127.0.0.1:1/", outDir, allowPrivateNetwork: true }, launcher() as never),
-    ).rejects.toThrow(/cross-origin redirect/);
+      capturePage(
+        {
+          url: "https://not-example.test/",
+          outDir,
+          resolveHost: async (host) =>
+            host === "example.com" ? ["169.254.169.254"] : ["93.184.216.34"],
+        },
+        launcher() as never,
+      ),
+    ).rejects.toThrow(/link-local/i);
+    expect(existsSync(outDir)).toBe(false);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
