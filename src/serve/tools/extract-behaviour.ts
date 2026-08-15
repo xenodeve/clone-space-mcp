@@ -16,7 +16,7 @@ export interface ExtractBehaviourParams {
 export async function extractBehaviourFromArchive(
   params: ExtractBehaviourParams,
   launcher: ReplayLauncher,
-): Promise<BehaviourGraph & { aborted: string[] }> {
+): Promise<BehaviourGraph & { aborted: string[]; unservable: number }> {
   const browser = await launcher.launch();
   try {
     const replay = await replayArchive({ archive: params.archive, browser });
@@ -24,8 +24,9 @@ export async function extractBehaviourFromArchive(
       const graph = await extractBehaviour(replay);
       // The aborted list travels with the graph on purpose: a graph extracted from a replay that
       // could not serve everything describes a page that did not fully run, and a caller reading
-      // the nodes without that number would not know.
-      return { ...graph, aborted: replay.aborted };
+      // the nodes without that number would not know. `unservable` is the same warning one step
+      // earlier: those requests were already missing when the archive was written.
+      return { ...graph, aborted: replay.aborted, unservable: replay.unservable };
     } finally {
       await replay.close();
     }
