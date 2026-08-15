@@ -2,7 +2,9 @@ import { mkdir, mkdtemp, readFile, readdir, rename, rm, rmdir, stat, writeFile }
 import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import {
+  assertOriginsAllowed,
   collectEnvironment,
+  originsInRedirectChain,
   type EnvironmentV1,
   type EnvironmentPage,
   type ReplayContext,
@@ -27,6 +29,7 @@ import {
   TRANSCRIPT_SCHEMA_VERSION,
   type InteractionTranscriptV1,
 } from "./transcript.ts";
+import { createNetworkDrain, NETWORK_DRAIN_DEADLINE_MS } from "./network-drain.ts";
 import { redactHarArchive } from "./redact.ts";
 import {
   buildCommit,
@@ -61,6 +64,12 @@ interface CaptureHarPage extends EnvironmentPage {
   goto(url: string, options: { waitUntil: "load" }): Promise<unknown>;
   on(event: "response", handler: (response: CaptureHarResponse) => void): void;
   on(event: "websocket", handler: () => void): void;
+  // #156. Counting requests in and out is the only way capture can tell "the DOM went quiet" from
+  // "the page has nothing outstanding" — the sweep's own quiet window measures the first and is
+  // routinely wrong about the second.
+  on(event: "request", handler: () => void): void;
+  on(event: "requestfinished", handler: () => void): void;
+  on(event: "requestfailed", handler: () => void): void;
   evaluate<Result, Arg>(pageFunction: (arg: Arg) => Result | Promise<Result>, arg?: Arg): Promise<Result>;
 }
 
@@ -166,6 +175,13 @@ export interface CaptureHarOptions {
   volatileQueryKeys?: readonly string[];
   /** Capture termination budgets (§6.10). Defaults to the documented set. */
   budgets?: Partial<Budgets>;
+  /**
+   * Decide whether an origin other than the requested one may be captured (#157) — applied to
+   * every hop of the navigation, not only where it ended up. **Absent means refuse**, which is
+   * what this function did for any origin change before #157; `capture_page` supplies the same
+   * address check it runs pre-flight.
+   */
+  assertOriginAllowed?: (origin: string) => Promise<void>;
 }
 
 async function assertEmptyOutputDirectory(path: string): Promise<void> {
@@ -190,6 +206,8 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
   const stagingRoot = await mkdtemp(join(archiveParent, `.${basename(archiveRoot)}-capture-`));
   const stagingHarPath = resolve(stagingRoot, HAR_FILE_NAME);
   const runStartedAt = performance.now();
+  const networkDrain = createNetworkDrain();
+  let networkDrainSettled = true;
 
   try {
     const context = await options.browser.newContext({
@@ -233,6 +251,11 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       // The listener and domain are installed before navigation. If either setup step fails,
       // capture aborts instead of publishing an archive with incomplete ServiceWorker coverage;
       // therefore this flag's no-positive undetermined state is unreachable.
+      const documentOrigins = new Set<string>([new URL(options.url).origin]);
+      // #157. A registration is this page's dependency when its scope is an origin the document
+      // actually occupies. Comparing against the *requested* origin alone reported `false` for
+      // every apex-to-www site, where the worker registers on `www` — invisible until the redirect
+      // stopped aborting the capture. The set gains the navigation's origins once `goto` returns.
       cdp.on("ServiceWorker.workerRegistrationUpdated", (event) => {
         if (!observingDependencies) return;
         if (
@@ -240,7 +263,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
             (registration) =>
               !registration.isDeleted &&
               registration.scopeURL !== undefined &&
-              new URL(registration.scopeURL).origin === new URL(options.url).origin,
+              documentOrigins.has(new URL(registration.scopeURL).origin),
           )
         ) {
           serviceWorkerDependent = true;
@@ -287,7 +310,19 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         );
       });
 
-      await page.goto(options.url, { waitUntil: "load" });
+      // #156. Registered before the navigation, or the drain misses every request the document
+      // itself fires — the counter has to be watching before there is anything to count.
+      page.on("request", () => networkDrain.started());
+      page.on("requestfinished", () => networkDrain.settled());
+      page.on("requestfailed", () => networkDrain.settled());
+
+      // #157. The policy applies to every origin the navigation passed through. Checking only the
+      // final one leaves `public -> link-local -> public` publishing the middle hop's request and
+      // response, which `recordHar` has already written by the time anything looks at the origin.
+      const navigation = await page.goto(options.url, { waitUntil: "load" });
+      const navigatedOrigins = originsInRedirectChain(navigation);
+      await assertOriginsAllowed(navigatedOrigins, new URL(options.url).origin, options.assertOriginAllowed);
+      for (const origin of navigatedOrigins) documentOrigins.add(origin);
 
       // §6.7/§6.11. Installed after navigation and before the sweep, so every scroll the sweep
       // drives is recorded with the container that actually moved. Events during load are not
@@ -437,6 +472,7 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         browserChannel: options.browserChannel,
         requested: options.environment,
         storageAllowlist: options.storageAllowlist,
+        assertOriginAllowed: options.assertOriginAllowed,
       });
       // A same-origin navigation during collection would leave environment.json describing one
       // document under an epoch naming another — an archive that reads as coherent while
@@ -481,6 +517,17 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
         chunks: drained.events.length > 0 ? [assembleChunk(drained.events, 1, 0).chunk] : [],
       };
 
+      // #156, second deliverable, and it belongs **here** rather than beside the post-sweep drains.
+      // Measured on `https://www.chaingpt.org/` with the wait placed right after the sweep: the
+      // drain reached zero and the archive still published 2 entries with no response, because the
+      // page kept issuing requests while the checkpoint and the environment were being collected.
+      // The observation boundary is the last moment anything can still arrive, so that is where
+      // the waiting goes.
+      //
+      // Everything above waits for work *this process* started. This waits for the page's own, and
+      // it is bounded for the same reason: a tracker that never answers is ordinary on a real page,
+      // and waiting for one is how capture stops terminating.
+      networkDrainSettled = await networkDrain.idle(NETWORK_DRAIN_DEADLINE_MS);
       observingDependencies = false;
       capabilities = {
         serviceWorkerDependent,
@@ -573,6 +620,29 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     // checkpoint DOM node count, then record why capture stopped so a truncated capture is
     // distinguishable from a complete one.
     const harBytes = (await stat(stagingHarPath)).size;
+    const redactedHar = JSON.parse(await readFile(stagingHarPath, "utf8")) as {
+      log?: { entries?: HarRequestEntry[] };
+    };
+    const harEntries = redactedHar.log?.entries;
+    if (harEntries === undefined) {
+      throw new Error("capture: redacted HAR has no log.entries");
+    }
+    // §6.10 + #156. Playwright writes both a failed request and one still in flight at teardown
+    // with `response.status: -1`, and only `_failureText` tells them apart. The distinction is the
+    // whole point: a failure is what the live browser saw and the archive is faithful for
+    // recording it, while an outstanding response is capture stopping before the answer arrived.
+    // A real HTTP status is >= 100, so this catches the sentinel without depending on which
+    // negative value a future version picks.
+    const responseless = harEntries.map(
+      (entry) => (entry as { response?: { status?: unknown; _failureText?: unknown } }).response,
+    ).filter((response) => {
+      const status = response?.status;
+      return typeof status !== "number" || status < 100;
+    });
+    const failedRequests = responseless.filter(
+      (response) => response?._failureText !== undefined,
+    ).length;
+    const unansweredRequests = responseless.length - failedRequests;
     const terminationStats = {
       sweepCheckpoints: sweepStats.sweepCheckpoints,
       scrolls: sweepStats.scrolls,
@@ -580,9 +650,12 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
       bytes: harBytes,
       nodes: nodeCount,
       height: sweepStats.height,
+      unansweredRequests,
+      failedRequests,
+      networkDrainSettled,
     };
     const terminationDecision = evaluateBudget(sweepBudgets, terminationStats);
-    const terminationOutcomeValue = terminationOutcome(terminationDecision);
+    const terminationOutcomeValue = terminationOutcome(terminationDecision, terminationStats);
     await writeFile(
       resolve(stagingRoot, TERMINATION_FILE_NAME),
       `${JSON.stringify(
@@ -599,13 +672,6 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     );
     // The producer check: no two distinct archived raw URLs may collapse under the policy for
     // the same method — replay must never be forced to choose between different responses.
-    const redactedHar = JSON.parse(await readFile(stagingHarPath, "utf8")) as {
-      log?: { entries?: HarRequestEntry[] };
-    };
-    const harEntries = redactedHar.log?.entries;
-    if (harEntries === undefined) {
-      throw new Error("capture: redacted HAR has no log.entries");
-    }
     const ambiguous = findAmbiguousNormalizedRequests(harEntries, volatileKeys);
     if (ambiguous.length > 0) {
       throw new Error(
