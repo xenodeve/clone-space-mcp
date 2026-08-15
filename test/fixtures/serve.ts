@@ -202,6 +202,7 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           <pay-button id="throwing-element" role="button">Continue</pay-button>
 
           <button id="ok-toggle" type="button">Show details</button>
+          <button id="r-text-under-title" type="button" title="Open panel">Delete account</button>
           <div id="ok-hover" style="cursor:pointer">Read more
             <span id="inherited-cursor">inner</span>
             <svg width="8" height="8"><g id="inherited-svg"><path d="M0 0h8v8H0z"/></g></svg>

@@ -701,4 +701,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "stops a click on an element the policy would now refuse — the drift that does damage",
   },
+  {
+    id: "interaction-title-masks-text",
+    why: "Issue #176 — preferring an attribute over text judges `<button title=\"Open panel\">Delete account</button>` on the benign one and clicks it.",
+    file: "src/capture/interaction.ts",
+    find: "element.innerText || \"\"\n    ].join(\" \")",
+    replace: "\"\"\n    ].join(\" \")",
+    suite: "browser",
+    expect: "a benign title does not mask destructive text",
+  },
 ];

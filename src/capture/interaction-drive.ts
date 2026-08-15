@@ -29,10 +29,9 @@ export interface DrivablePage {
 /**
  * Read back every fact the policy judges, for the element the selector resolves to *now*.
  *
- * Each read must match `DISCOVERY_SCRIPT`'s exactly. `||` rather than `??` on the label is not a
- * style choice: `getAttribute` returns `""` for `aria-label=""`, which is not null, so `??` would
- * keep the empty string where discovery falls through to `title` — and every such element would
- * then report stale.
+ * Each read must match `DISCOVERY_SCRIPT`'s exactly, including the label being every source joined
+ * rather than the first non-empty one — see `labelOf` there for why preferring an attribute lets a
+ * benign `title` mask destructive text.
  */
 function observeElement(selector: string): ObservedElement {
   const element = document.querySelector(selector);
@@ -50,8 +49,15 @@ function observeElement(selector: string): ObservedElement {
       sameOrigin: true,
     };
   }
-  const attributed = element.getAttribute("aria-label") || element.getAttribute("title") || "";
-  const text = attributed !== "" ? attributed : (element as HTMLElement).innerText || "";
+  const label = [
+    element.getAttribute("aria-label") || "",
+    element.getAttribute("title") || "",
+    (element as HTMLElement).innerText || "",
+  ]
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
   const href = element.getAttribute("href") || element.getAttribute("action") || "";
   let sameOrigin = true;
   if (href !== "") {
@@ -65,7 +71,7 @@ function observeElement(selector: string): ObservedElement {
     found: true,
     tag: element.tagName.toLowerCase(),
     role: element.getAttribute("role") || "",
-    label: text.slice(0, 120),
+    label,
     type: (element.getAttribute("type") || "").toLowerCase(),
     href: element.getAttribute("href") || "",
     target: element.getAttribute("target") || "",

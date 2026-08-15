@@ -319,11 +319,13 @@ export function planActions(candidates: Candidate[], limits: InteractionLimits):
   const truncated: Record<ActionKind, number> = { scroll: 0, hover: 0, focus: 0, click: 0 };
   const actions: PlannedAction[] = [];
   for (const kind of KIND_ORDER) {
-    const offered = byKind.get(kind)!;
-    for (const action of offered) {
-      const kindFull = actions.filter((planned) => planned.kind === kind).length >= limits.perKind;
-      if (kindFull || actions.length >= limits.total) truncated[kind] += 1;
-      else actions.push(action);
+    let kept = 0;
+    for (const action of byKind.get(kind)!) {
+      if (kept >= limits.perKind || actions.length >= limits.total) truncated[kind] += 1;
+      else {
+        actions.push(action);
+        kept += 1;
+      }
     }
   }
 
@@ -429,8 +431,12 @@ export const DISCOVERY_SCRIPT = `(() => {
         const anchored = "#" + CSS.escape(parent.id) + " > " + chain.join(" > ");
         if (resolvesToOne(anchored)) return anchored;
       }
-      const rooted = "html > " + chain.join(" > ");
-      if (resolvesToOne(rooted)) return rooted;
+      // A path rooted at <html> can only resolve once the chain reaches a direct child of it, so
+      // testing it at every level costs one querySelectorAll per ancestor and can never succeed.
+      if (parent === document.documentElement) {
+        const rooted = "html > " + chain.join(" > ");
+        if (resolvesToOne(rooted)) return rooted;
+      }
       current = parent;
     }
     return "";
@@ -465,15 +471,21 @@ export const DISCOVERY_SCRIPT = `(() => {
     if (href === "") return true;
     try { return new URL(href, location.href).origin === location.origin; } catch (error) { return false; }
   };
-  // An icon button carries its meaning in \`title\` and has no text at all, so a label read from
-  // text alone hands \`refuse\` an empty string and every wording rule passes.
-  // \`observeElement\` in interaction-drive.ts must compute this identically — if the two ever
-  // disagree, every action reports stale and the browser suite fails.
-  const labelOf = (element) => {
-    const attributed = element.getAttribute("aria-label") || element.getAttribute("title") || "";
-    const text = attributed !== "" ? attributed : element.innerText || "";
-    return text.slice(0, 120);
-  };
+  // Everything the element says, joined — not the first source that is non-empty.
+  //
+  // An icon button carries its meaning in \`title\` and has no text at all, so reading text alone
+  // hands \`refuse\` an empty string and every wording rule passes. But *preferring* the attribute
+  // is worse: \`<button title="Open panel">Delete account</button>\` would then be judged on
+  // "Open panel" and clicked. A wording rule should see whatever the element says, wherever it
+  // says it, so the sources are concatenated and none of them can mask another.
+  //
+  // \`observeElement\` in interaction-drive.ts must compute this identically.
+  const labelOf = (element) =>
+    [
+      element.getAttribute("aria-label") || "",
+      element.getAttribute("title") || "",
+      element.innerText || ""
+    ].join(" ").replace(/\\s+/g, " ").trim().slice(0, 120);
   const structural = focusables + ", [role], [onclick], form, [class*=btn], [class*=button]";
   const out = [];
   const cursors = new Map();

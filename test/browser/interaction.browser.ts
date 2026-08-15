@@ -172,6 +172,13 @@ test("the driver actually scrolled a nested container", async () => {
   assert.equal(await page.evaluate(() => document.body.dataset.scrolled), "yes");
 });
 
+test("a benign title does not mask destructive text", () => {
+  // `<button title="Open panel">Delete account</button>`. Reading the first non-empty source and
+  // preferring the attribute judges this on "Open panel" and clicks it. Every source is joined
+  // precisely so neither can hide the other.
+  assert.equal(ruleFor("r-text-under-title"), "destructive-wording");
+});
+
 test("the run never navigated, and so abandoned nothing", () => {
   assert.equal(report.navigatedTo, "");
   assert.equal(report.abandoned, 0);
