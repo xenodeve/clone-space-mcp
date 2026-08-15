@@ -235,3 +235,4 @@ test("extract_behaviour returns the observation summary an agent can act on", as
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
