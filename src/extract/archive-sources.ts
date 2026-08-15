@@ -9,12 +9,13 @@
  * quietly depend on the site still being up.
  *
  * **A HAR is captured from a site nobody controls**, so every path it names is untrusted. A body
- * stored as a sibling file is read only when it resolves inside the archive root; a `_file` of
- * `../../../etc/passwd` reads nothing.
+ * stored as a sibling file is read only when the path is relative, resolves inside the archive
+ * root, is not a symbolic link, and is a regular file — the same four rules `src/capture/redact.ts`
+ * applies to the same field. See `bodyOf` for why the first of those is not optional.
  */
 
-import { readFile } from "node:fs/promises";
-import { relative, resolve as resolvePath } from "node:path";
+import { lstat, readFile } from "node:fs/promises";
+import { isAbsolute, relative, resolve as resolvePath } from "node:path";
 import { parseSourceMap, resolveFrame, type ResolvedFrame, type SourceMap } from "./sourcemap.ts";
 
 /** Lines of original source shown either side of a cited line. */
@@ -32,8 +33,20 @@ export interface SourceIndex {
 
 interface HarEntry {
   request?: { url?: unknown };
-  response?: { redirectURL?: unknown; content?: { text?: unknown; _file?: unknown } };
+  response?: {
+    redirectURL?: unknown;
+    content?: { mimeType?: unknown; text?: unknown; _file?: unknown };
+  };
 }
+
+/**
+ * Media types that cannot be a script or a sourcemap, skipped before their body is read.
+ *
+ * Measured on a `www.chaingpt.org` archive: reading every body held **54.9M characters** for one
+ * index call, including a 1.7MB `.wasm` and a 1.2MB document, to find 10 maps. None of it could
+ * ever carry a `sourceMappingURL` this module would follow.
+ */
+const UNREADABLE_PREFIXES = ["image/", "video/", "audio/", "font/", "application/wasm"];
 
 /** Redirect hops followed before giving up, so a cycle in a captured HAR cannot spin. */
 const MAX_REDIRECT_HOPS = 10;
@@ -43,15 +56,43 @@ function entriesOf(har: unknown): HarEntry[] {
   return Array.isArray(log?.entries) ? (log.entries as HarEntry[]) : [];
 }
 
-/** Read a body, inline or from a sibling file that must resolve inside the archive. */
+/**
+ * Read a body, inline or from a sibling file.
+ *
+ * **The path checks match `src/capture/redact.ts:154` deliberately, rule for rule.** A first
+ * version here checked only that `relative()` did not climb out, and a review plus a probe showed
+ * that is not containment on Windows: `relative()` cannot express a path on another drive, so it
+ * returns that absolute path unchanged, which does not start with `..` and round-trips through
+ * `resolve`. With the repo on `D:`, a `_file` of `C:\Windows\win.ini` was **allowed**.
+ *
+ * So an absolute path is refused for being absolute, a symbolic link is refused, and the target
+ * must be a regular file — the same three the redactor already applies to the same field. They are
+ * duplicated rather than shared because `redact.ts` is a standing park condition in this repo;
+ * extracting a common helper means unparking it, and is worth doing when that happens.
+ *
+ * **Of those, only two are load-bearing and only one is tested.** The absolute-path refusal has a
+ * corpus entry. The `isFile` half is redundant with `readFile`, which already fails `EISDIR` — a
+ * corpus entry written for it SURVIVED, and was deleted rather than kept as evidence of nothing.
+ * The **symbolic-link refusal is the one that matters and has no test on this platform**: creating
+ * a symlink here fails `EPERM` without elevation, measured. It is kept because a symlink is the
+ * one shape `readFile` would happily follow out of the archive.
+ *
+ * Unlike the redactor this returns `undefined` rather than throwing: a map is supplemental
+ * evidence, and one unreadable body must not end an extraction.
+ */
 async function bodyOf(root: string, entry: HarEntry): Promise<string | undefined> {
   const content = entry.response?.content;
+  const mimeType = typeof content?.mimeType === "string" ? content.mimeType.toLowerCase() : "";
+  if (UNREADABLE_PREFIXES.some((prefix) => mimeType.startsWith(prefix))) return undefined;
   if (typeof content?.text === "string") return content.text;
-  if (typeof content?._file !== "string") return undefined;
+  if (typeof content?._file !== "string" || content._file.length === 0) return undefined;
+  if (isAbsolute(content._file)) return undefined;
   const path = resolvePath(root, content._file);
   const inside = relative(root, path);
   if (inside === "" || inside.startsWith("..") || resolvePath(root, inside) !== path) return undefined;
   try {
+    const attachment = await lstat(path);
+    if (attachment.isSymbolicLink() || !attachment.isFile()) return undefined;
     return await readFile(path, "utf8");
   } catch {
     return undefined;

@@ -957,4 +957,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "states the motion it has no node for, so a node count cannot read as completeness",
   },
+  {
+    id: "archive-sources-absolute-path-allowed",
+    why: "Issue #178 - relative() cannot express a path on another Windows drive, so it returns that absolute path unchanged and the containment test passes. Probed with the repo on D:, a _file naming a path on C: was ALLOWED. src/capture/redact.ts:156 already refuses isAbsolute for the same field.",
+    file: "src/extract/archive-sources.ts",
+    find: "  if (isAbsolute(content._file)) return undefined;",
+    replace: "",
+    suite: "bun",
+    expect: "refuses an absolute body path, even one that lands inside the archive",
+  },
 ];

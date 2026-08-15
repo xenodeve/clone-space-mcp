@@ -103,6 +103,32 @@ describe("indexArchiveSources", () => {
     }
   });
 
+  test("refuses an absolute body path, even one that lands inside the archive", async () => {
+    // The rule `src/capture/redact.ts:156` already enforces: *"HAR attachment path must be a
+    // non-empty relative path"*. An absolute path is refused for being absolute, not for where it
+    // points — which is why this test uses one pointing **inside** the root.
+    //
+    // Why the rule and not the escape: `relative()` cannot express a path on another Windows drive,
+    // so it returns that absolute path unchanged, which does not start with ".." and round-trips
+    // through `resolve`. Probed with the repo on `D:` — `C:\Windows\win.ini` was **ALLOWED** by the
+    // path-shape guard alone. A test written as a cross-drive escape would pass here for a reason
+    // that has nothing to do with the guard, because `tmpdir()` and the archive share a drive on
+    // this machine. That is the same way the `../../../etc/passwd` version of the traversal test
+    // could not fail.
+    //
+    // Writing a weaker containment check beside the repo's existing hardened one is what
+    // [[an-existence-check-is-three-checks]] warns about, and this is that mistake recurring.
+    writeFileSync(join(root, "inside.js"), "function r(){}\n//# sourceMappingURL=m.map");
+    writeFileSync(
+      join(root, "network.har"),
+      har([
+        entry("https://x.test/app.js", { file: join(root, "inside.js") }),
+        entry("https://x.test/m.map", { text: MAP }, "application/json"),
+      ]),
+    );
+    expect((await indexArchiveSources(root)).mapped).toEqual([]);
+  });
+
   test("decodes a map inlined as a data: URL", async () => {
     const inline = `data:application/json;base64,${Buffer.from(MAP).toString("base64")}`;
     writeFileSync(
