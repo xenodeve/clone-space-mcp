@@ -82,8 +82,27 @@ async function runMutation(mutation: Mutation): Promise<MutationResult> {
   }
 }
 
+/**
+ * Optional id filters, e.g. `bun run mutate interaction sourcemap`.
+ *
+ * The corpus runs the whole suite once per entry, and at 100 entries a full pass no longer fits in
+ * one sitting — which is how a mechanism stops being run. A filtered pass is a **partial** result
+ * and says so: it prints what it skipped, and it never sets a green exit code, because "the eight
+ * entries I chose all passed" must not be reportable as "the corpus passed".
+ */
+const filters = process.argv.slice(2);
+const selected = filters.length === 0
+  ? MUTATIONS
+  : MUTATIONS.filter((mutation) => filters.some((filter) => mutation.id.includes(filter)));
+
+if (filters.length > 0) {
+  console.log(
+    `FILTERED: running ${selected.length} of ${MUTATIONS.length} entries matching ${filters.join(", ")} — this is not a corpus pass`,
+  );
+}
+
 const results: MutationResult[] = [];
-for (const mutation of MUTATIONS) {
+for (const mutation of selected) {
   results.push(await runMutation(mutation));
   if (interrupted) {
     console.log(`INTERRUPTED after ${mutation.id} — the remaining entries were not run`);
@@ -100,6 +119,11 @@ for (const result of results) {
 }
 
 // Escalate only, so a non-zero code set anywhere earlier in the run survives to the exit.
-if (!(results.length === MUTATIONS.length && results.every(({ status }) => status === "CAUGHT"))) {
+// A filtered run can never be green: it did not run the corpus, and an exit code that cannot tell
+// the two apart is how a partial pass gets quoted as a full one.
+if (
+  filters.length > 0 ||
+  !(results.length === MUTATIONS.length && results.every(({ status }) => status === "CAUGHT"))
+) {
   process.exitCode = 1;
 }

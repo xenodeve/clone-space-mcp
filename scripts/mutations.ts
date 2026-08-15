@@ -919,4 +919,33 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "returns nothing for a version the format does not define",
   },
+  // #178, the archive half. A HAR comes from a site nobody controls, so these are the rules that
+  // decide what the extract phase is willing to read and believe.
+  {
+    id: "archive-sources-escapes-the-archive",
+    why: "Issue #178 — a `_file` of ../../../etc/passwd would have the extract phase read an arbitrary file off the machine running it.",
+    file: "src/extract/archive-sources.ts",
+    find: 'if (inside === "" || inside.startsWith("..") || resolvePath(root, inside) !== path) return undefined;',
+    replace: "if (false) return undefined;",
+    suite: "bun",
+    expect: "refuses a body path that points outside the archive",
+  },
+  {
+    id: "archive-sources-takes-the-first-mapping-url",
+    why: "Issue #178 — a bundler appends its declaration last; taking the first lets any string literal in the file point the resolver at a map of its choosing.",
+    file: "src/extract/archive-sources.ts",
+    find: "return matches.at(-1)?.[1];",
+    replace: "return matches.at(0)?.[1];",
+    suite: "bun",
+    expect: "takes the last sourceMappingURL, which is the one a bundler appends",
+  },
+  {
+    id: "archive-sources-accepts-an-unparsed-map",
+    why: "Issue #178 — a 404 page served at the map URL is not a sourcemap, and indexing it reports a script as mapped that cannot resolve anything.",
+    file: "src/extract/archive-sources.ts",
+    find: "if (map !== undefined) maps.set(url, map);",
+    replace: "maps.set(url, map as SourceMap);",
+    suite: "bun",
+    expect: "ignores a declared map whose body is not a sourcemap",
+  },
 ];
