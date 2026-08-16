@@ -21,8 +21,10 @@ if [ "$status" -ne 0 ]; then
   echo "" >&2
   echo "pre-push blocked by a T4 guard (above)." >&2
   echo "  Fix the cause, or push from a wip/ branch for a deliberate freeze." >&2
-  echo "  Bypassing with --no-verify is possible and discouraged: the same" >&2
-  echo "  checks run in CI, where they cannot be bypassed." >&2
+  echo "  Bypassing with --no-verify is possible and discouraged." >&2
+  echo "  It used to say the same checks run in CI where they cannot be" >&2
+  echo "  bypassed. They do not: Actions is locked account-wide (#2), so no" >&2
+  echo "  job has executed a step. Check with: bun run ci:lock" >&2
 fi
 
 exit "$status"

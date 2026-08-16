@@ -6,6 +6,20 @@
 
 ---
 
+## A merge gate that does not need Actions (2026-08-16, #2)
+
+**Goal:** `CLAUDE.md` states the consequence of the locked CI plainly — *"a human merging on the web is currently ungated"* — because `t4-gate` and the `pre-push` guards only ever see commands run locally. That is the actual hole, and it does not need Actions to close.
+
+**A commit status does not need Actions.** Anything with a token can post one against a SHA and a ruleset can require its context. `bun run verify:status` runs the verify command and posts the result to the head SHA as `t4-verify`. Proven end to end today: `posted success for bc782f7a… : bun run verify passed locally`.
+
+**Its first run posted a `failure` that was not the repo's.** It spawned `bun run verify` through a shell, and `bun` is not on this machine's process PATH — the constraint `CLAUDE.md` records — so the output was `'bun' is not recognized as an internal or external command` and the status said the repo was red. It now spawns `process.execPath`, which **is** bun. A reporter that can post someone else's failure as yours is worse than no reporter.
+
+**Arming it is deliberately not done in code.** Adding the context to ruleset `20028550` blocks any PR the command was never run against — the same failure #2 cites for the Actions checks — and that is the owner's call. And it is **self-attested**: the machine that ran verify reports the result, so it guards against forgetting, not against lying. The four Actions checks remain the real answer and #2 stays open for them.
+
+**One false sentence removed.** `.githooks/pre-push` told anyone it blocked that *"the same checks run in CI, where they cannot be bypassed."* They do not, and have not since the account was locked. It now says so and points at `bun run ci:lock`.
+
+**Evidence:** `bun run verify` — green at the SHA the status was posted for. Corpus entry `verify-status-reports-a-failed-run-as-success` CAUGHT.
+
 ## The CI exemption became a command instead of a thing to remember (2026-08-16, #2)
 
 **Goal:** GitHub Actions is locked account-wide for billing, so this repo merges under a standing exemption. `CLAUDE.md` already said the important half is the **expiry** — and that expiry was a thing a person had to notice.
