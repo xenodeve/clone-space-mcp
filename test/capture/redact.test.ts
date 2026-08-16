@@ -34,9 +34,24 @@ type Har = {
 };
 
 async function createArchive(har: Har): Promise<{ root: string; harPath: string }> {
-  const root = await mkdtemp(join(tmpdir(), "clone-space-redact-"));
+  return createArchiveIn(await mkdtemp(join(tmpdir(), "clone-space-redact-")), har, ".");
+}
+
+/**
+ * The same archive, under a parent the caller owns (#196). A test that writes anything *beside*
+ * the archive root needs to know what that neighbourhood is, or it ends up naming a fixed child
+ * of the shared temp directory.
+ */
+async function createArchiveIn(
+  parent: string,
+  har: Har,
+  name = "archive",
+): Promise<{ root: string; harPath: string }> {
+  const root = name === "." ? parent : join(parent, name);
+  await mkdir(root, { recursive: true });
   const harPath = join(root, "network.har");
-  await writeFile(harPath, `${JSON.stringify(har)}\n`);
+  await writeFile(harPath, `${JSON.stringify(har)}
+`);
   return { root, harPath };
 }
 
@@ -203,7 +218,15 @@ test("redacts attached WebSocket frames in both directions", async () => {
 });
 
 test("refuses an attached request body that traverses outside the archive", async () => {
-  const { root, harPath } = await createArchive({
+  // #196. The sentinel lives in a parent created for this run, not in `tmpdir()` itself. Written
+  // as `join(root, "..", "outside.txt")` it named `<tmpdir>/outside.txt`, a fixed path shared with
+  // everything on the machine — and it failed inside `bun run verify` with the file emptied, then
+  // passed on its own minutes later. **What emptied it is not known.** No other test names that
+  // path and no corpus entry touches `src/capture/redact.ts`, so the obvious suspects are ruled
+  // out rather than confirmed; a fixed path in a shared directory is worth removing on its own
+  // terms. The two tests after this one already build their own directory; this one now does too.
+  const parent = await mkdtemp(join(tmpdir(), "clone-space-redact-traversal-"));
+  const { root, harPath } = await createArchiveIn(parent, {
     log: {
       entries: [
         {
@@ -220,15 +243,17 @@ test("refuses an attached request body that traverses outside the archive", asyn
       ],
     },
   });
+  // Still one level above the archive root, so `../outside.txt` still escapes it — the property
+  // the test is about is unchanged; only the neighbourhood is now this run's own.
   const outsidePath = join(root, "..", "outside.txt");
+  expect(outsidePath).toBe(join(parent, "outside.txt"));
 
   try {
     await writeFile(outsidePath, "OUTSIDE_SENTINEL");
     await expect(redactHarArchive(harPath)).rejects.toThrow(/escapes archive root/);
     expect(await readFile(outsidePath, "utf8")).toBe("OUTSIDE_SENTINEL");
   } finally {
-    await rm(root, { recursive: true, force: true });
-    await rm(outsidePath, { force: true });
+    await rm(parent, { recursive: true, force: true });
   }
 });
 
