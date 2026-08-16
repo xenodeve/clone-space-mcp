@@ -15,35 +15,57 @@ import { perturbedFields } from "../../src/equivalence/perturbation.ts";
  */
 describe("perturbedFields", () => {
   test("names a field the hooks moved", () => {
-    expect(perturbedFields({ "dom.elements": 2767 }, { "dom.elements": 2765 })).toEqual([
+    expect(perturbedFields({ "dom.elements": 2767 }, [{ "dom.elements": 2765 }])).toEqual([
       "dom.elements",
     ]);
   });
 
   test("says nothing when the hooks changed nothing", () => {
-    expect(perturbedFields({ a: 1, b: "x" }, { a: 1, b: "x" })).toEqual([]);
+    expect(perturbedFields({ a: 1, b: "x" }, [{ a: 1, b: "x" }])).toEqual([]);
   });
 
   /**
-   * The instrumented drive produces fields the plain one cannot — the observation summary is the
-   * instrument's own output, not a change it made to the page. Counting those as perturbation
-   * would make every instrumented run look maximally disturbed and the control useless.
+   * **The plain side is every pass, not the first one.** A delegated review named the scenario: a
+   * field reading `1, 2, 1` across three plain drives and `2` under hooks is a value the page
+   * produces on its own, and blaming the hooks for it would turn ordinary run-to-run noise into a
+   * finding. The gate already knows such a field is unstable; this control must not contradict it.
    */
-  test("a field only the instrumented drive produces is the instrument's output, not a perturbation", () => {
-    expect(perturbedFields({ a: 1, "observed.shaders": 4 }, { a: 1 })).toEqual([]);
+  test("a hooked value that any plain pass also produced is not a perturbation", () => {
+    expect(perturbedFields({ a: 2 }, [{ a: 1 }, { a: 2 }, { a: 1 }])).toEqual([]);
+  });
+
+  test("a hooked value no plain pass produced is a perturbation", () => {
+    expect(perturbedFields({ a: 3 }, [{ a: 1 }, { a: 2 }, { a: 1 }])).toEqual(["a"]);
   });
 
   /**
-   * The other direction is not symmetric. A field the page produced **without** hooks and stopped
-   * producing **with** them is the hooks suppressing something, which is exactly what this control
-   * exists to catch.
+   * The digest publishes some fields **only when the page settled** — `layout.scrollHeight`,
+   * `motion.css.settled` and the rest are absent otherwise. So a field appearing under hooks and
+   * not without them is the hooks changing whether the page settled, which is a perturbation and
+   * one an earlier version of this function missed: it iterated the plain side only.
+   *
+   * Nothing in the digest is the instrument's own output — the observation summary travels through
+   * `drainObservations`, never through these fields — so there is no category of hooked-only field
+   * that ought to be excused.
    */
+  test("a field only the hooked drive produced is a perturbation", () => {
+    expect(perturbedFields({ a: 1, "layout.scrollHeight": 8486 }, [{ a: 1 }])).toEqual([
+      "layout.scrollHeight",
+    ]);
+  });
+
   test("a field the hooks suppressed is a perturbation", () => {
-    expect(perturbedFields({ a: 1 }, { a: 1, "motion.gsap": 198 })).toEqual(["motion.gsap"]);
+    expect(perturbedFields({ a: 1 }, [{ a: 1, "motion.gsap": 198 }])).toEqual(["motion.gsap"]);
+  });
+
+  test("a field absent from the hooked drive and from some plain pass is not a perturbation", () => {
+    // Absence is a reading like any other: if the plain side sometimes omits the field, the hooked
+    // side omitting it is a state the page reaches without help.
+    expect(perturbedFields({ a: 1 }, [{ a: 1, b: 2 }, { a: 1 }])).toEqual([]);
   });
 
   test("reports every moved field, sorted, so two runs are comparable", () => {
-    expect(perturbedFields({ b: 2, a: 1 }, { b: 3, a: 9 })).toEqual(["a", "b"]);
+    expect(perturbedFields({ b: 2, a: 1 }, [{ b: 3, a: 9 }])).toEqual(["a", "b"]);
   });
 
   /**
@@ -51,6 +73,11 @@ describe("perturbedFields", () => {
    * that was never measurable reads as something the hooks broke.
    */
   test("NaN against NaN is not a perturbation", () => {
-    expect(perturbedFields({ a: Number.NaN }, { a: Number.NaN })).toEqual([]);
+    expect(perturbedFields({ a: Number.NaN }, [{ a: Number.NaN }])).toEqual([]);
+  });
+
+  test("no plain passes at all is no measurement, not a clean one", () => {
+    // Returning `[]` here would claim the hooks moved nothing when nothing was compared.
+    expect(() => perturbedFields({ a: 1 }, [])).toThrow(/pass/);
   });
 });

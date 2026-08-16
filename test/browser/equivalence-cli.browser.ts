@@ -122,9 +122,10 @@ ${stdout}`);
  * not which fields it named — what the hooks move is a property of the page under test, and
  * pinning it here would make an unrelated fixture edit look like a regression in the control.
  *
- * Measured on `https://www.chaingpt.org/` the same day: `perturbed (2) dom.elements
- * dom.elements.afterInteraction`, with `dom.elements` absent from `unstable` — so it held across
- * three live and three replay passes and moved only when the hooks were installed.
+ * Measured on `https://www.chaingpt.org/` the same day: `perturbed (0)`, with `dom.elements` and
+ * `dom.elements.afterInteraction` in `unstable` — the control has not yet found a perturbation that
+ * survives comparison against every plain pass. An earlier reading of `perturbed (2)` on that site
+ * was withdrawn: it compared against one plain pass and blamed the hooks for the baseline's noise.
  */
 test("--measure-perturbation drives the control and reports what the hooks moved", () => {
   const url = new URL("/measure-and-freeze.html?at=module", servers.primary.url).href;

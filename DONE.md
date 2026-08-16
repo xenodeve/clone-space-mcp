@@ -6,27 +6,21 @@
 
 ---
 
-## The observation layer moves `dom.elements`, measured (2026-08-17, #171, PR #208)
+## The perturbation control, and the claim it withdrew within the hour (2026-08-17, #171, PR #208)
 
-#171's body asked for a **third drive mode** that never became a checkbox: *"instrumented against uninstrumented on the same side — with a perturbation budget."* The reason it belongs to slice 0 is that comparing an instrumented live page against an instrumented replay compares **two pages that both carry hooks**, and no number of same-mode passes can say whether the hooks moved the numbers.
+#171's body asked for a **third drive mode** that never became a checkbox: *"instrumented against uninstrumented on the same side — with a perturbation budget."* It belongs to slice 0 because comparing an instrumented live page against an instrumented replay compares **two pages that both carry hooks**, and no number of same-mode passes can say whether the hooks moved the numbers.
 
-`bun run equivalence <url> --measure-perturbation` drives the live page one extra time with the observation layer installed. On `https://www.chaingpt.org/`:
+`bun run equivalence <url> --measure-perturbation` drives the live page once more with the observation layer installed.
 
-```
-unstable (1)   interaction.performed
-baseline    live 3  replay 3
-perturbed (2)  dom.elements  dom.elements.afterInteraction
-```
+**Its first measurement was wrong, and the story is the useful part.** It reported `perturbed (2) dom.elements dom.elements.afterInteraction` on `www.chaingpt.org`, and the attribution rested on those fields being absent from `unstable` — they had held across three live and three replay passes. **It compared the hooked drive against the first plain pass only.** A delegated review named the exact scenario: a field reading `1, 2, 1` across three plain drives and `2` under hooks is a value the page produces unaided.
 
-**`dom.elements` is not in `unstable`** — it held across three live and three replay passes and moved only under hooks, which is what driving the same side twice buys. `https://example.com/` reports `perturbed (0)` on the same command: a page with no scripts gives the hooks nothing to disturb.
+Comparing against **every** plain pass — perturbed only when the hooked reading matches none of them — is the fix. Re-measured immediately on the same site: **`perturbed (0)`**, with those same two fields now in `unstable (3)`. The earlier finding was the baseline's own noise, attributable-looking only because three passes happened to agree that time.
 
-**This qualifies what the issue recorded.** Its baseline was *"load 4,171 ms vs 3,361 ms, 61 vs 60 rAF frames per second, motion settling identically — below run-to-run noise"*. Those figures are not wrong; **they measured timing and never looked at the element count**, which is a field the gate compares. A later slice instrumenting both sides would be comparing a number the instrument itself moves.
+**What stands:** the control runs, reports, and distinguishes *measured and clean* from *not measured*. It has **not yet found a perturbation that survives comparison against every plain pass** — a much smaller statement than the one made an hour earlier, and **absence of a finding across two runs is not a budget**.
 
-**The budget is a set, not a tolerance.** A numeric slack needs a unit per field and the digest is a flat map of counts, strings and booleans with no shared scale — picking one per field would be the judgement this module exists to replace. A field the hooks moved carries no signal in an instrumented comparison, which is the conclusion `unstable` already reaches about a field that will not hold still, reached the same way: by measuring.
+**Two other review findings, one acted on and one recorded.** `perturbedFields` iterated the plain side alone, so a field the digest publishes *only when settled* appearing under hooks — the hooks changing whether it settled — was invisible; it now compares the union, and the asymmetry it used to guard was protecting against a case that cannot occur, because **nothing in the digest is the instrument's own output**. Not acted on: the instrumented drive reuses the plain side's interaction plan, which keeps the drives comparable but hides a perturbation that changes *which elements are discoverable*.
 
-**It changes no verdict, deliberately.** Nothing in the comparison the gate runs today carries hooks, so a perturbed field is evidence about a *future* slice rather than about this clone. Letting it move a verdict now would be the gate reporting a fact about its own roadmap.
-
-`perturbed` is **absent** when the control did not run, and `[]` when it ran and found nothing — the same distinction `unobserved` keeps out of `equal`. Three corpus entries, all CAUGHT, including the wiring one that lets the option be accepted, threaded and reported while the extra drive never happens.
+**The budget is a set, not a tolerance** — a numeric slack needs a unit per field and the digest has no shared scale. **It changes no verdict**, because nothing in today's comparison carries hooks. `perturbed` is **absent** when the control did not run and `[]` when it ran and found nothing. Five corpus entries, all CAUGHT, including the one that lets the option be accepted and reported while the extra drive never happens.
 
 ## The equivalence gate became a command anyone can run (2026-08-17, #171, PR #207)
 

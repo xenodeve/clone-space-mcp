@@ -72,37 +72,54 @@ The line worth reading twice is **`unstable (0)` in the failing run**. The stabi
 
 That is the open half of #187's criterion 5, now with a recorded instance rather than an argument: **the gate's treatment of `layout.scrollHeight` currently depends on whether three passes happened to agree.** `baselinePasses` (#203) publishes the count so a reader can see the basis; whether a `different` verdict should require both sides to have been measured at least twice is the decision that remains, and it contradicts a test written the other way on purpose.
 
-## The perturbation control — the hooks move `dom.elements`
+## The perturbation control — and a claim it withdrew within the hour
 
-`bun run equivalence https://www.chaingpt.org/ --measure-perturbation` drives the live page one
-extra time with the observation layer installed and compares it against the plain pass:
+`bun run equivalence <url> --measure-perturbation` drives the live page one extra time with the
+observation layer installed and compares that drive against the plain ones.
+
+**The first version of this section said the hooks move `dom.elements`. That claim is withdrawn.**
+
+The first run reported:
 
 ```
-equivalence INCOMPLETE  https://www.chaingpt.org/
-
-residual (0)
 unstable (1)   interaction.performed
-baseline    live 3  replay 3
 perturbed (2)  dom.elements  dom.elements.afterInteraction
 ```
 
-**`dom.elements` is not in `unstable`**, so it held across three live and three replay passes and
-moved *only* when the hooks were installed. The attribution is the whole point of driving the same
-side twice: run-to-run noise would have shown up in the baseline, and it did not.
+and the attribution rested on `dom.elements` being absent from `unstable` — it had held across three
+live and three replay passes, so the hooked drive differing looked like the hooks' doing.
 
-**This qualifies what #171's body recorded.** That entry measured the perturbation as *"load
-4,171 ms vs 3,361 ms, 61 vs 60 rAF frames per second, motion settling identically — below
-run-to-run noise, which is a baseline to defend rather than a reason to skip the control."* Those
-are timing figures, and they are not wrong. **They simply did not look at the element count**, which
-is one of the fields the gate compares.
+**It compared the hooked drive against the first plain pass only.** A delegated review named the
+scenario before any of this merged: a field reading `1, 2, 1` across three plain drives and `2` under
+hooks is a value the page produces unaided, and blaming the hooks for it turns run-to-run noise into
+a finding. Comparing against **every** plain pass — a field is perturbed only when the hooked reading
+matches none of them — is the fix. The same site, re-measured immediately after:
 
-So the conclusion the body drew — that the perturbation is small enough to work around — holds for
-the quantities it measured and does not extend to the digest. A later slice that instruments **both**
-sides would be comparing `dom.elements` values that the instrument itself moved on at least one
-real site.
+```
+unstable (3)   dom.elements  dom.elements.afterInteraction  motion.settled
+perturbed (0)
+```
 
-`https://example.com/` reports `perturbed (0)` on the same command, which is the control's own
-control: a page with no scripts gives the hooks nothing to disturb.
+The same two fields are now in `unstable`: on this run they moved across the plain baseline itself.
+So the earlier `perturbed (2)` was almost certainly the baseline's own noise, and it looked
+attributable only because three passes happened to agree that time.
+
+**What is left standing:** the control runs, reports, and distinguishes *measured and clean* from
+*not measured*. `https://example.com/` reports `perturbed (0)` as its own control — a page with no
+scripts gives the hooks nothing to disturb. **It has not yet found a perturbation that survives
+comparison against every plain pass**, which is a different and much smaller statement than the one
+this section made an hour earlier.
+
+**What #171's body recorded still stands and is still narrow.** Its baseline was *"load 4,171 ms vs
+3,361 ms, 61 vs 60 rAF frames per second, motion settling identically — below run-to-run noise."*
+Those are timing figures; they never looked at the digest. This control now looks at the digest and
+has found nothing yet. Neither result licenses instrumenting both sides — **absence of a finding
+across two runs is not a budget**.
+
+**A known limit, not acted on.** The instrumented drive reuses the interaction plan discovered on
+the plain side. That keeps the two comparable, which is the gate's own rule — *the same driver on
+both sides* — but it means a perturbation that changes **which elements are discoverable** is
+invisible to this control. Discovering a second plan and diffing the plans is a separate measurement.
 
 ## What none of these say
 
@@ -140,26 +157,37 @@ control: a page with no scripts gives the hooks nothing to disturb.
 
 นั่นคือครึ่งที่ยังเปิดอยู่ของเกณฑ์ข้อ 5 ของ #187 ตอนนี้มีกรณีที่บันทึกไว้แทนที่จะเป็นการโต้แย้ง: **การที่ด่านปฏิบัติกับ `layout.scrollHeight` อย่างไร ตอนนี้ขึ้นอยู่กับว่า 3 pass บังเอิญตรงกันหรือไม่** · `baselinePasses` (#203) เผยแพร่จำนวนนั้นให้คนอ่านเห็นฐาน · ส่วนว่า verdict `different` ควรต้องมีการวัดทั้งสองฝั่งอย่างน้อยสองครั้งหรือไม่ คือการตัดสินใจที่ยังเหลือ และมันขัดกับเทสต์ที่เขียนไว้ตรงข้ามอย่างตั้งใจ
 
-## ตัวควบคุม perturbation — hooks ขยับ `dom.elements`
+## ตัวควบคุม perturbation — และข้ออ้างที่มันถอนคืนภายในชั่วโมงเดียว
 
-`bun run equivalence https://www.chaingpt.org/ --measure-perturbation` ขับหน้าสดเพิ่มอีกหนึ่งรอบโดยติดตั้ง
-observation layer แล้วเทียบกับ pass ธรรมดา (ผลอยู่ในบล็อกภาษาอังกฤษด้านบน)
+`bun run equivalence <url> --measure-perturbation` ขับหน้าสดเพิ่มอีกรอบโดยติดตั้ง observation layer แล้ว
+เทียบรอบนั้นกับรอบธรรมดา
 
-**`dom.elements` ไม่ได้อยู่ใน `unstable`** มันจึงนิ่งตลอด 3 live pass และ 3 replay pass และขยับ *เฉพาะ* ตอนติด
-hook · การระบุสาเหตุได้คือเหตุผลทั้งหมดของการขับฝั่งเดียวกันสองครั้ง: noise ระหว่างรอบจะโผล่ใน baseline
-และมันไม่ได้โผล่
+**เนื้อหาส่วนนี้ฉบับแรกเขียนว่า hooks ขยับ `dom.elements` · ข้ออ้างนั้นถูกถอน**
 
-**เรื่องนี้ทำให้สิ่งที่เนื้อหาของ #171 บันทึกไว้มีเงื่อนไข** · บันทึกนั้นวัด perturbation ไว้ว่า *"load 4,171 ms
-เทียบ 3,361 ms · 61 เทียบ 60 rAF frame ต่อวินาที · motion นิ่งเหมือนกัน — ต่ำกว่า noise ระหว่างรอบ ซึ่งเป็น
-baseline ที่ต้องรักษา ไม่ใช่เหตุผลที่จะข้ามตัวควบคุม"* · นั่นเป็นตัวเลขเชิงเวลา และมันไม่ผิด · **มันแค่ไม่ได้ดูจำนวน
-element** ซึ่งเป็นหนึ่งในฟิลด์ที่ด่านเอามาเทียบ
+รอบแรกรายงานผลตามบล็อกในส่วนภาษาอังกฤษ และการระบุสาเหตุอาศัยข้อเท็จจริงที่ `dom.elements` ไม่อยู่ใน
+`unstable` — มันนิ่งตลอด 3 live pass และ 3 replay pass การที่รอบติด hook ต่างออกไปจึงดูเหมือนฝีมือของ hooks
 
-ข้อสรุปที่เนื้อหานั้นได้ — ว่า perturbation เล็กพอจะหลบได้ — จึงเป็นจริงสำหรับปริมาณที่มันวัด และไม่ขยายไปถึง
-digest · สไลซ์ถัดไปที่ติด instrument **ทั้งสองฝั่ง** จะกำลังเทียบค่า `dom.elements` ที่ตัว instrument เองขยับ
-บนเว็บจริงอย่างน้อยหนึ่งเว็บ
+**มันเทียบรอบติด hook กับ plain pass อันแรกอันเดียว** · รีวิวที่ delegate ระบุสถานการณ์นี้ก่อนอะไรจะ merge:
+ฟิลด์ที่อ่านได้ `1, 2, 1` ตลอดสามรอบธรรมดา และได้ `2` ตอนติด hook คือค่าที่หน้าเว็บผลิตเองอยู่แล้ว การโทษ hooks
+จึงเปลี่ยน noise ระหว่างรอบให้กลายเป็นข้อค้นพบ · ทางแก้คือเทียบกับ plain pass **ทุกอัน** — ฟิลด์จะถูกนับว่า
+perturbed ก็ต่อเมื่อค่าตอนติด hook ไม่ตรงกับอันไหนเลย · เว็บเดียวกัน วัดซ้ำทันทีหลังจากนั้น (ผลอยู่ในบล็อกด้านบน)
 
-`https://example.com/` รายงาน `perturbed (0)` ด้วยคำสั่งเดียวกัน ซึ่งเป็นตัวควบคุมของตัวควบคุมเอง: หน้าที่ไม่มี
-สคริปต์เลยไม่มีอะไรให้ hook ไปรบกวน
+สองฟิลด์เดิมตอนนี้อยู่ใน `unstable`: ในรอบนี้มันขยับข้าม baseline ธรรมดาเอง · ดังนั้น `perturbed (2)` ก่อนหน้านี้
+แทบจะแน่นอนว่าเป็น noise ของ baseline เอง และมันดูระบุสาเหตุได้เพียงเพราะสาม pass บังเอิญตรงกันในครั้งนั้น
+
+**สิ่งที่ยังยืนอยู่:** ตัวควบคุมทำงาน รายงานผล และแยก *วัดแล้วสะอาด* ออกจาก *ไม่ได้วัด* ได้ ·
+`https://example.com/` รายงาน `perturbed (0)` เป็นตัวควบคุมของตัวมันเอง — หน้าที่ไม่มีสคริปต์ไม่มีอะไรให้ hook
+รบกวน · **มันยังไม่เคยพบ perturbation ที่รอดจากการเทียบกับ plain pass ทุกอัน** ซึ่งเป็นคำกล่าวที่เล็กกว่าและต่างจาก
+ที่ส่วนนี้เขียนไว้เมื่อชั่วโมงก่อนมาก
+
+**สิ่งที่เนื้อหาของ #171 บันทึกไว้ยังยืนอยู่และยังแคบ** · baseline ของมันคือ *"load 4,171 ms เทียบ 3,361 ms ·
+61 เทียบ 60 rAF frame ต่อวินาที · motion นิ่งเหมือนกัน — ต่ำกว่า noise ระหว่างรอบ"* · นั่นเป็นตัวเลขเชิงเวลา มันไม่
+เคยดู digest · ตัวควบคุมนี้ดู digest แล้วและยังไม่พบอะไร · ทั้งสองผลไม่ได้อนุญาตให้ติด instrument ทั้งสองฝั่ง —
+**การไม่พบอะไรในสองรอบไม่ใช่ budget**
+
+**ข้อจำกัดที่รู้อยู่ และไม่ได้ลงมือแก้** · รอบที่ติด hook ใช้แผนการโต้ตอบที่ค้นพบจากฝั่งธรรมดาซ้ำ · นั่นทำให้สองรอบ
+เทียบกันได้ ซึ่งเป็นกฎของด่านเอง — *ตัวขับเดียวกันทั้งสองฝั่ง* — แต่แปลว่า perturbation ที่เปลี่ยน**ว่า element ไหน
+ค้นพบได้** จะมองไม่เห็นจากตัวควบคุมนี้ · การค้นแผนที่สองแล้ว diff แผนกันเป็นการวัดคนละอย่าง
 
 ## สิ่งที่ไม่มีรอบไหนพูด
 

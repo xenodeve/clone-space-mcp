@@ -388,7 +388,10 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
       const page = await context.newPage();
       await page.goto(options.url, { waitUntil: "load" });
       const run = await collectDigest(page, sharedPlan, options.sampleBudget);
-      perturbed = perturbedFields(run.digest, passes[0]!);
+      // Against **every** plain pass, not just the first — otherwise a field the page moves on
+      // its own gets blamed on the hooks, while the stability control simultaneously calls it
+      // unstable. Found by a delegated review before this shipped.
+      perturbed = perturbedFields(run.digest, passes);
     } finally {
       await context.close();
     }
