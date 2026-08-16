@@ -92,6 +92,34 @@ describe("formatEquivalenceReport", () => {
     expect(text).not.toContain("10000%");
   });
 
+  /**
+   * A `FAIL` that names a field and not its two values sends the reader to dig through an archive
+   * for the one number the run already had in hand. Measured on `www.chaingpt.org`: the report said
+   * `residual (1) network.origins` and nothing about what the two sides counted.
+   */
+  test("a residual field is printed with what each side measured", () => {
+    const text = formatEquivalenceReport(
+      report({
+        verdict: "FAIL",
+        residual: ["network.origins"],
+        fields: [
+          { field: "network.origins", verdict: "different", live: 11, replay: 9 },
+          { field: "dom.title", verdict: "equal" },
+        ],
+      }),
+    );
+    expect(text).toMatch(/network\.origins.*live 11.*replay 9/s);
+  });
+
+  test("a residual field the fields list has no entry for is still named", () => {
+    // Losing the field entirely because its values are missing would be worse than losing the
+    // values: the verdict would name a count it does not explain.
+    const text = formatEquivalenceReport(
+      report({ verdict: "FAIL", residual: ["mystery"], fields: [] }),
+    );
+    expect(text).toContain("mystery");
+  });
+
   test("lists every residual field, because that is what a FAIL is", () => {
     const text = formatEquivalenceReport(
       report({ verdict: "FAIL", residual: ["dom.elements", "layout.scrollHeight"] }),

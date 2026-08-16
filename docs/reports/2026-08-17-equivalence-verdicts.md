@@ -121,6 +121,47 @@ the plain side. That keeps the two comparable, which is the gate's own rule — 
 both sides* — but it means a perturbation that changes **which elements are discoverable** is
 invisible to this control. Discovering a second plan and diffing the plans is a separate measurement.
 
+## The network attempt set — the field that found a difference on its first run
+
+#171's v1 scope names it and the digest did not have it:
+
+> In: the field digest this repo can already produce — behaviour multiset, **network attempt set
+> with its ADR 0007 classification**, and the motion counts.
+
+**Without it the gate could return `PASS` on a clone that fetched an entirely different set of
+things**, which is the opposite of what this project claims. The issue names the concrete case:
+`www.chaingpt.org` cannot serve `Cannon_Exterior.hdr`, its 3D scene's environment map, so an
+API-level comparison passes while the scene renders unlit.
+
+`network.requests` and `network.origins` are counts of the distinct resources and origins the page
+asked for, read from `performance.getEntriesByType("resource")` **through the same seam on both
+sides**, normalized by ADR 0007 with the caller's volatile keys and no invented policy. Two counts
+rather than one: a clone fetching the same number of things from a different place is a different
+failure from one fetching a different number.
+
+On the first real run, `https://www.chaingpt.org/`:
+
+```
+equivalence FAIL  https://www.chaingpt.org/
+
+residual (1)
+  network.origins  live 27  replay 28
+unstable (1)   motion.settled
+baseline    live 3  replay 3
+```
+
+**A `FAIL` on a surface the gate had never looked at**, on a site that had returned `INCOMPLETE`
+minutes earlier with every other field agreeing. `network.origins` is **not** in `unstable`, so the
+three live drives agreed at 27 and the three replays agreed at 28: the difference reproduces.
+
+**The direction is the interesting part and it is not diagnosed.** The replay reaches *more* origins
+than the live drive, not fewer. Two readings are available and this run does not choose between
+them: the archive is built by its own capture drive, so it can legitimately hold an origin the three
+compared live drives did not request; or the replay is reaching something the live page does not.
+**Naming it as "the clone fetches too much" would be the same jump this document had to withdraw one
+section earlier.** It is a reproducible difference on a surface that had no coverage at all, which is
+what the field was added for.
+
 ## What none of these say
 
 `listener_execution` is **0% in every run**. v1 drives no listeners, and a green verdict here is a claim about navigation and scrolling and about nothing else. Reading any row above as *"the clone is faithful"* would be reading past the coverage vector, which is the whole reason it is a vector.
@@ -188,6 +229,31 @@ perturbed ก็ต่อเมื่อค่าตอนติด hook ไม�
 **ข้อจำกัดที่รู้อยู่ และไม่ได้ลงมือแก้** · รอบที่ติด hook ใช้แผนการโต้ตอบที่ค้นพบจากฝั่งธรรมดาซ้ำ · นั่นทำให้สองรอบ
 เทียบกันได้ ซึ่งเป็นกฎของด่านเอง — *ตัวขับเดียวกันทั้งสองฝั่ง* — แต่แปลว่า perturbation ที่เปลี่ยน**ว่า element ไหน
 ค้นพบได้** จะมองไม่เห็นจากตัวควบคุมนี้ · การค้นแผนที่สองแล้ว diff แผนกันเป็นการวัดคนละอย่าง
+
+## network attempt set — ฟิลด์ที่เจอความต่างตั้งแต่รอบแรก
+
+ขอบเขต v1 ของ #171 ระบุมันไว้ และ digest ไม่มีมัน (ยกข้อความมาในส่วน EN)
+
+**ถ้าไม่มีมัน ด่านคืน `PASS` ให้ clone ที่ยิง request คนละชุดกันเลยได้** ซึ่งตรงข้ามกับสิ่งที่โปรเจกต์นี้อ้าง ·
+issue ระบุเคสรูปธรรมไว้: `www.chaingpt.org` เสิร์ฟ `Cannon_Exterior.hdr` ซึ่งเป็น environment map ของฉาก
+3D ไม่ได้ การเทียบระดับ API จึงผ่านขณะที่ฉากเรนเดอร์แบบไม่มีแสง
+
+`network.requests` และ `network.origins` คือจำนวน resource และ origin ที่ไม่ซ้ำกันซึ่งหน้าเว็บร้องขอ อ่านจาก
+`performance.getEntriesByType("resource")` **ผ่าน seam เดียวกันทั้งสองฝั่ง** ผ่านการ normalize ตาม ADR 0007
+ด้วย volatile key ของผู้เรียกและไม่มีนโยบายที่ประดิษฐ์ขึ้นเอง · สองจำนวนไม่ใช่จำนวนเดียว: clone ที่ดึงของจำนวนเท่ากัน
+จากคนละที่ เป็นความล้มเหลวคนละแบบกับ clone ที่ดึงของจำนวนต่างกัน
+
+ผลรอบจริงรอบแรกบน `https://www.chaingpt.org/` อยู่ในบล็อกด้านบน
+
+**เป็น `FAIL` บนพื้นผิวที่ด่านไม่เคยมองมาก่อน** บนเว็บที่เพิ่งได้ `INCOMPLETE` ไม่กี่นาทีก่อนหน้าโดยฟิลด์อื่นตรงกันหมด ·
+`network.origins` **ไม่ได้**อยู่ใน `unstable` แปลว่า live สามรอบตรงกันที่ 27 และ replay สามรอบตรงกันที่ 28 ·
+ความต่างเกิดซ้ำได้
+
+**ทิศทางคือส่วนที่น่าสนใจ และยังไม่ได้วินิจฉัย** · replay แตะ origin *มากกว่า* ฝั่งสด ไม่ใช่น้อยกว่า · มีสองการอ่านที่
+เป็นไปได้และรอบนี้ไม่ได้เลือกระหว่างสองอัน: archive ถูกสร้างโดยรอบ capture ของตัวเอง มันจึงถืออีก origin หนึ่งที่ live
+สามรอบที่ถูกเทียบไม่ได้ร้องขอได้อย่างชอบธรรม · หรือ replay กำลังแตะบางอย่างที่หน้าสดไม่แตะ · **การเรียกมันว่า "clone
+ดึงของเกิน" คือการกระโดดแบบเดียวกับที่เอกสารนี้ต้องถอนคืนในหัวข้อก่อนหน้า** · มันคือความต่างที่เกิดซ้ำได้บนพื้นผิวที่
+ไม่เคยมีการคุมเลย ซึ่งเป็นเหตุผลที่ฟิลด์นี้ถูกเพิ่มเข้ามา
 
 ## สิ่งที่ไม่มีรอบไหนพูด
 

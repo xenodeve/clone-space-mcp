@@ -6,6 +6,28 @@
 
 ---
 
+## The network attempt set — the gate looks at what the page fetched (2026-08-17, #171, PR #209)
+
+**The digest had no network field at all**, so the gate could return `PASS` on a clone that fetched an entirely different set of things — the opposite of what this project claims. #171's v1 scope names it (*"behaviour multiset, network attempt set with its ADR 0007 classification, and the motion counts"*) and it was never built; found by reading the issue body rather than its checkboxes, the same way the perturbation control was.
+
+`network.requests` and `network.origins` count the distinct resources and origins the page asked for, read from `performance.getEntriesByType("resource")` **through the same seam on both sides** — a live side read from CDP and a replay side read from the page would be two measurements compared as one. Normalized by ADR 0007 using the **caller's** volatile keys and no invented policy, because `defaultRequestNormalization()` ships an empty list on purpose.
+
+**It found a difference on its first real run.** `https://www.chaingpt.org/`, a site that had returned `INCOMPLETE` minutes earlier with every other field agreeing:
+
+```
+residual (1)
+  network.origins  live 27  replay 28
+unstable (1)   motion.settled
+```
+
+`network.origins` is not in `unstable`: the three live drives agreed at 27 and the three replays at 28, so it reproduces.
+
+**The direction is not diagnosed and is deliberately not named.** The replay reaches *more* origins, not fewer. The archive is built by its own capture drive, so it can legitimately hold an origin the three compared live drives never requested — or the replay is reaching something the live page does not. Calling it "the clone fetches too much" would be the same jump withdrawn one entry above.
+
+**Two counts, not one:** a clone fetching the same number of things from a different place is a different failure from one fetching a different number, and `network.requests` was equal on that run while `network.origins` was not.
+
+**And the report now prints what each side measured.** `residual (1) network.origins` with no values sends the reader to dig through an archive for a number the run already had in hand. Four corpus entries, all CAUGHT, including that one and the `blob:`/`data:` filter — those entries are the page's own object URLs, not network attempts.
+
 ## The perturbation control, and the claim it withdrew within the hour (2026-08-17, #171, PR #208)
 
 #171's body asked for a **third drive mode** that never became a checkbox: *"instrumented against uninstrumented on the same side — with a perturbation budget."* It belongs to slice 0 because comparing an instrumented live page against an instrumented replay compares **two pages that both carry hooks**, and no number of same-mode passes can say whether the hooks moved the numbers.

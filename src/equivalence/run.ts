@@ -29,6 +29,7 @@ import {
 import { driveInteraction, type DriveReport, type DrivablePage } from "../capture/interaction-drive.ts";
 import { hasSettled, settledSample, tailIsConstant } from "./settle.ts";
 import { perturbedFields } from "./perturbation.ts";
+import { networkDigest } from "./network-digest.ts";
 import { INSTRUMENT_INIT_SCRIPT } from "../capture/instrument.ts";
 
 /** Settle time after each driven action, so the effect it triggers is observable before the next. */
@@ -296,6 +297,14 @@ async function collectDigest(
     };
   });
 
+  // The network attempt set (#171's v1 scope). Read from the page rather than from the browser API
+  // so both sides are collected through **the same seam** — a live side read from CDP and a replay
+  // side read from the page would be two different measurements compared as though they were one.
+  const requestedUrls = await page.evaluate(() =>
+    performance.getEntriesByType("resource").map((entry) => entry.name),
+  );
+  const network = networkDigest(requestedUrls);
+
   const settled = settledSample(samples);
   return {
     plan,
@@ -319,6 +328,12 @@ async function collectDigest(
           "layout.scrollHeight": settled.height,
         }
       : {}),
+    // Counts, because the digest compares scalars. Two of them, because a clone fetching the same
+    // number of things from a different place is a different failure from one fetching a different
+    // number — and the issue's own example is the second kind: `www.chaingpt.org` cannot serve its
+    // scene's environment map, so an API-level comparison passes while the scene renders unlit.
+    "network.requests": network.requests,
+    "network.origins": network.origins,
     "motion.gsapPresent": afterScroll.gsapPresent,
     "dom.title": afterScroll.title,
     // Same rule as the settle loop, for the same reason: a count read while the page is still
