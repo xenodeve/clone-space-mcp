@@ -3,6 +3,7 @@ import {
   equivalenceExitCode,
   formatEquivalenceReport,
   parseEquivalenceArgs,
+  RUN_FAILED_EXIT,
 } from "../../scripts/equivalence.ts";
 import type { EquivalenceReport } from "../../src/equivalence/run.ts";
 
@@ -37,6 +38,20 @@ const report = (over: Partial<EquivalenceReport> = {}): EquivalenceReport => ({
  * measure"*, and those call for opposite next actions — one is a bug to chase, the other is a run
  * to repeat. `bun run ci:lock` already answers in three states for the same reason.
  */
+/**
+ * A run that **threw** is not a run that found a difference, and before a delegated review caught
+ * it the two shared exit `1`: `main` was awaited at module top level, so any exception — a capture
+ * refusing a private address, a network failure — rejected the top-level await and Node exited 1,
+ * which this command documents as *"a residual to chase"*.
+ */
+describe("RUN_FAILED_EXIT", () => {
+  test("is distinct from all three verdict codes", () => {
+    const verdicts = (["PASS", "FAIL", "INCOMPLETE"] as const).map(equivalenceExitCode);
+    expect(verdicts).not.toContain(RUN_FAILED_EXIT);
+    expect(RUN_FAILED_EXIT).toBeGreaterThan(0);
+  });
+});
+
 describe("equivalenceExitCode", () => {
   test("PASS is the only zero", () => {
     expect(equivalenceExitCode("PASS")).toBe(0);
@@ -123,9 +138,16 @@ describe("parseEquivalenceArgs", () => {
   });
 
   test("refuses a url that is not one", () => {
-    // `captureHar` would fail later and less clearly; a caller who mistypes a flag as the first
-    // argument should be told here rather than after a browser launch.
-    expect(() => parseEquivalenceArgs(["--out", "./out/run"])).toThrow(/url/);
+    // `captureHar` would fail later and less clearly; a caller should be told here rather than
+    // after a browser launch and a live page load.
+    expect(() => parseEquivalenceArgs(["not-a-url"])).toThrow(/url/);
+    expect(() => parseEquivalenceArgs(["ftp://example.com/"])).toThrow(/url/);
+  });
+
+  test("a mistyped flag is named as a flag, not reported as a bad url", () => {
+    // `--out` used to reach the URL check and be refused as "not an http(s) url", which sends the
+    // reader to inspect a URL that was never the problem.
+    expect(() => parseEquivalenceArgs(["--out", "./out/run"])).toThrow(/unknown flag --out/);
   });
 
   test("defaults the output directory rather than writing where it was invoked", () => {
@@ -144,6 +166,24 @@ describe("parseEquivalenceArgs", () => {
       parseEquivalenceArgs(["https://example.com/", "./out", "--allow-private-network"])
         .allowPrivateNetwork,
     ).toBe(true);
+  });
+
+  /**
+   * Found by a delegated review before this shipped. A mistyped flag is the case that matters:
+   * `--allow-private-networks` is not the flag, was silently accepted as the **output directory**,
+   * and left private networking off — so the caller gets a refusal they asked not to have, with no
+   * hint that their argument was ignored.
+   */
+  test("refuses an unknown flag instead of taking it as a path", () => {
+    expect(() => parseEquivalenceArgs(["https://example.com/", "--allow-private-networks"])).toThrow(
+      /unknown/i,
+    );
+  });
+
+  test("refuses a third positional rather than ignoring it", () => {
+    expect(() => parseEquivalenceArgs(["https://example.com/", "./out", "extra"])).toThrow(
+      /unexpected/i,
+    );
   });
 
   test("the flag is not mistaken for the output directory", () => {

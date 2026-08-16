@@ -19,6 +19,9 @@
  * verify.
  */
 
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { EquivalenceReport } from "../src/equivalence/run.ts";
 
 export interface EquivalenceArgs {
@@ -50,7 +53,24 @@ const PRIVATE_NETWORK_FLAG = "--allow-private-network";
  */
 export function parseEquivalenceArgs(argv: readonly string[]): EquivalenceArgs {
   const allowPrivateNetwork = argv.includes(PRIVATE_NETWORK_FLAG);
-  const [url, outDir] = argv.filter((argument) => argument !== PRIVATE_NETWORK_FLAG);
+  // An unknown `--flag` is refused rather than treated as a path. A delegated review named the
+  // case that makes this worth the four lines: `--allow-private-networks` — one letter off — was
+  // silently accepted as the **output directory**, leaving private networking off. The caller then
+  // gets the refusal they explicitly asked not to have, with nothing saying their argument was
+  // dropped.
+  const unknownFlag = argv.find(
+    (argument) => argument.startsWith("--") && argument !== PRIVATE_NETWORK_FLAG,
+  );
+  if (unknownFlag !== undefined) {
+    throw new Error(`equivalence: unknown flag ${unknownFlag} — only ${PRIVATE_NETWORK_FLAG} exists`);
+  }
+  const positional = argv.filter((argument) => argument !== PRIVATE_NETWORK_FLAG);
+  if (positional.length > 2) {
+    throw new Error(
+      `equivalence: unexpected argument ${positional[2]} — usage is <url> [outDir] [${PRIVATE_NETWORK_FLAG}]`,
+    );
+  }
+  const [url, outDir] = positional;
   if (url === undefined || url.length === 0) {
     throw new Error("equivalence: needs a url — node scripts/equivalence.ts <url> [outDir]");
   }
@@ -74,6 +94,17 @@ export function equivalenceExitCode(verdict: EquivalenceReport["verdict"]): numb
   if (verdict === "PASS") return 0;
   return verdict === "FAIL" ? 1 : 2;
 }
+
+/**
+ * The run itself failed — it never produced a verdict at all.
+ *
+ * **Distinct from all three verdict codes, and it was not.** `main` is awaited at module top level,
+ * so before a delegated review caught it any exception — a capture refusing a private address, a
+ * network failure, a mistyped argument — rejected that await and Node exited **1**, which this
+ * command documents as *"a residual to chase"*. A caller would have gone looking for a difference
+ * that was never measured.
+ */
+export const RUN_FAILED_EXIT = 3;
 
 /**
  * `coverageOf` returns **whole percentages, already rounded** (`src/equivalence/classify.ts:242`).
@@ -114,6 +145,15 @@ export function formatEquivalenceReport(report: EquivalenceReport): string {
 }
 
 async function main(): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    console.error(`equivalence: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = RUN_FAILED_EXIT;
+  }
+}
+
+async function run(): Promise<void> {
   const { mkdtempSync, mkdirSync } = await import("node:fs");
   const { join } = await import("node:path");
   const { chromium } = await import("playwright");
@@ -141,6 +181,13 @@ async function main(): Promise<void> {
   }
 }
 
-// `import.meta.main` is Bun's and this runs under Node (ADR 0001), so the entry check is the
-// argv one: the script is the process's entry point exactly when Node was pointed at this file.
-if (process.argv[1] !== undefined && process.argv[1].endsWith("equivalence.ts")) await main();
+// `import.meta.main` is Bun's and this runs under Node (ADR 0001), so the entry check compares
+// **resolved paths**, not a filename suffix. A delegated review named both directions the suffix
+// got wrong: any other `equivalence.ts` anywhere would have run `main` on import, and a differently
+// cased or symlinked path to this one would not have.
+if (
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))
+) {
+  await main();
+}

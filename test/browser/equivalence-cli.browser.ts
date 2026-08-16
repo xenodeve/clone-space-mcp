@@ -8,6 +8,52 @@ import { fileURLToPath } from "node:url";
 import { startFixtureServers, type FixtureServers } from "../../scripts/fixture-client.ts";
 
 /**
+ * Only the loader flags are forwarded, not all of `process.execArgv`.
+ *
+ * The corpus applies its defect in memory to modules the **test process** loads (#82), and this
+ * spawns the command, so without carrying `--import` across the boundary the entry reports
+ * `MUTATION NOT APPLIED` — measured, and that is not `SURVIVED`. Forwarding *everything* was the
+ * first version and a delegated review named the cost: `--inspect` would make the child fight the
+ * parent for a debugger port, so the child would stop resembling a real invocation in a way that
+ * has nothing to do with what is under test.
+ */
+function loaderArgs(): string[] {
+  const kept: string[] = [];
+  for (let i = 0; i < process.execArgv.length; i += 1) {
+    const argument = process.execArgv[i]!;
+    if (!argument.startsWith("--import")) continue;
+    kept.push(argument);
+    if (argument === "--import" && process.execArgv[i + 1] !== undefined) {
+      kept.push(process.execArgv[i + 1]!);
+      i += 1;
+    }
+  }
+  return kept;
+}
+
+interface Run {
+  status: number;
+  stdout: string;
+}
+
+function runCommand(args: readonly string[]): Run {
+  try {
+    return {
+      status: 0,
+      stdout: execFileSync(process.execPath, [...loaderArgs(), scriptPath, ...args], {
+        encoding: "utf8",
+        timeout: 300_000,
+      }),
+    };
+  } catch (error) {
+    // `execFileSync` throws on a non-zero exit, which is the outcome under test rather than a
+    // failure of the test. The thrown object carries both the code and the output.
+    const failure = error as { status?: number; stdout?: string; stderr?: string };
+    return { status: failure.status ?? -1, stdout: `${failure.stdout ?? ""}${failure.stderr ?? ""}` };
+  }
+}
+
+/**
  * #171 criterion 5 — *"One command runs capture → replay → diff on a URL and **exits non-zero** on
  * an unexplained residual."*
  *
@@ -42,28 +88,41 @@ after(async () => {
 
 test("the command exits non-zero and names the residual when live and replay disagree", () => {
   const url = new URL("/measure-and-freeze.html?at=t100", servers.primary.url).href;
-  let status = 0;
-  let stdout = "";
-  try {
-    // `process.execArgv` is forwarded so the child runs under whatever instrumentation this
-    // process does. Without it the mutation corpus cannot reach this command at all: defects are
-    // applied **in memory** to modules the test process loads (#82), and `scripts/equivalence.ts`
-    // is only ever loaded by this child. Measured — the entry reported `MUTATION NOT APPLIED`,
-    // which is not `SURVIVED` and measures nothing.
-    stdout = execFileSync(
-      process.execPath,
-      [...process.execArgv, scriptPath, url, tempDir, "--allow-private-network"],
-      { encoding: "utf8", timeout: 300_000 },
-    );
-  } catch (error) {
-    // `execFileSync` throws on a non-zero exit, which is the outcome under test rather than a
-    // failure of the test. The thrown object carries both the code and the output.
-    const failure = error as { status?: number; stdout?: string };
-    status = failure.status ?? -1;
-    stdout = failure.stdout ?? "";
-  }
+  const { status, stdout } = runCommand([url, tempDir, "--allow-private-network"]);
 
-  assert.equal(status, 1, `expected exit 1 for a residual, got ${status}\n${stdout}`);
+  assert.equal(status, 1, `expected exit 1 for a residual, got ${status}
+${stdout}`);
   assert.match(stdout, /equivalence FAIL/, stdout);
   assert.match(stdout, /layout\.scrollHeight/, stdout);
+});
+
+/**
+ * The other side of the same command, and it is not optional. A reviewer named the gap precisely:
+ * with only the failing case covered, a `main` that printed `equivalence FAIL … layout.scrollHeight`
+ * and exited 1 unconditionally would pass — the test would be asserting its own fixture rather than
+ * the command's behaviour.
+ *
+ * `?at=module` measures at end of parse, before the image on **both** sides, so the two agree.
+ */
+test("the command exits zero when live and replay agree", () => {
+  const url = new URL("/measure-and-freeze.html?at=module", servers.primary.url).href;
+  const { status, stdout } = runCommand([url, tempDir, "--allow-private-network"]);
+
+  assert.equal(status, 0, `expected exit 0 when the two sides agree, got ${status}
+${stdout}`);
+  assert.match(stdout, /equivalence PASS/, stdout);
+  assert.match(stdout, /residual \(0\)/, stdout);
+});
+
+/**
+ * A run that never produced a verdict must not borrow one of the verdict codes. This case costs no
+ * browser at all — the argument is refused before anything launches — which is the point: the
+ * cheapest path through the command is the one most likely to go uncovered.
+ */
+test("a run that fails before a verdict exits 3, not 1", () => {
+  const { status, stdout } = runCommand(["--allow-private-networks", "https://example.com/"]);
+
+  assert.equal(status, 3, `expected exit 3 for a run that never compared, got ${status}
+${stdout}`);
+  assert.match(stdout, /unknown flag/, stdout);
 });

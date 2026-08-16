@@ -1264,6 +1264,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "the command exits non-zero and names the residual when live and replay disagree",
   },
   {
+    id: "equivalence-cli-reports-a-failed-run-as-a-difference",
+    why: "Issue #171 - a run that threw never produced a verdict, and before a delegated review caught it any exception rejected the top-level await and Node exited 1, which this command documents as 'a residual to chase'. A caller would go looking for a difference that was never measured.",
+    file: "scripts/equivalence.ts",
+    find: "    process.exitCode = RUN_FAILED_EXIT;",
+    replace: "    process.exitCode = 1;",
+    suite: "browser",
+    expect: "a run that fails before a verdict exits 3, not 1",
+  },
+  {
     id: "equivalence-cli-reduces-coverage-to-one-number",
     why: "Issue #171 criterion 3 - coverage is a vector and no code path may reduce it to one number. A single figure averages away exactly the dimension that is weak, which is how a run that drove no interaction reads as broadly covered.",
     file: "scripts/equivalence.ts",
