@@ -6,6 +6,24 @@
 
 ---
 
+## The archive may not come from a private address (2026-08-16, #162)
+
+**Goal:** close the three ways private-network content still reached a *published* archive — a page-initiated subresource no origin policy covers, DNS rebinding between the pre-flight lookup and the navigation, and a same-host rebind whose origin never differs from the requested one.
+
+**One rule replaces three that could not work.** Every check before this resolved a *hostname* at a moment that was not the moment the socket opened. A HAR entry's `serverIPAddress` is a fact about the connection that happened, so `captureHar` now refuses to publish when any entry classifies as loopback/link-local/private/unique-local/unspecified, unless `allowPrivateNetwork` says otherwise. It does not stop the fetch; it stops the archive, which is where this project's other guarantees are enforced. Absent means refuse, the same stance `assertOriginAllowed` already took.
+
+**The measurement that made the guard correct.** Playwright writes IPv6 into the HAR **bracketed**: 11 of 12 entries of one fixture capture carried `"[::1]"` and one carried `"::1"`, in the same file. `isIP("[::1]")` is `0`, so the range table that already existed — reused rather than rewritten, in `src/capture/private-address.ts` — had to normalize brackets before classifying or it would report the loopback address it exists to catch as public. Corpus entry `private-address-not-normalized-for-brackets` encodes exactly that.
+
+**42 call sites had to say what they were doing.** The fixture servers run on loopback, so every capture in this repo's own suite *is* a capture from a private address; the default was left denying and each site now passes the opt-in. `capture_page`, `runEquivalence` and the MCP tool schema thread the caller's choice through to the archive check.
+
+**Two things found by running the corpus rather than the suite.** `coverage-claims-an-interaction-it-never-drove` had been `MUTATION NOT APPLIED` on `main` since #180 rewrote the line it anchored to — an entry measuring nothing while reading as one of 120 passing. And `capture-tool-reaches-the-private-network`, with its guard removed, *publishes* into the fixed `never-created` path the test names, after which the next honest run fails on "already exists" and blames the wrong rule; the test now uses a unique directory.
+
+**Evidence:** `bun run verify` — 505 Bun · 91 Node browser · lint, typecheck, build clean. Three new corpus entries CAUGHT, plus the re-anchored one; 27 entries anchored in the changed files re-run and CAUGHT.
+
+**Known and not fixed here:** the range table classifies neither CGNAT `100.64.0.0/10` nor multicast/benchmark space, and it is shared with the pre-flight check, so widening it changes a shipped guard's behaviour — recorded rather than done silently. Refusing the whole archive rather than dropping the entry is deliberate and is the trade a reviewer flagged: one leftover `http://127.0.0.1/…` beacon on an otherwise public page fails the capture.
+
+---
+
 ## §6.5 request normalization shipped end-to-end (2026-08-09, AFK batch, #84 #85 #86 #87 #90 #91 #92 #93)
 
 **Goal:** make a logically identical request (fresh nonce/timestamp) replayable from the archive, and never let replay guess between distinct archived responses.

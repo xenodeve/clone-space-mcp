@@ -33,6 +33,8 @@ test("reports a verdict and a coverage vector for the fixture", async () => {
       url: servers.primary.url,
       outDir: join(tempDir, `archive-${(counter += 1)}`),
       browser: browser as never,
+      // The fixture servers are on loopback (#162).
+      allowPrivateNetwork: true,
     });
 
     // The fixture serves everything it is asked for, so a residual here is a real defect in the
@@ -82,6 +84,8 @@ test("a field only one side produced is unobserved and blocks a PASS", async () 
       url: servers.primary.url,
       outDir: join(tempDir, `archive-${(counter += 1)}`),
       browser: browser as never,
+      // The fixture servers are on loopback (#162).
+      allowPrivateNetwork: true,
       // Injected so the test can produce the one-sided case without breaking a real page.
       extraLiveField: { "probe.oneSided": 1 },
     });

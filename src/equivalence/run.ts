@@ -66,6 +66,11 @@ export interface EquivalenceOptions {
   outDir: string;
   browser: EquivalenceBrowser;
   allowlist?: readonly AllowlistEntry[];
+  /**
+   * Let the capture publish an archive served from a private address (#162). Absent means refuse,
+   * matching `captureHar`; the gate's own fixture runs on loopback, so its tests pass it.
+   */
+  allowPrivateNetwork?: boolean;
   /** Test seam: a field forced onto the live digest, to exercise the one-sided case. */
   extraLiveField?: Digest;
 }
@@ -272,6 +277,7 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
     browser: options.browser as never,
     url: options.url,
     outDir: options.outDir,
+    allowPrivateNetwork: options.allowPrivateNetwork === true,
   });
   const archive = har.slice(0, har.lastIndexOf("network.har") - 1);
 

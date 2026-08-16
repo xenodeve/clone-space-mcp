@@ -36,6 +36,15 @@ calls `requestSubmit()`, and an `href="#x"` whose handler issues a `DELETE`. The
 entirely in JavaScript that no discovered attribute describes. Treat an unfamiliar site as
 production and capture a staging copy where one exists.
 
+**`capture_page` refuses to publish an archive served from a private address** (#162) — loopback,
+link-local, private, unique-local or unspecified — unless you pass `allowPrivateNetwork`. The check
+reads each HAR entry's `serverIPAddress`, which is the address a connection actually went to, so it
+covers a subresource the page fetched itself as well as the URL you asked for. **The whole capture
+is discarded, not the offending entry**, and one entry is enough: a public page with a single
+leftover `http://127.0.0.1/…` beacon fails, and the fix is to re-run with the flag once you have
+decided that reaching your own network is what you meant. Capturing this repo's fixture site, which
+runs on localhost, needs the flag for the same reason.
+
 ## What "which line" actually returns
 
 `extract_behaviour` reports each compiled shader with `origin` — where the runtime says the call
@@ -135,6 +144,13 @@ element ที่ถูกปฏิเสธ เพราะไม่มีอ�
 **สองอย่างที่นโยบายจับไม่ได้ และไม่มีกฎเชิงโครงสร้างไหนจับได้:** `type="button"` ที่ handler เรียก `requestSubmit()`
 และ `href="#x"` ที่ handler ยิง `DELETE` · ผลของมันอยู่ใน JavaScript ล้วน ๆ ซึ่งไม่มี attribute ที่ค้นพบข้อไหนอธิบายได้ ·
 ให้ถือว่าเว็บที่ไม่คุ้นเคยคือ production และ capture สำเนา staging แทนถ้ามี
+
+**`capture_page` ปฏิเสธที่จะเผยแพร่ archive ที่ถูกเสิร์ฟจากที่อยู่ภายใน** (#162) — loopback · link-local · private ·
+unique-local หรือ unspecified — เว้นแต่จะส่ง `allowPrivateNetwork` · การตรวจอ่าน `serverIPAddress` ของแต่ละ entry ใน
+HAR ซึ่งเป็นที่อยู่ที่การเชื่อมต่อไปถึงจริง มันจึงครอบคลุม subresource ที่หน้าเว็บเรียกเองพอ ๆ กับ URL ที่คุณสั่ง ·
+**capture ทั้งชุดถูกทิ้ง ไม่ใช่แค่ entry ที่ผิด** และแค่ entry เดียวก็พอ: หน้าสาธารณะที่มี beacon ค้าง
+`http://127.0.0.1/…` อยู่อันเดียวก็ล้ม และวิธีแก้คือรันใหม่พร้อม flag เมื่อคุณตัดสินใจแล้วว่าการเข้าถึงเครือข่ายของตัวเอง
+คือสิ่งที่ตั้งใจ · การ capture เว็บ fixture ของ repo นี้ซึ่งรันบน localhost ก็ต้องใช้ flag ด้วยเหตุผลเดียวกัน
 
 ## "บรรทัดไหน" คืนอะไรจริง ๆ
 

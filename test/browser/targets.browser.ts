@@ -18,7 +18,7 @@ before(async () => {
   const servers: FixtureServers = await startFixtureServers();
   const archive = join(tempDir, "archive");
   try {
-    await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+    await captureHar({ allowPrivateNetwork: true, browser: browser as never, url: servers.primary.url, outDir: archive });
   } finally {
     await servers.stop();
   }
@@ -59,7 +59,7 @@ test("does not report targets from a concurrent capture sharing the browser", as
     const servers: FixtureServers = await startFixtureServers();
     const archive = join(tempDir, "scoped");
     try {
-      await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+      await captureHar({ allowPrivateNetwork: true, browser: browser as never, url: servers.primary.url, outDir: archive });
     } finally {
       await servers.stop();
     }

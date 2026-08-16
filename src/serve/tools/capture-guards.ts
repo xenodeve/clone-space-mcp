@@ -10,31 +10,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
-
-/** Ranges that are not "somewhere on the internet": the host's own position, not the caller's. */
-function isPrivateAddress(address: string): string | undefined {
-  const family = isIP(address);
-  if (family === 6) {
-    const normalized = address.toLowerCase().replace(/^\[|\]$/g, "");
-    if (normalized === "::1") return "loopback";
-    if (normalized === "::") return "unspecified";
-    if (normalized.startsWith("fe80:")) return "link-local";
-    if (/^f[cd]/.test(normalized)) return "unique-local";
-    // IPv4 carried inside IPv6, e.g. ::ffff:127.0.0.1
-    const mapped = normalized.match(/(\d+\.\d+\.\d+\.\d+)$/);
-    return mapped ? isPrivateAddress(mapped[1]!) : undefined;
-  }
-  if (family !== 4) return undefined;
-
-  const [a, b] = address.split(".").map(Number) as [number, number, number, number];
-  if (a === 127) return "loopback";
-  if (a === 10) return "private";
-  if (a === 0) return "unspecified";
-  if (a === 169 && b === 254) return "link-local";
-  if (a === 172 && b >= 16 && b <= 31) return "private";
-  if (a === 192 && b === 168) return "private";
-  return undefined;
-}
+import { privateAddressKind } from "../../capture/private-address.ts";
 
 /**
  * Resolve the URL's host and refuse an address the caller has no business reaching through this
@@ -49,6 +25,20 @@ function isPrivateAddress(address: string): string | undefined {
  * whose final origin differed from the requested one. It bounded the redirect leg and also made
  * every apex-to-www site unarchivable, which is why it was replaced by something that checks the
  * address rather than the mere fact of a redirect.
+ *
+ * **Neither hop of that pair can close #162, and the third check is where it is closed.** Both
+ * checks here are name-based and time-shifted: they resolve a hostname at a moment that is not the
+ * moment the socket opened, so a page-initiated `fetch("http://169.254.169.254/…")`, a name that
+ * rebinds between the pre-flight lookup and the navigation, and a same-host rebind whose origin
+ * never differs from the requested one all pass. The property actually wanted is about the address
+ * a *connection* went to.
+ *
+ * So `captureHar` **refuses to publish** an archive holding an entry whose `serverIPAddress` is
+ * private (`src/capture/private-address.ts`), unless `allowPrivateNetwork` says otherwise. It does
+ * not stop the fetch — it stops the archive, which is where this project's other guarantees are
+ * enforced and is the only form that covers a subresource the page asked for itself. The range
+ * table lives in that module and this file classifies its DNS answer with the same function; a
+ * second copy beside it would drift the moment either is corrected.
  */
 /** Resolve a hostname to addresses. Injected so a test does not depend on live DNS. */
 export type HostResolver = (hostname: string) => Promise<string[]>;
@@ -79,7 +69,7 @@ export async function assertReachableUrl(
     );
   }
   for (const address of addresses) {
-    const kind = isPrivateAddress(address);
+    const kind = privateAddressKind(address);
     if (kind !== undefined) {
       throw new Error(
         `capture_page: ${url.hostname} resolves to a ${kind} address (${address}). Pass allowPrivateNetwork to reach it deliberately.`,

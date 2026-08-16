@@ -35,7 +35,7 @@ test("extracts every mechanism the fixture declares, from a replayed archive", a
   const servers: FixtureServers = await startFixtureServers();
   const archive = join(tempDir, "archive");
   try {
-    await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+    await captureHar({ allowPrivateNetwork: true, browser: browser as never, url: servers.primary.url, outDir: archive });
   } finally {
     await servers.stop();
   }
@@ -112,7 +112,7 @@ test("states the motion it has no node for, so a node count cannot read as compl
   const servers: FixtureServers = await startFixtureServers();
   const archive = join(tempDir, "archive-unrepresented");
   try {
-    await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+    await captureHar({ allowPrivateNetwork: true, browser: browser as never, url: servers.primary.url, outDir: archive });
   } finally {
     await servers.stop();
   }

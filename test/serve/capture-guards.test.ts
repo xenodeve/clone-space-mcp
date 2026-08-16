@@ -32,9 +32,14 @@ test("capturePage refuses a UNC path", async () => {
 test("capturePage refuses a URL that resolves to a private or loopback address", async () => {
   // The host's network position is not the caller's. Cloud metadata, an intranet host and a
   // developer's own services are all reachable over plain http from wherever this runs.
+  // The outDir is unique per run rather than a fixed `never-created` under the temp directory.
+  // With this entry's guard removed, `bun run mutate` lets the capture through and it *publishes*
+  // there — after which the honest run fails on "already exists" and blames the wrong rule. A
+  // corpus entry that makes the next ordinary run red is a mechanism sabotaging its own suite.
+  const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-unreachable-")), "never-created");
   for (const url of ["http://127.0.0.1:8080/", "http://169.254.169.254/latest/meta-data/", "http://[::1]/"]) {
     await expect(
-      capturePage({ url, outDir: join(tmpdir(), "never-created"), resolveHost: async () => ["93.184.216.34"] }, launcher() as never),
+      capturePage({ url, outDir, resolveHost: async () => ["93.184.216.34"] }, launcher() as never),
     ).rejects.toThrow(/private|loopback|link-local/i);
   }
 });
@@ -86,6 +91,65 @@ test("capturePage refuses when a redirect lands on a private address", async () 
       ),
     ).rejects.toThrow(/link-local/i);
     expect(existsSync(outDir)).toBe(false);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("capturePage refuses an archive whose connections went to a private address", async () => {
+  // #162. The pre-flight resolver answers public and the recording says the connection went to
+  // link-local — DNS rebinding between the lookup and the navigation, and the same-host rebind
+  // that never differs from `primaryOrigin` so the origin policy never runs, both land here.
+  //
+  // No number of extra hostname lookups turns a name-based check into this one: `serverIPAddress`
+  // is a fact about the connection that happened.
+  const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-rebind-")), "archive");
+  const rebound = {
+    log: {
+      entries: [
+        {
+          request: { url: "https://rebound.example/", method: "GET" },
+          response: { status: 200 },
+          serverIPAddress: "169.254.169.254",
+        },
+      ],
+    },
+  };
+  try {
+    await expect(
+      capturePage(
+        { url: "https://rebound.example/", outDir, resolveHost: async () => ["93.184.216.34"] },
+        { launch: async () => ({ ...fakeBrowser(rebound), async close() {} }) } as never,
+      ),
+    ).rejects.toThrow(/private address/);
+    expect(existsSync(outDir)).toBe(false);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("capturePage archives a private address when the caller asked for one", async () => {
+  // The opt-in has to reach the archive check too, or `allowPrivateNetwork: true` would pass the
+  // two name-based checks and then be refused by the third — which is how a flag stops meaning
+  // what it says.
+  const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-rebind-allowed-")), "archive");
+  const loopback = {
+    log: {
+      entries: [
+        {
+          request: { url: "http://127.0.0.1:8080/", method: "GET" },
+          response: { status: 200 },
+          serverIPAddress: "127.0.0.1",
+        },
+      ],
+    },
+  };
+  try {
+    const result = await capturePage(
+      { url: "http://127.0.0.1:8080/", outDir, allowPrivateNetwork: true },
+      { launch: async () => ({ ...fakeBrowser(loopback), async close() {} }) } as never,
+    );
+    expect(result.archive).toBe(outDir);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
