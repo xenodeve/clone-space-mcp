@@ -154,3 +154,37 @@ test("capturePage archives a private address when the caller asked for one", asy
     rmSync(outDir, { recursive: true, force: true });
   }
 });
+
+test("capturePage refuses an archive holding a socket to a private address", async () => {
+  // #185. The socket entry carries no `serverIPAddress` — measured on this repo's own fixture,
+  // where the document and XHR entries beside it carry "[::1]" and the socket carries nothing —
+  // so the address rule passes it with every other addressless entry and the frames are published.
+  const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-ws-")), "archive");
+  const withSocket = {
+    log: {
+      entries: [
+        {
+          request: { url: "https://public.example/", method: "GET" },
+          response: { status: 200 },
+          serverIPAddress: "93.184.216.34",
+        },
+        {
+          request: { url: "ws://169.254.169.254/socket", method: "GET" },
+          response: { status: 101 },
+          _resourceType: "websocket",
+        },
+      ],
+    },
+  };
+  try {
+    await expect(
+      capturePage(
+        { url: "https://public.example/", outDir, resolveHost: async () => ["93.184.216.34"] },
+        { launch: async () => ({ ...fakeBrowser(withSocket), async close() {} }) } as never,
+      ),
+    ).rejects.toThrow(/private address/);
+    expect(existsSync(outDir)).toBe(false);
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});

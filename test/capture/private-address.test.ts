@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   privateAddressKind,
   privateNetworkEntries,
+  webSocketToPrivateAddress,
 } from "../../src/capture/private-address.ts";
 
 describe("privateAddressKind", () => {
@@ -108,6 +109,86 @@ describe("privateNetworkEntries", () => {
       privateNetworkEntries([
         { request: { url: "https://example.com/" }, serverIPAddress: "93.184.216.34" },
         { request: { url: "https://cdn.example/x.js" }, serverIPAddress: "151.101.1.1" },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("webSocketToPrivateAddress", () => {
+  /**
+   * #185. A WebSocket entry carries **no `serverIPAddress` at all** — measured on the fixture,
+   * where the document and XHR entries beside it carry `"[::1]"` and the socket carries nothing.
+   * `privateNetworkEntries` passes an entry with no address on purpose, because a cached or
+   * ServiceWorker response opened no connection, so a socket to a private address is published.
+   *
+   * The only signal such an entry offers is its URL host, which is the name-based check the
+   * address rule exists because it could not answer. It is adopted here **for this one entry kind
+   * and only when the host is a literal IP** — a hostname is not resolved, because resolving one
+   * at publish time would be the same time-shifted check wearing a new hat.
+   */
+  test("reports a socket opened to a literal private address", () => {
+    expect(
+      webSocketToPrivateAddress([
+        { request: { url: "ws://127.0.0.1:8080/socket" }, _resourceType: "websocket" },
+        { request: { url: "wss://[fe80::1]/socket" }, _resourceType: "websocket" },
+      ]),
+    ).toEqual([
+      { url: "ws://127.0.0.1:8080/socket", address: "127.0.0.1", kind: "loopback" },
+      { url: "wss://[fe80::1]/socket", address: "fe80::1", kind: "link-local" },
+    ]);
+  });
+
+  test("passes a socket to a public literal address", () => {
+    expect(
+      webSocketToPrivateAddress([
+        { request: { url: "wss://93.184.216.34/socket" }, _resourceType: "websocket" },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("passes a socket to a hostname, and says nothing about where it resolved", () => {
+    // Deliberate. Resolving it here would be a lookup at a moment that is not the moment the
+    // socket opened — the exact property #162 concluded cannot answer the question. A rebound
+    // hostname on a WebSocket stays uncovered, and the issue says so rather than the code
+    // pretending otherwise.
+    expect(
+      webSocketToPrivateAddress([
+        { request: { url: "wss://rebound.example/socket" }, _resourceType: "websocket" },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("ignores an entry that is not a WebSocket, whatever its URL", () => {
+    // The address rule already covers these, and covering them twice with a weaker signal would
+    // let a cached response to a literal private URL be refused on evidence nobody checked.
+    expect(
+      webSocketToPrivateAddress([
+        { request: { url: "http://127.0.0.1/page" }, _resourceType: "document" },
+        { request: { url: "http://127.0.0.1/api" } },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("ignores a WebSocket entry that already carries an address", () => {
+    // If Playwright ever starts recording one, the address rule is the better evidence and this
+    // one steps aside rather than reporting the same entry twice.
+    expect(
+      webSocketToPrivateAddress([
+        {
+          request: { url: "ws://127.0.0.1/socket" },
+          _resourceType: "websocket",
+          serverIPAddress: "127.0.0.1",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("passes a malformed entry rather than throwing on it", () => {
+    expect(
+      webSocketToPrivateAddress([
+        { request: { url: "not a url" }, _resourceType: "websocket" },
+        { request: {}, _resourceType: "websocket" },
+        "not an entry" as unknown as { request: { url: string } },
       ]),
     ).toEqual([]);
   });

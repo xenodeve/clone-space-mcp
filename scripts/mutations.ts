@@ -1182,4 +1182,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "a motion reading that never settled is not compared at all",
   },
+  {
+    id: "websocket-to-a-private-address-published",
+    why: "Issue #185 - a WebSocket entry carries no serverIPAddress at all, measured on this repo's own fixture where the document and XHR entries beside it carry \"[::1]\" and the socket carries nothing. The address rule passes every addressless entry on purpose, so without this a socket opened to a private address is published with its frames.",
+    file: "src/capture/record.ts",
+    find: "        ...webSocketToPrivateAddress(harEntries),",
+    replace: "",
+    suite: "bun",
+    expect: "refuses an archive holding a socket to a private address",
+  },
+  {
+    id: "websocket-host-resolved-instead-of-read-as-a-literal",
+    why: "Issue #185 - the WebSocket rule reads the URL host only when it is already an IP literal. Treating a hostname as an address would report a public name as private whenever it happens to parse, and would quietly reintroduce the name-based check #162 established cannot answer the question.",
+    file: "src/capture/private-address.ts",
+    find: "    const kind = privateAddressKind(bare);",
+    replace: "    const kind = privateAddressKind(bare) ?? \"private\";",
+    suite: "bun",
+    expect: "passes a socket to a hostname, and says nothing about where it resolved",
+  },
 ];

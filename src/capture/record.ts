@@ -45,7 +45,7 @@ import {
   terminationOutcome,
   type Budgets,
 } from "./budget.ts";
-import { privateNetworkEntries } from "./private-address.ts";
+import { privateNetworkEntries, webSocketToPrivateAddress } from "./private-address.ts";
 import {
   defaultRequestNormalization,
   findAmbiguousNormalizedRequests,
@@ -654,7 +654,14 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     // origin never differs from the requested one. It does not stop the fetch; it stops the
     // archive — the same shape as the ambiguity contract below.
     if (options.allowPrivateNetwork !== true) {
-      const fromPrivateNetwork = privateNetworkEntries(harEntries);
+      // A WebSocket entry carries no `serverIPAddress`, so the address rule cannot see it (#185).
+      // Its URL host is a weaker signal and is used only when that host is already an IP literal —
+      // a hostname is not resolved here, because a lookup at publish time is the time-shifted
+      // check this whole seam exists because it could not answer.
+      const fromPrivateNetwork = [
+        ...privateNetworkEntries(harEntries),
+        ...webSocketToPrivateAddress(harEntries),
+      ];
       if (fromPrivateNetwork.length > 0) {
         const named = fromPrivateNetwork
           .slice(0, 5)

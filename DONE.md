@@ -6,6 +6,16 @@
 
 ---
 
+## A socket to a private address is refused, by a weaker rule that says it is weaker (2026-08-16, #185)
+
+**Goal:** close the hole #162 left. A WebSocket entry carries **no `serverIPAddress` at all** — measured on this repo's own fixture, where the document and XHR entries beside it carry `"[::1]"` and the socket carries nothing — and `privateNetworkEntries` passes every addressless entry on purpose, because a cached or ServiceWorker response opened no connection.
+
+**The rule is the one the issue called weaker, adopted as such.** A socket whose URL host is already an **IP literal** is refused on that host. A socket to a **hostname** is not: resolving one at publish time is a lookup at a moment that is not the moment the socket opened, which is the property #162 established cannot answer, and reintroducing it quietly for one entry kind would be worse than the gap. `using-the-tools.md` states the gap rather than implying the refusal is total.
+
+**Two corpus entries, both CAUGHT.** One removes the rule; the other makes it fall back to `"private"` for an unresolvable host, which is the mistake of treating a hostname as an address — caught by the test that asserts a hostname is passed.
+
+**Evidence:** `bun run verify` — 531 Bun · 92 Node browser · lint, typecheck, build clean.
+
 ## The gate stopped reading instants, and #187 got a root cause (2026-08-16, #182, #187, #189, #190)
 
 **Goal:** finish making the gate's verdict reproducible, and find out what the one remaining varying field actually is.
