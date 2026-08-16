@@ -21,6 +21,7 @@ import {
   INSTRUMENT_INIT_SCRIPT,
   type Observation,
 } from "../capture/instrument.ts";
+import { arrivalScheduleFrom } from "./arrival-schedule.ts";
 
 export interface ReplayArchiveOptions {
   /** Path to a published archive directory. */
@@ -36,6 +37,19 @@ export interface ReplayArchiveOptions {
    * side would make the two incomparable without anything saying so.
    */
   instrument?: boolean;
+  /**
+   * Hold each response until the moment the archive says it finished, measured from the start of
+   * the page load (#187).
+   *
+   * **Off by default, and the default is the point.** `routeFromHAR` serves recorded bytes as fast
+   * as a route handler can be called, and a page that measures itself on a timer then reads a
+   * different world offline — measured on `/measure-and-freeze.html`, 12/12 replays laid out to a
+   * height the live page never produced. Restoring the schedule fixes that *for pages that race*,
+   * and it makes every other replay slower by the recorded page load. That trade is the caller's,
+   * and three earlier attempts on #187 were rejected precisely for being switched on before anyone
+   * had a reproducing bug to measure them against.
+   */
+  restoreTiming?: boolean;
 }
 
 /** The structural slice of Playwright's Browser this needs. */
@@ -162,6 +176,27 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
     await context.addInitScript({ content: INSTRUMENT_INIT_SCRIPT });
   }
 
+  // Registered between `routeFromHAR` and the unservable handler, which puts it **second** in the
+  // offering order — later handlers are offered first, so an unservable URL is aborted at once
+  // rather than waiting out a delay before being refused.
+  //
+  // `navigationStartedAt` is written just before `page.goto` rather than here, because everything
+  // above still has to run: a delay measured from context creation would spend the archive's first
+  // recorded milliseconds on `addInitScript`.
+  let navigationStartedAt = Number.POSITIVE_INFINITY;
+  if (options.restoreTiming === true) {
+    const schedule = arrivalScheduleFrom(har);
+    await context.route("**/*", async (route) => {
+      const arrivesAt = schedule.get(route.request().url());
+      if (arrivesAt !== undefined) {
+        // An absent key is "not recorded", which is served at once — distinct from a recorded 0.
+        const remaining = arrivesAt - (Date.now() - navigationStartedAt);
+        if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+      await route.fallback();
+    });
+  }
+
   // Registered **after** `routeFromHAR` on purpose: the later handler is offered the request first,
   // so this one aborts the entries the archive has no response for and hands everything else back
   // with `fallback()`. Filtering the HAR file instead would mean copying it, and the response
@@ -183,6 +218,7 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
     aborted.push(request.url());
   });
 
+  navigationStartedAt = Date.now();
   await page.goto(url, { waitUntil: "load" });
 
   return {

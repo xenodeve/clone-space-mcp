@@ -2,7 +2,7 @@
  * #187 — does the measure-and-freeze race reproduce **on demand**, on the fixture? **Node only**
  * (ADR 0001).
  *
- *     node scripts/fixture-height-race.ts [archives] [replaysEach]
+ *     node scripts/fixture-height-race.ts [archives] [replaysEach] [at] [restore]
  *
  * `scripts/replay-height-race.ts` is the same experiment against a live site, and it is the reason
  * this file exists: that rate moved from three-in-nine to zero-in-twenty across one day, so a live
@@ -11,8 +11,8 @@
  *
  * What this measures, for `/measure-and-freeze.html`:
  *
- *   - the **live** height, N times — expected stable, because the image is delayed 60 ms server-
- *     side and the module therefore always measures an empty frame;
+ *   - the **live** height, N times — expected stable, because the image is delayed server-side and
+ *     the page therefore always measures an empty frame;
  *   - the **replay** height, M times per archive — the split, because the HAR serves the image
  *     with the recorded latency discarded.
  *
@@ -32,6 +32,12 @@ const archives = Number(process.argv[2] ?? 3);
 const replaysEach = Number(process.argv[3] ?? 8);
 /** `?at=` on the fixture — see the route in `test/fixtures/serve.ts` for what each value shows. */
 const at = process.argv[4] ?? "t30";
+/**
+ * Pass `restore` to replay with `restoreTiming: true` (#187's candidate fix). **Run the control in
+ * the same session, not from memory of an earlier one** — the third candidate on this issue
+ * measured 15/15 and was reverted because its control, run afterwards, was also clean.
+ */
+const restoreTiming = process.argv[5] === "restore";
 /** Long enough that the image has certainly arrived on both sides — the frozen spacer is what is
  *  being read, not a page still settling. */
 const SETTLE_MS = 1500;
@@ -66,7 +72,8 @@ try {
     liveHeights.push(seen.height);
     await context.close();
   }
-  console.log(`live      ${tally(liveHeights)}`);
+    console.log(`live      ${tally(liveHeights)}`);
+  console.log(`replaying at=${at} restoreTiming=${restoreTiming}`);
 
   let split = 0;
   const allReplays: number[] = [];
@@ -78,7 +85,7 @@ try {
     await captureHar({ browser: browser as never, url, outDir: archive, allowPrivateNetwork: true });
     const heights: number[] = [];
     for (let r = 0; r < replaysEach; r += 1) {
-      const handle = await replayArchive({ archive, browser: browser as never });
+      const handle = await replayArchive({ archive, browser: browser as never, restoreTiming });
       try {
         const page = handle.page as unknown as {
           waitForTimeout(ms: number): Promise<void>;

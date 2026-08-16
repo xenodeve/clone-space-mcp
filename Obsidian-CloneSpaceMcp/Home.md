@@ -25,7 +25,7 @@
 
 ## project — ongoing goals / constraints not derivable from the code
 - [[replay-reexecutes-original-js]] — the architectural commitment the whole project rests on, and the approach it rejects
-- [[replay-is-a-different-timing-environment]] — a page that measures itself without waiting for its webfont races, and a replay loses it one run in three; two fixes that reproduced the recorded latency were measured to make it *worse*, which inverted the mechanism the note first claimed
+- [[replay-is-a-different-timing-environment]] — a page that measures itself without waiting for its webfont races and a replay resolves it differently; three fixes were refuted before a fixture existed, and the fourth is graded on the fixture but still unmeasured on the live case, which is three registers that must not collapse into "fixed"
 - [[fixture-first-not-real-sites]] — exit criteria are checked against a controlled fixture with known ground truth, never a live site
 - [[machine-paths-bun-and-gh]] — `bun` and `gh` are installed but absent from the process PATH on this machine
 
