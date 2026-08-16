@@ -86,6 +86,10 @@ test("a field only one side produced is unobserved and blocks a PASS", async () 
       browser: browser as never,
       // The fixture servers are on loopback (#162).
       allowPrivateNetwork: true,
+      // The fixture page rests before the first sample, so the full eight-second budget buys this
+      // assertion nothing and costs six passes of it. The test above leaves the default alone, so
+      // the number a real site is measured with is still exercised once per run (#182).
+      sampleBudget: 4,
       // Injected so the test can produce the one-sided case without breaking a real page.
       extraLiveField: { "probe.oneSided": 1 },
     });
@@ -96,6 +100,49 @@ test("a field only one side produced is unobserved and blocks a PASS", async () 
       report.fields.some((f) => f.field === "probe.oneSided" && f.verdict === "unobserved"),
       "the one-sided field was not reported as unobserved",
     );
+  } finally {
+    await servers.stop();
+  }
+});
+
+/**
+ * #182. A reading taken while the page is still moving must not be compared as though it had
+ * settled — and publishing `motion.settled: false` beside it does not achieve that, because the
+ * classifier compares every key it is given. Both sides mid-transition in the same way would
+ * classify `equal` and hand out a PASS the measurement did not earn.
+ *
+ * A budget below `SETTLE_REPEATS` cannot settle by construction, which is what makes this a test
+ * of the rule rather than of the fixture's timing.
+ */
+test("a motion reading that never settled is not compared at all", async () => {
+  const servers: FixtureServers = await startFixtureServers();
+  try {
+    const report = await runEquivalence({
+      url: servers.primary.url,
+      outDir: join(tempDir, `archive-${(counter += 1)}`),
+      browser: browser as never,
+      allowPrivateNetwork: true,
+      sampleBudget: 1,
+    });
+
+    assert.equal(
+      report.fields.find((field) => field.field === "motion.settled")?.verdict,
+      "equal",
+      "both sides should agree that neither settled",
+    );
+    // Not compared at all — the readings are absent from the digest, so there is no verdict for
+    // them to carry. A field present on one side only would be `unobserved`; a field on neither
+    // is simply not a comparison anyone made.
+    for (const field of ["motion.css.settled", "motion.gsap.settled", "layout.scrollHeight"]) {
+      assert.equal(
+        report.fields.find((entry) => entry.field === field),
+        undefined,
+        `${field} was compared despite never settling`,
+      );
+    }
+    // And the report says how little it compared, which is the design's answer rather than a
+    // verdict downgrade: a green verdict at zero motion coverage is a small claim, stated.
+    assert.equal(report.coverage.motion_settled, 0);
   } finally {
     await servers.stop();
   }

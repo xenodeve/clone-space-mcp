@@ -5,8 +5,12 @@
  *
  *     node scripts/settle-series.ts https://labs.chaingpt.org/ 5
  *
- * `src/equivalence/run.ts` picks a "settled" reading by stopping at the first pair of consecutive
- * equal samples. #182 measured that this is not reproducible: three consecutive runs of the gate on
+ * **See also `scripts/digest-series.ts`**, which records the same shape for the *replayed* archive
+ * as well and carries every field the verdict is built from. A rule that fixes the live side and
+ * breaks the clone's is the mistake #182 made twice, and only the two-sided series shows it.
+ *
+ * `src/equivalence/run.ts` used to pick a "settled" reading by stopping at the first pair of
+ * consecutive equal samples. #182 measured that this is not reproducible: three consecutive runs of the gate on
  * one site returned FAIL, PASS and INCOMPLETE, and a live-against-replay listing showed the clone
  * was not wrong.
  *
