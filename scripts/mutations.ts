@@ -1173,4 +1173,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "a motion reading that never settled is not compared at all",
   },
+  {
+    id: "post-scroll-counts-read-once",
+    why: "Issue #182/#187 - the gate took exactly one sample of the reading after the scroll pass. Measured on labs.chaingpt.org, three runs of live against replay: that one sample read dom.elements as 2821 live and 2819 on the clone on two of three runs, while every reading after it agreed at 2767 for fourteen straight samples. Publishing an unsettled count is publishing the difference the sampling made.",
+    file: "src/equivalence/run.ts",
+    find: "    ...(afterScrollSettled",
+    replace: "    ...(true",
+    suite: "browser",
+    expect: "a motion reading that never settled is not compared at all",
+  },
 ];

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { hasSettled, settledSample, SETTLE_REPEATS } from "../../src/equivalence/settle.ts";
+import {
+  hasSettled,
+  settledSample,
+  tailIsConstant,
+  SETTLE_REPEATS,
+} from "../../src/equivalence/settle.ts";
 
 /**
  * Real series, measured 2026-08-16 on `https://labs.chaingpt.org/` — three live loads and three
@@ -118,5 +123,47 @@ describe("every motion counter, not only css", () => {
 describe("settledSample", () => {
   test("throws rather than inventing a reading when nothing was sampled", () => {
     expect(() => settledSample([])).toThrow(/no samples/);
+  });
+});
+
+describe("tailIsConstant", () => {
+  /**
+   * The after-scroll reading has the same shape of defect as the settle loop and was left with it:
+   * the gate takes exactly one sample there. Measured 2026-08-16 on `labs.chaingpt.org`, three runs
+   * of live-against-replay, reading `dom.elements` at the moment the gate reads it and then 14 more
+   * times at 400 ms:
+   *
+   *     live    2821  2767 2767 2767 ... (14 identical)
+   *     replay  2819  2767 2767 2767 ... (14 identical)
+   *
+   * The first read differs by two elements on two of three runs. Every read after it agrees. That
+   * is the `dom.elements` residual the gate has been reporting as the clone's fault.
+   */
+  const AFTER_SCROLL = {
+    live: [2821, 2767, 2767, 2767, 2767],
+    replay: [2819, 2767, 2767, 2767, 2767],
+  };
+
+  const asCounts = (elements: readonly number[]) => elements.map((count) => ({ count }));
+  const key = (sample: { count: number }) => String(sample.count);
+
+  test("the gate's one-sample read is where the difference is, and the tail is where it is not", () => {
+    expect(AFTER_SCROLL.live[0]).not.toBe(AFTER_SCROLL.replay[0]);
+    expect(AFTER_SCROLL.live.at(-1)).toBe(AFTER_SCROLL.replay.at(-1));
+  });
+
+  test("is false while the reading is still moving and true once it stops", () => {
+    expect(tailIsConstant(asCounts(AFTER_SCROLL.live), key, 5)).toBe(false);
+    expect(tailIsConstant(asCounts(AFTER_SCROLL.live.slice(1)), key, 4)).toBe(true);
+  });
+
+  test("compares the whole projected key, not one field of it", () => {
+    const samples = [{ a: 1, b: 1 }, { a: 1, b: 2 }];
+    expect(tailIsConstant(samples, (s) => `${s.a}`, 2)).toBe(true);
+    expect(tailIsConstant(samples, (s) => `${s.a}|${s.b}`, 2)).toBe(false);
+  });
+
+  test("refuses a repeat count that would make an empty series look constant", () => {
+    expect(() => tailIsConstant([], key, 0)).toThrow(/at least one repeat/);
   });
 });
