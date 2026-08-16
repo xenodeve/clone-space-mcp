@@ -6,6 +6,23 @@
 
 ---
 
+## The equivalence gate became a command anyone can run (2026-08-17, #171, PR #207)
+
+**`src/equivalence/` had no entry point.** Not in `src/index.ts`, not in `scripts/`, not in `src/serve/` — it was reachable from `bun test` and the mutation corpus and from nowhere else, so **every verdict this repo has quoted about a real site came from a throwaway probe under the gitignored `archives/`.** `bun run equivalence <url>` closes #171's criterion 5: capture → replay → diff, the verdict beside its coverage vector, and a non-zero exit on an unexplained residual.
+
+**Three exit codes, not a boolean.** `0` PASS · `1` FAIL, a difference to chase · `2` INCOMPLETE, a run to repeat. Folding INCOMPLETE into zero would tell a caller the clone agreed when nothing was proven equal.
+
+**Criterion 7's three URLs are recorded** in `docs/reports/2026-08-17-equivalence-verdicts.md`, and all three exit codes were exercised on real sites: `www.firecrawl.dev` FAIL/1, `www.chaingpt.org` INCOMPLETE/2, `labs.chaingpt.org` PASS then — minutes later, unchanged — **FAIL/1 on `layout.scrollHeight`**. The command reproduced #182 in its first hour of existing.
+
+**The line worth reading twice in that failing run is `unstable (0)`.** The control had **three live and three replay passes** and still called the field stable, because it settles at one of two values and three passes can land on the same one. So a false accusation reached the residual with a well-populated baseline behind it. That is #187's criterion 5, now with a recorded instance instead of an argument.
+
+**Two things this got wrong on the way, both caught by running it rather than by a test:**
+
+- **`10000%`.** `coverageOf` returns whole percentages already rounded and the formatter multiplied again. The unit test passed because its fixture's expected value was **assumed rather than read from the function that produces it** — the tautological-test anti-pattern, in the fixture instead of the assertion.
+- **`echo $?` after a pipe reads `tail`'s status.** The first exit-code "measurement" proved nothing at all; the recorded codes come from unpiped invocations.
+
+**And the corpus could not reach the command at first**: defects are applied in memory to modules the test process loads (#82), and the browser test **spawns** the CLI. `MUTATION NOT APPLIED` — which is not `SURVIVED`. Forwarding `process.execArgv` to the child turned it into `CAUGHT`. Memory: `the-corpus-reach-ends-at-the-process-boundary`.
+
 ## A published probability was wrong by fifteen times, and a second delegated review found it (2026-08-16, #187, PR #206)
 
 **The claim:** *"twenty clean draws from a 25% rate is `0.75^20 = 0.3%`"*, written into `DONE.md`, the memory note, the ledger, a committed script header, a PR body and two issue comments.

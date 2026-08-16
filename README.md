@@ -111,6 +111,7 @@ measurements and what was rejected.
 bun run verify        # lint → typecheck → test → build — the ship gate
 bun run mutate        # re-apply a corpus of real past defects; each must be caught by its own test
 bun run spike         # the CDP measurement harness (Node, with the fixture served by Bun)
+bun run equivalence <url>   # capture -> replay -> diff one page; exits 1 on a residual, 2 when it could not compare
 ```
 
 `bun run mutate` is the mechanism this repo trusts over review: a guard that no test can fail

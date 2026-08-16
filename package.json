@@ -18,6 +18,7 @@
     "verify": "bun run lint && bun run typecheck && bun test && bun run test:browser && bun run build",
     "mcp:call": "node scripts/mcp-call.ts",
     "inspect": "node scripts/inspect.ts",
+    "equivalence": "node scripts/equivalence.ts",
     "mcp:serve": "node scripts/mcp-server.ts",
     "fixture:serve": "bun run scripts/fixture-serve.ts",
     "spike": "node scripts/spike-cdp.ts"

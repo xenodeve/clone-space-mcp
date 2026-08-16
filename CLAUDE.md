@@ -66,6 +66,7 @@ browser script by moving it to Bun.
 | **ship gate** | `bun run verify` (lint → typecheck → test → build) | Bun |
 | fixture server | `bun run fixture:serve` | Bun (`Bun.serve` + `Bun.build`) |
 | CDP spike | `bun run spike` | **Node** |
+| equivalence gate | `bun run equivalence <url>` | **Node** |
 
 A Node process that needs the fixture starts it as a **Bun child process** and reads its origins
 from stdout — `scripts/fixture-serve.ts` plus `startFixtureServers` in `scripts/spike-cdp.ts`.
