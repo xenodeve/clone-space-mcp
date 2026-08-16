@@ -11,6 +11,7 @@
     "test": "bun test",
     "mutate": "bun run scripts/mutate.ts",
     "ci:lock": "bun run scripts/ci-lock.ts",
+    "verify:status": "bun run scripts/verify-status.ts",
     "metamorphic": "bun run scripts/metamorphic.ts",
     "test:browser": "node --test \"test/browser/**/*.browser.ts\"",
     "build": "bun build src/index.ts --outdir dist --target bun",

@@ -1236,4 +1236,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "reports expired even when the run failed, because a red run is still a run",
   },
+  {
+    id: "verify-status-reports-a-failed-run-as-success",
+    why: "Issue #2 - the commit status is the only thing that can gate a web merge while Actions is locked, so a non-zero verify reported as success is a gate that passes everything. It also has to say the run was local: a status that reads like CI ran claims an independence this mechanism does not have.",
+    file: "scripts/verify-status.ts",
+    find: "  const passed = run.exitCode === 0;",
+    replace: "  const passed = true;",
+    suite: "bun",
+    expect: "reports failure for any non-zero exit",
+  },
 ];

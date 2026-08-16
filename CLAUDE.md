@@ -109,6 +109,15 @@ Full pipeline in `docs/agents/workflow.md`. The short form:
   **The honest consequence: a human merging on the web is currently ungated.** The two bullets
   above only bind commands run locally. Do not describe this repo's gate as complete until #2 closes.
 
+  **A commit status does not need Actions, and that hole can be closed without them.**
+  `bun run verify:status` runs the verify command and posts the result to the head SHA as the
+  `t4-verify` context; adding that context to ruleset `20028550` makes a web merge wait for it.
+  **Arming it is the repository owner's decision and is deliberately not done in code** — a
+  required check blocks any PR the command was never run against, which is the same failure #2
+  cites for the Actions checks. And it is **self-attested**: the machine that ran verify reports
+  the result, so it guards against forgetting, not against lying. The four Actions checks remain
+  the real answer.
+
 Everything else — TDD discipline, `/simplify`, review depth — is agent discipline.
 
 ## Writing conventions
