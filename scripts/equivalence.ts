@@ -130,6 +130,24 @@ function percent(coverage: number): string {
 }
 
 /**
+ * One line per residual field, carrying **what each side measured**.
+ *
+ * A `FAIL` that names a field and not its two values sends the reader to dig through an archive for
+ * a number the run already had in hand — measured on `www.chaingpt.org`, where the report said
+ * `residual (1) network.origins` and nothing about what the two sides counted.
+ *
+ * A residual field with no entry in `fields` is still printed. Losing it because its values are
+ * missing would be worse than losing the values: the verdict would name a count it does not explain.
+ */
+function residualLines(report: EquivalenceReport): string[] {
+  return report.residual.map((field) => {
+    const detail = report.fields.find((entry) => entry.field === field);
+    if (detail === undefined) return `  ${field}`;
+    return `  ${field}  live ${String(detail.live)}  replay ${String(detail.replay)}`;
+  });
+}
+
+/**
  * The perturbation line, or **nothing at all**.
  *
  * `perturbed (0)` says the control ran and the hooks moved nothing; silence says nobody drove it.
@@ -158,10 +176,16 @@ export function formatEquivalenceReport(report: EquivalenceReport): string {
     `equivalence ${report.verdict}  ${report.url}`,
     `archive     ${report.archive}`,
     "",
-    `residual (${report.residual.length})   ${report.residual.join("  ")}`.trimEnd(),
+    `residual (${report.residual.length})`,
+    ...residualLines(report),
     `unstable (${report.unstable.length})   ${report.unstable.join("  ")}`.trimEnd(),
     `baseline    live ${report.baselinePasses.live}  replay ${report.baselinePasses.replay}`,
     ...perturbationLine(report.perturbed),
+    // Reported, never compared — see `EquivalenceReport.network` for the four reasons this is not
+    // a digest field. Printed on both sides so the gap the digest still has is visible rather than
+    // absent.
+    `network     live ${report.network.live.requests} req / ${report.network.live.origins} origins` +
+      `   replay ${report.network.replay.requests} req / ${report.network.replay.origins} origins`,
     "",
     "coverage",
   ];

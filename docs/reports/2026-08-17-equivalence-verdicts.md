@@ -121,6 +121,65 @@ the plain side. That keeps the two comparable, which is the gate's own rule — 
 both sides* — but it means a perturbation that changes **which elements are discoverable** is
 invisible to this control. Discovering a second plan and diffing the plans is a separate measurement.
 
+## The network attempt set — the field that found a difference on its first run
+
+#171's v1 scope names it and the digest did not have it:
+
+> In: the field digest this repo can already produce — behaviour multiset, **network attempt set
+> with its ADR 0007 classification**, and the motion counts.
+
+**Without it the gate could return `PASS` on a clone that fetched an entirely different set of
+things**, which is the opposite of what this project claims. The issue names the concrete case:
+`www.chaingpt.org` cannot serve `Cannon_Exterior.hdr`, its 3D scene's environment map, so an
+API-level comparison passes while the scene renders unlit.
+
+`network.requests` and `network.origins` are counts of the distinct resources and origins the page
+asked for, read from `performance.getEntriesByType("resource")` **through the same seam on both
+sides**, normalized by ADR 0007 with the caller's volatile keys and no invented policy. Two counts
+rather than one: a clone fetching the same number of things from a different place is a different
+failure from one fetching a different number.
+
+On the first real run, `https://www.chaingpt.org/`:
+
+```
+equivalence FAIL  https://www.chaingpt.org/
+
+residual (1)
+  network.origins  live 27  replay 28
+unstable (1)   motion.settled
+baseline    live 3  replay 3
+```
+
+**A `FAIL` on a surface the gate had never looked at**, on a site that had returned `INCOMPLETE`
+minutes earlier with every other field agreeing. `network.origins` is **not** in `unstable`, so the
+three live drives agreed at 27 and the three replays agreed at 28: the difference reproduces.
+
+**Then the request count settled it, and the field was demoted before it merged.**
+
+```
+network     live 248 req / 27 origins   replay 248 req / 28 origins
+```
+
+**248 against a default Resource Timing buffer of 250.** The measurement is saturated: the page
+issues more requests than the buffer holds, so which entries survive is decided by timing rather
+than by what either side fetched. The origin difference is a truncation artefact until proven
+otherwise.
+
+A delegated review had already ranked that explanation among four ways
+`performance.getEntriesByType("resource")` differs from *what the page asked the network for* —
+the bounded buffer, collapsed redirects and invisible service-worker fetches, the document, iframes,
+workers and preflights living on other timelines, and requests still in flight at read time.
+
+**So `network.requests` and `network.origins` are reported and not compared.** They were digest
+fields for about an hour, and in that hour they produced a `FAIL` on this site. A gate that goes red
+for reasons it cannot explain teaches that red means nothing, which is the failure #182 is about.
+
+**And the reduction cannot catch the case the issue names anyway.** Counting distinct requests makes
+a *substitution* invisible: live `{hero.jpg, Cannon_Exterior.hdr}` against replay
+`{hero.jpg, placeholder.svg}` is `requests: 2, origins: 1` on both sides. It catches an omission and
+nothing else — so the sentence above about the unlit 3D scene describes what the field was *for*,
+not what it currently does.
+
 ## What none of these say
 
 `listener_execution` is **0% in every run**. v1 drives no listeners, and a green verdict here is a claim about navigation and scrolling and about nothing else. Reading any row above as *"the clone is faithful"* would be reading past the coverage vector, which is the whole reason it is a vector.
@@ -188,6 +247,44 @@ perturbed ก็ต่อเมื่อค่าตอนติด hook ไม�
 **ข้อจำกัดที่รู้อยู่ และไม่ได้ลงมือแก้** · รอบที่ติด hook ใช้แผนการโต้ตอบที่ค้นพบจากฝั่งธรรมดาซ้ำ · นั่นทำให้สองรอบ
 เทียบกันได้ ซึ่งเป็นกฎของด่านเอง — *ตัวขับเดียวกันทั้งสองฝั่ง* — แต่แปลว่า perturbation ที่เปลี่ยน**ว่า element ไหน
 ค้นพบได้** จะมองไม่เห็นจากตัวควบคุมนี้ · การค้นแผนที่สองแล้ว diff แผนกันเป็นการวัดคนละอย่าง
+
+## network attempt set — ฟิลด์ที่เจอความต่างตั้งแต่รอบแรก
+
+ขอบเขต v1 ของ #171 ระบุมันไว้ และ digest ไม่มีมัน (ยกข้อความมาในส่วน EN)
+
+**ถ้าไม่มีมัน ด่านคืน `PASS` ให้ clone ที่ยิง request คนละชุดกันเลยได้** ซึ่งตรงข้ามกับสิ่งที่โปรเจกต์นี้อ้าง ·
+issue ระบุเคสรูปธรรมไว้: `www.chaingpt.org` เสิร์ฟ `Cannon_Exterior.hdr` ซึ่งเป็น environment map ของฉาก
+3D ไม่ได้ การเทียบระดับ API จึงผ่านขณะที่ฉากเรนเดอร์แบบไม่มีแสง
+
+`network.requests` และ `network.origins` คือจำนวน resource และ origin ที่ไม่ซ้ำกันซึ่งหน้าเว็บร้องขอ อ่านจาก
+`performance.getEntriesByType("resource")` **ผ่าน seam เดียวกันทั้งสองฝั่ง** ผ่านการ normalize ตาม ADR 0007
+ด้วย volatile key ของผู้เรียกและไม่มีนโยบายที่ประดิษฐ์ขึ้นเอง · สองจำนวนไม่ใช่จำนวนเดียว: clone ที่ดึงของจำนวนเท่ากัน
+จากคนละที่ เป็นความล้มเหลวคนละแบบกับ clone ที่ดึงของจำนวนต่างกัน
+
+ผลรอบจริงรอบแรกบน `https://www.chaingpt.org/` อยู่ในบล็อกด้านบน
+
+**เป็น `FAIL` บนพื้นผิวที่ด่านไม่เคยมองมาก่อน** บนเว็บที่เพิ่งได้ `INCOMPLETE` ไม่กี่นาทีก่อนหน้าโดยฟิลด์อื่นตรงกันหมด ·
+`network.origins` **ไม่ได้**อยู่ใน `unstable` แปลว่า live สามรอบตรงกันที่ 27 และ replay สามรอบตรงกันที่ 28 ·
+ความต่างเกิดซ้ำได้
+
+**แล้วจำนวน request ก็ตัดสินเรื่องนี้ และฟิลด์ถูกลดชั้นก่อน merge** (ผลอยู่ในบล็อกภาษาอังกฤษด้านบน)
+
+**248 เทียบกับ buffer ของ Resource Timing ที่มีค่าเริ่มต้น 250** · การวัดอิ่มตัว: หน้าเว็บยิง request มากกว่าที่
+buffer เก็บได้ ตัวไหนรอดจึงถูกตัดสินด้วยจังหวะเวลา ไม่ใช่ด้วยสิ่งที่แต่ละฝั่งดึงมา · ความต่างของ origin จึงเป็น artefact
+จากการตัดทิ้ง จนกว่าจะพิสูจน์เป็นอย่างอื่น
+
+รีวิวที่ delegate จัดอันดับคำอธิบายนั้นไว้แล้วในสี่ทางที่ `performance.getEntriesByType("resource")` ต่างจาก *สิ่งที่
+หน้าเว็บขอจากเครือข่าย* — buffer ที่มีขอบเขต · redirect ที่ถูกยุบและ fetch ของ service worker ที่มองไม่เห็น ·
+เอกสาร iframe worker และ preflight ที่อยู่คนละ timeline · และ request ที่ยังค้างอยู่ตอนอ่าน
+
+**`network.requests` และ `network.origins` จึงถูกรายงาน ไม่ถูกเทียบ** · มันเป็นฟิลด์ใน digest อยู่ราวหนึ่งชั่วโมง
+และในชั่วโมงนั้นมันทำให้เว็บนี้ `FAIL` · ด่านที่แดงด้วยเหตุผลที่มันอธิบายไม่ได้ สอนว่าสีแดงไม่มีความหมาย ซึ่งเป็นความ
+ล้มเหลวที่ #182 พูดถึง
+
+**และการลดรูปแบบนี้จับเคสที่ issue ยกมาไม่ได้อยู่ดี** · การนับ request ที่ไม่ซ้ำทำให้การ *แทนที่* มองไม่เห็น: live
+`{hero.jpg, Cannon_Exterior.hdr}` เทียบ replay `{hero.jpg, placeholder.svg}` ได้ `requests: 2, origins: 1`
+เท่ากันทั้งคู่ · มันจับได้แค่การขาดหายไป ไม่จับอย่างอื่น — ประโยคข้างบนเรื่องฉาก 3D ที่ไม่มีแสงจึงอธิบายว่าฟิลด์นี้มีไว้
+*เพื่ออะไร* ไม่ใช่ว่ามันทำอะไรได้ตอนนี้
 
 ## สิ่งที่ไม่มีรอบไหนพูด
 

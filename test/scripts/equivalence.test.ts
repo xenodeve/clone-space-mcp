@@ -24,6 +24,7 @@ const report = (over: Partial<EquivalenceReport> = {}): EquivalenceReport => ({
   residual: [],
   unstable: [],
   baselinePasses: { live: 3, replay: 3 },
+  network: { live: { requests: 0, origins: 0 }, replay: { requests: 0, origins: 0 } },
   verdict: "PASS",
   // `coverageOf` returns **whole percentages already rounded** (`classify.ts:242-249`), not
   // ratios. This fixture said `1` when it meant 100 and the formatter multiplied by 100 again,
@@ -92,6 +93,34 @@ describe("formatEquivalenceReport", () => {
     expect(text).not.toContain("10000%");
   });
 
+  /**
+   * A `FAIL` that names a field and not its two values sends the reader to dig through an archive
+   * for the one number the run already had in hand. Measured on `www.chaingpt.org`: the report said
+   * `residual (1) network.origins` and nothing about what the two sides counted.
+   */
+  test("a residual field is printed with what each side measured", () => {
+    const text = formatEquivalenceReport(
+      report({
+        verdict: "FAIL",
+        residual: ["network.origins"],
+        fields: [
+          { field: "network.origins", verdict: "different", live: 11, replay: 9 },
+          { field: "dom.title", verdict: "equal" },
+        ],
+      }),
+    );
+    expect(text).toMatch(/network\.origins.*live 11.*replay 9/s);
+  });
+
+  test("a residual field the fields list has no entry for is still named", () => {
+    // Losing the field entirely because its values are missing would be worse than losing the
+    // values: the verdict would name a count it does not explain.
+    const text = formatEquivalenceReport(
+      report({ verdict: "FAIL", residual: ["mystery"], fields: [] }),
+    );
+    expect(text).toContain("mystery");
+  });
+
   test("lists every residual field, because that is what a FAIL is", () => {
     const text = formatEquivalenceReport(
       report({ verdict: "FAIL", residual: ["dom.elements", "layout.scrollHeight"] }),
@@ -126,6 +155,35 @@ describe("formatEquivalenceReport", () => {
 
   test("distinguishes a control that found nothing from one that never ran", () => {
     expect(formatEquivalenceReport(report({ perturbed: [] }))).toContain("perturbed (0)");
+  });
+
+  /**
+   * The network attempt set is **reported, never compared** — so the report has to show both sides
+   * side by side or the reading is invisible. It is not a digest field because
+   * `performance.getEntriesByType("resource")` differs from *what the page asked the network for*
+   * in four ways that make the two sides incomparable rather than different; the reasoning is on
+   * `EquivalenceReport.network`.
+   */
+  test("prints what each side asked the network for", () => {
+    const text = formatEquivalenceReport(
+      report({
+        network: { live: { requests: 91, origins: 27 }, replay: { requests: 91, origins: 28 } },
+      }),
+    );
+    expect(text).toMatch(/network.*live.*91.*27/s);
+    expect(text).toMatch(/replay.*91.*28/s);
+  });
+
+  test("the network reading never enters the residual", () => {
+    // Reported, not compared. A reader must not mistake the line for a verdict on that surface.
+    const text = formatEquivalenceReport(
+      report({
+        verdict: "PASS",
+        network: { live: { requests: 1, origins: 1 }, replay: { requests: 2, origins: 2 } },
+      }),
+    );
+    expect(text).toContain("equivalence PASS");
+    expect(text).toContain("residual (0)");
   });
 
   test("prints how much evidence the stability baseline had", () => {

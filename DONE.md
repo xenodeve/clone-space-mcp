@@ -6,6 +6,28 @@
 
 ---
 
+## The network attempt set, reported and deliberately not compared (2026-08-17, #171, PR #209)
+
+**The digest had no network field at all**, so the gate could return `PASS` on a clone that fetched an entirely different set of things. #171's v1 scope names it — *"behaviour multiset, network attempt set with its ADR 0007 classification, and the motion counts"* — and it was never built; found by reading the issue body rather than its checkboxes, the same way the perturbation control was.
+
+**It shipped as a compared digest field for about an hour, and in that hour it produced a `FAIL`.** `network.origins live 27 replay 28` on `www.chaingpt.org`, reproducible across three drives each way and not in `unstable`. A delegated review then ranked four ways `performance.getEntriesByType("resource")` differs from *what the page asked the network for*: a bounded buffer, collapsed redirects and invisible service-worker fetches, the document/iframes/workers/preflights on other timelines, and requests still in flight at read time.
+
+**Printing the request count settled it in one number:**
+
+```
+network     live 248 req / 27 origins   replay 248 req / 28 origins
+```
+
+**248 against a 250-entry default buffer.** The measurement is saturated — which entries survive is decided by timing, not by what either side fetched. The origin difference is a truncation artefact until shown otherwise.
+
+**So the field is reported, never compared.** A gate that goes red for reasons it cannot explain teaches that red means nothing, which is the failure #182 is about. The two readings print side by side so the gap the digest still has is **visible rather than absent**.
+
+**And the reduction could not catch the case the issue names anyway.** Counting distinct requests makes a *substitution* invisible: live `{hero.jpg, Cannon_Exterior.hdr}` against replay `{hero.jpg, placeholder.svg}` is `requests: 2, origins: 1` on both sides. It catches an omission and nothing else.
+
+**The general lesson, and it is the second time today:** a new signal was believed before its own instrument was checked. The perturbation control's first reading was withdrawn because it compared against one pass; this one was demoted because nobody asked how big the buffer was. **Read the instrument's limits before reading its output** — and here one extra printed number did what an hour of reasoning had not.
+
+Four corpus entries, all CAUGHT, including the `blob:`/`data:` filter (those are the page's own object URLs, not network attempts) and the ADR 0007 one (no invented normalization policy). The report also prints what each side measured for a residual field, which it did not.
+
 ## The perturbation control, and the claim it withdrew within the hour (2026-08-17, #171, PR #208)
 
 #171's body asked for a **third drive mode** that never became a checkbox: *"instrumented against uninstrumented on the same side — with a perturbation budget."* It belongs to slice 0 because comparing an instrumented live page against an instrumented replay compares **two pages that both carry hooks**, and no number of same-mode passes can say whether the hooks moved the numbers.
