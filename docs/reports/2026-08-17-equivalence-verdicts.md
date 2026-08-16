@@ -72,6 +72,38 @@ The line worth reading twice is **`unstable (0)` in the failing run**. The stabi
 
 That is the open half of #187's criterion 5, now with a recorded instance rather than an argument: **the gate's treatment of `layout.scrollHeight` currently depends on whether three passes happened to agree.** `baselinePasses` (#203) publishes the count so a reader can see the basis; whether a `different` verdict should require both sides to have been measured at least twice is the decision that remains, and it contradicts a test written the other way on purpose.
 
+## The perturbation control — the hooks move `dom.elements`
+
+`bun run equivalence https://www.chaingpt.org/ --measure-perturbation` drives the live page one
+extra time with the observation layer installed and compares it against the plain pass:
+
+```
+equivalence INCOMPLETE  https://www.chaingpt.org/
+
+residual (0)
+unstable (1)   interaction.performed
+baseline    live 3  replay 3
+perturbed (2)  dom.elements  dom.elements.afterInteraction
+```
+
+**`dom.elements` is not in `unstable`**, so it held across three live and three replay passes and
+moved *only* when the hooks were installed. The attribution is the whole point of driving the same
+side twice: run-to-run noise would have shown up in the baseline, and it did not.
+
+**This qualifies what #171's body recorded.** That entry measured the perturbation as *"load
+4,171 ms vs 3,361 ms, 61 vs 60 rAF frames per second, motion settling identically — below
+run-to-run noise, which is a baseline to defend rather than a reason to skip the control."* Those
+are timing figures, and they are not wrong. **They simply did not look at the element count**, which
+is one of the fields the gate compares.
+
+So the conclusion the body drew — that the perturbation is small enough to work around — holds for
+the quantities it measured and does not extend to the digest. A later slice that instruments **both**
+sides would be comparing `dom.elements` values that the instrument itself moved on at least one
+real site.
+
+`https://example.com/` reports `perturbed (0)` on the same command, which is the control's own
+control: a page with no scripts gives the hooks nothing to disturb.
+
 ## What none of these say
 
 `listener_execution` is **0% in every run**. v1 drives no listeners, and a green verdict here is a claim about navigation and scrolling and about nothing else. Reading any row above as *"the clone is faithful"* would be reading past the coverage vector, which is the whole reason it is a vector.
@@ -107,6 +139,27 @@ That is the open half of #187's criterion 5, now with a recorded instance rather
 บรรทัดที่ควรอ่านสองรอบคือ **`unstable (0)` ในรอบที่ FAIL** · ตัวควบคุมความเสถียรมี **live 3 และ replay 3 pass** และยังเรียก `layout.scrollHeight` ว่าเสถียร — เพราะบนเว็บนั้นมันลงเอยที่หนึ่งในสองค่า และ replay 3 pass ลงที่ค่าเดียวกันได้ · ความต่างจึงตกไปอยู่ใน residual ในฐานะความผิดของ clone บนฟิลด์ที่ clone ไม่ได้เป็นคนตัดสิน
 
 นั่นคือครึ่งที่ยังเปิดอยู่ของเกณฑ์ข้อ 5 ของ #187 ตอนนี้มีกรณีที่บันทึกไว้แทนที่จะเป็นการโต้แย้ง: **การที่ด่านปฏิบัติกับ `layout.scrollHeight` อย่างไร ตอนนี้ขึ้นอยู่กับว่า 3 pass บังเอิญตรงกันหรือไม่** · `baselinePasses` (#203) เผยแพร่จำนวนนั้นให้คนอ่านเห็นฐาน · ส่วนว่า verdict `different` ควรต้องมีการวัดทั้งสองฝั่งอย่างน้อยสองครั้งหรือไม่ คือการตัดสินใจที่ยังเหลือ และมันขัดกับเทสต์ที่เขียนไว้ตรงข้ามอย่างตั้งใจ
+
+## ตัวควบคุม perturbation — hooks ขยับ `dom.elements`
+
+`bun run equivalence https://www.chaingpt.org/ --measure-perturbation` ขับหน้าสดเพิ่มอีกหนึ่งรอบโดยติดตั้ง
+observation layer แล้วเทียบกับ pass ธรรมดา (ผลอยู่ในบล็อกภาษาอังกฤษด้านบน)
+
+**`dom.elements` ไม่ได้อยู่ใน `unstable`** มันจึงนิ่งตลอด 3 live pass และ 3 replay pass และขยับ *เฉพาะ* ตอนติด
+hook · การระบุสาเหตุได้คือเหตุผลทั้งหมดของการขับฝั่งเดียวกันสองครั้ง: noise ระหว่างรอบจะโผล่ใน baseline
+และมันไม่ได้โผล่
+
+**เรื่องนี้ทำให้สิ่งที่เนื้อหาของ #171 บันทึกไว้มีเงื่อนไข** · บันทึกนั้นวัด perturbation ไว้ว่า *"load 4,171 ms
+เทียบ 3,361 ms · 61 เทียบ 60 rAF frame ต่อวินาที · motion นิ่งเหมือนกัน — ต่ำกว่า noise ระหว่างรอบ ซึ่งเป็น
+baseline ที่ต้องรักษา ไม่ใช่เหตุผลที่จะข้ามตัวควบคุม"* · นั่นเป็นตัวเลขเชิงเวลา และมันไม่ผิด · **มันแค่ไม่ได้ดูจำนวน
+element** ซึ่งเป็นหนึ่งในฟิลด์ที่ด่านเอามาเทียบ
+
+ข้อสรุปที่เนื้อหานั้นได้ — ว่า perturbation เล็กพอจะหลบได้ — จึงเป็นจริงสำหรับปริมาณที่มันวัด และไม่ขยายไปถึง
+digest · สไลซ์ถัดไปที่ติด instrument **ทั้งสองฝั่ง** จะกำลังเทียบค่า `dom.elements` ที่ตัว instrument เองขยับ
+บนเว็บจริงอย่างน้อยหนึ่งเว็บ
+
+`https://example.com/` รายงาน `perturbed (0)` ด้วยคำสั่งเดียวกัน ซึ่งเป็นตัวควบคุมของตัวควบคุมเอง: หน้าที่ไม่มี
+สคริปต์เลยไม่มีอะไรให้ hook ไปรบกวน
 
 ## สิ่งที่ไม่มีรอบไหนพูด
 

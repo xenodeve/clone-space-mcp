@@ -112,6 +112,32 @@ test("the command exits zero when live and replay agree", () => {
 ${stdout}`);
   assert.match(stdout, /equivalence PASS/, stdout);
   assert.match(stdout, /residual \(0\)/, stdout);
+  // Free half of the perturbation contract: without the flag the control did not run, and the
+  // report must not carry a line implying it did.
+  assert.doesNotMatch(stdout, /perturbed/, stdout);
+});
+
+/**
+ * #171's third mode through the command. The assertion is that the control **ran and reported**,
+ * not which fields it named — what the hooks move is a property of the page under test, and
+ * pinning it here would make an unrelated fixture edit look like a regression in the control.
+ *
+ * Measured on `https://www.chaingpt.org/` the same day: `perturbed (2) dom.elements
+ * dom.elements.afterInteraction`, with `dom.elements` absent from `unstable` — so it held across
+ * three live and three replay passes and moved only when the hooks were installed.
+ */
+test("--measure-perturbation drives the control and reports what the hooks moved", () => {
+  const url = new URL("/measure-and-freeze.html?at=module", servers.primary.url).href;
+  const { status, stdout } = runCommand([
+    url,
+    tempDir,
+    "--allow-private-network",
+    "--measure-perturbation",
+  ]);
+
+  assert.match(stdout, /perturbed \(\d+\)/, stdout);
+  assert.ok(status === 0 || status === 1 || status === 2, `unexpected exit ${status}
+${stdout}`);
 });
 
 /**

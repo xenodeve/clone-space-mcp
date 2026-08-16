@@ -1,7 +1,7 @@
 /**
  * The equivalence gate as one command (#171, acceptance criterion 5). **Node only** (ADR 0001).
  *
- *     node scripts/equivalence.ts <url> [outDir] [--allow-private-network]
+ *     node scripts/equivalence.ts <url> [outDir] [--allow-private-network] [--measure-perturbation]
  *     bun run equivalence <url> [outDir]
  *
  * Capture the live page, replay the archive, diff the two digests, print the verdict beside its
@@ -39,10 +39,23 @@ export interface EquivalenceArgs {
    * beneath it is green.
    */
   allowPrivateNetwork: boolean;
+  /**
+   * Drive the live page one extra time **with the observation layer installed** and report which
+   * fields the hooks moved (#171's third mode).
+   *
+   * Off by default: it costs a whole extra live drive, and it changes no verdict — nothing in the
+   * comparison this command runs today carries hooks, so the answer is about whether instrumenting
+   * both sides *would* be measuring the page or the instrument.
+   */
+  measurePerturbation: boolean;
 }
 
 const DEFAULT_OUT_DIR = "archives/equivalence";
 const PRIVATE_NETWORK_FLAG = "--allow-private-network";
+const PERTURBATION_FLAG = "--measure-perturbation";
+/** Every flag this command knows. Anything else starting with `--` is refused by name rather than
+ *  silently becoming a path — adding an option means adding it here, not loosening the check. */
+const FLAGS: readonly string[] = [PRIVATE_NETWORK_FLAG, PERTURBATION_FLAG];
 
 /**
  * Two positional arguments and one flag, which is the whole surface.
@@ -53,18 +66,19 @@ const PRIVATE_NETWORK_FLAG = "--allow-private-network";
  */
 export function parseEquivalenceArgs(argv: readonly string[]): EquivalenceArgs {
   const allowPrivateNetwork = argv.includes(PRIVATE_NETWORK_FLAG);
+  const measurePerturbation = argv.includes(PERTURBATION_FLAG);
   // An unknown `--flag` is refused rather than treated as a path. A delegated review named the
   // case that makes this worth the four lines: `--allow-private-networks` — one letter off — was
   // silently accepted as the **output directory**, leaving private networking off. The caller then
   // gets the refusal they explicitly asked not to have, with nothing saying their argument was
   // dropped.
   const unknownFlag = argv.find(
-    (argument) => argument.startsWith("--") && argument !== PRIVATE_NETWORK_FLAG,
+    (argument) => argument.startsWith("--") && !FLAGS.includes(argument),
   );
   if (unknownFlag !== undefined) {
-    throw new Error(`equivalence: unknown flag ${unknownFlag} — only ${PRIVATE_NETWORK_FLAG} exists`);
+    throw new Error(`equivalence: unknown flag ${unknownFlag} — known flags are ${FLAGS.join(", ")}`);
   }
-  const positional = argv.filter((argument) => argument !== PRIVATE_NETWORK_FLAG);
+  const positional = argv.filter((argument) => !FLAGS.includes(argument));
   if (positional.length > 2) {
     throw new Error(
       `equivalence: unexpected argument ${positional[2]} — usage is <url> [outDir] [${PRIVATE_NETWORK_FLAG}]`,
@@ -77,7 +91,7 @@ export function parseEquivalenceArgs(argv: readonly string[]): EquivalenceArgs {
   if (!URL.canParse(url) || !/^https?:$/.test(new URL(url).protocol)) {
     throw new Error(`equivalence: ${url} is not an http(s) url`);
   }
-  return { url, outDir: outDir ?? DEFAULT_OUT_DIR, allowPrivateNetwork };
+  return { url, outDir: outDir ?? DEFAULT_OUT_DIR, allowPrivateNetwork, measurePerturbation };
 }
 
 /**
@@ -116,6 +130,19 @@ function percent(coverage: number): string {
 }
 
 /**
+ * The perturbation line, or **nothing at all**.
+ *
+ * `perturbed (0)` says the control ran and the hooks moved nothing; silence says nobody drove it.
+ * Collapsing the two would publish a measurement that was never taken — the same failure
+ * `unobserved` exists to keep out of `equal`, and the same one `baselinePasses` avoids by reporting
+ * a `0` rather than an absent field.
+ */
+function perturbationLine(perturbed: readonly string[] | undefined): string[] {
+  if (perturbed === undefined) return [];
+  return [`perturbed (${perturbed.length})  ${perturbed.join("  ")}`.trimEnd()];
+}
+
+/**
  * What the command prints.
  *
  * **Coverage is one line per dimension and never a total.** A single number averages away exactly
@@ -134,6 +161,7 @@ export function formatEquivalenceReport(report: EquivalenceReport): string {
     `residual (${report.residual.length})   ${report.residual.join("  ")}`.trimEnd(),
     `unstable (${report.unstable.length})   ${report.unstable.join("  ")}`.trimEnd(),
     `baseline    live ${report.baselinePasses.live}  replay ${report.baselinePasses.replay}`,
+    ...perturbationLine(report.perturbed),
     "",
     "coverage",
   ];
@@ -173,6 +201,7 @@ async function run(): Promise<void> {
       outDir: join(runDir, "archive"),
       browser: browser as never,
       allowPrivateNetwork: args.allowPrivateNetwork,
+      measurePerturbation: args.measurePerturbation,
     });
     console.log(formatEquivalenceReport(report));
     process.exitCode = equivalenceExitCode(report.verdict);

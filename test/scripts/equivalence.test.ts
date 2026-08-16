@@ -109,6 +109,25 @@ describe("formatEquivalenceReport", () => {
     expect(text).toContain("motion.gsap.settled");
   });
 
+  /**
+   * Absent and empty are different claims. `perturbed (0)` says the control ran and the hooks moved
+   * nothing; printing that line when nobody drove the control would be reporting a measurement
+   * that was never taken.
+   */
+  test("says nothing about perturbation when the control did not run", () => {
+    expect(formatEquivalenceReport(report())).not.toContain("perturbed");
+  });
+
+  test("names the fields the hooks moved when the control did run", () => {
+    const text = formatEquivalenceReport(report({ perturbed: ["dom.elements"] }));
+    expect(text).toContain("perturbed (1)");
+    expect(text).toContain("dom.elements");
+  });
+
+  test("distinguishes a control that found nothing from one that never ran", () => {
+    expect(formatEquivalenceReport(report({ perturbed: [] }))).toContain("perturbed (0)");
+  });
+
   test("prints how much evidence the stability baseline had", () => {
     // #187. A FAIL resting on no replay passes and one resting on three agreeing replay passes
     // are different claims, and the number is the only thing that separates them.
@@ -130,6 +149,7 @@ describe("parseEquivalenceArgs", () => {
       url: "https://example.com/",
       outDir: "./out/run",
       allowPrivateNetwork: false,
+      measurePerturbation: false,
     });
   });
 
@@ -184,6 +204,33 @@ describe("parseEquivalenceArgs", () => {
     expect(() => parseEquivalenceArgs(["https://example.com/", "./out", "extra"])).toThrow(
       /unexpected/i,
     );
+  });
+
+  /**
+   * #171's third drive mode reaches the command by the same door as the first flag, and the parser
+   * has to learn it: an unknown `--flag` is refused by name, so adding an option means adding it to
+   * the set rather than loosening the check.
+   */
+  test("takes --measure-perturbation, and defaults to off", () => {
+    expect(parseEquivalenceArgs(["https://example.com/"]).measurePerturbation).toBe(false);
+    expect(
+      parseEquivalenceArgs(["https://example.com/", "--measure-perturbation"]).measurePerturbation,
+    ).toBe(true);
+  });
+
+  test("both flags can be given together", () => {
+    const args = parseEquivalenceArgs([
+      "https://example.com/",
+      "./out",
+      "--measure-perturbation",
+      "--allow-private-network",
+    ]);
+    expect(args).toEqual({
+      url: "https://example.com/",
+      outDir: "./out",
+      allowPrivateNetwork: true,
+      measurePerturbation: true,
+    });
   });
 
   test("the flag is not mistaken for the output directory", () => {

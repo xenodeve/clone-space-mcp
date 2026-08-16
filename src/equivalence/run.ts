@@ -28,6 +28,8 @@ import {
 } from "../capture/interaction.ts";
 import { driveInteraction, type DriveReport, type DrivablePage } from "../capture/interaction-drive.ts";
 import { hasSettled, settledSample, tailIsConstant } from "./settle.ts";
+import { perturbedFields } from "./perturbation.ts";
+import { INSTRUMENT_INIT_SCRIPT } from "../capture/instrument.ts";
 
 /** Settle time after each driven action, so the effect it triggers is observable before the next. */
 const INTERACTION_SETTLE_MS = 150;
@@ -54,6 +56,9 @@ export type EquivalenceBrowser = ReplayBrowser;
 
 interface LiveContext {
   newPage(): Promise<EquivalencePage>;
+  /** Present for the perturbation control only — the one drive that installs the observation
+   *  layer before any page script (#171). */
+  addInitScript?(script: { content: string }): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -77,12 +82,32 @@ export interface EquivalenceOptions {
   sampleBudget?: number;
   /** Test seam: a field forced onto the live digest, to exercise the one-sided case. */
   extraLiveField?: Digest;
+  /**
+   * Drive the live page **one extra time with the observation layer installed**, and report which
+   * fields the hooks moved (#171's third mode).
+   *
+   * **Off by default, and it does not change the verdict.** Nothing in the comparison this gate
+   * runs today carries hooks, so a perturbed field is not evidence about the clone — it is evidence
+   * about whether instrumenting *both* sides, which a later slice wants to do, would be measuring
+   * the page or the instrument. Letting it move a verdict now would be the gate reporting a fact
+   * about its own future.
+   */
+  measurePerturbation?: boolean;
 }
 
 export interface EquivalenceReport extends ClassifyResult {
   url: string;
   archive: string;
   coverage: Record<string, number>;
+  /**
+   * Fields the observation layer moved, when `measurePerturbation` asked for the control (#171).
+   *
+   * **Absent when the control did not run**, which is not the same as an empty array. `[]` is
+   * "measured, and the hooks moved nothing"; absent is "nobody looked" — the same distinction
+   * `unobserved` keeps out of `equal`, and the same one `baselinePasses` keeps by reporting `0`
+   * rather than nothing at all.
+   */
+  perturbed?: string[];
 }
 
 /**
@@ -346,6 +371,29 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   }
   const live: Digest = { ...passes[0]!, ...(options.extraLiveField ?? {}) };
 
+  // #171's third mode. One more live drive, identical to the ones above except that the observation
+  // layer is installed before any page script, compared against the plain pass driven with the same
+  // interaction plan. Everything else is held the same on purpose: a difference this reports has
+  // one remaining cause.
+  let perturbed: string[] | undefined;
+  if (options.measurePerturbation === true) {
+    const context = (await options.browser.newContext({})) as unknown as LiveContext;
+    try {
+      // A context that cannot install one is a caller passing a fake, and reporting `[]` for it
+      // would be the control claiming a measurement it never took.
+      if (context.addInitScript === undefined) {
+        throw new Error("equivalence: measurePerturbation needs a context that can addInitScript");
+      }
+      await context.addInitScript({ content: INSTRUMENT_INIT_SCRIPT });
+      const page = await context.newPage();
+      await page.goto(options.url, { waitUntil: "load" });
+      const run = await collectDigest(page, sharedPlan, options.sampleBudget);
+      perturbed = perturbedFields(run.digest, passes[0]!);
+    } finally {
+      await context.close();
+    }
+  }
+
   const har = await captureHar({
     browser: options.browser as never,
     url: options.url,
@@ -379,6 +427,9 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
     ...result,
     url: options.url,
     archive,
+    // Spread conditionally: absent means the control did not run, and `[]` means it ran and found
+    // nothing. Publishing `[]` unconditionally would report a measurement nobody took.
+    ...(perturbed === undefined ? {} : { perturbed }),
     // Published with every verdict, never reduced to a score. `interaction` is zero because v1
     // drives none, and saying so is the point: a green verdict here is a claim about navigation
     // and scrolling, and about nothing else.

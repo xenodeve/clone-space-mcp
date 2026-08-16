@@ -6,6 +6,28 @@
 
 ---
 
+## The observation layer moves `dom.elements`, measured (2026-08-17, #171, PR #208)
+
+#171's body asked for a **third drive mode** that never became a checkbox: *"instrumented against uninstrumented on the same side — with a perturbation budget."* The reason it belongs to slice 0 is that comparing an instrumented live page against an instrumented replay compares **two pages that both carry hooks**, and no number of same-mode passes can say whether the hooks moved the numbers.
+
+`bun run equivalence <url> --measure-perturbation` drives the live page one extra time with the observation layer installed. On `https://www.chaingpt.org/`:
+
+```
+unstable (1)   interaction.performed
+baseline    live 3  replay 3
+perturbed (2)  dom.elements  dom.elements.afterInteraction
+```
+
+**`dom.elements` is not in `unstable`** — it held across three live and three replay passes and moved only under hooks, which is what driving the same side twice buys. `https://example.com/` reports `perturbed (0)` on the same command: a page with no scripts gives the hooks nothing to disturb.
+
+**This qualifies what the issue recorded.** Its baseline was *"load 4,171 ms vs 3,361 ms, 61 vs 60 rAF frames per second, motion settling identically — below run-to-run noise"*. Those figures are not wrong; **they measured timing and never looked at the element count**, which is a field the gate compares. A later slice instrumenting both sides would be comparing a number the instrument itself moves.
+
+**The budget is a set, not a tolerance.** A numeric slack needs a unit per field and the digest is a flat map of counts, strings and booleans with no shared scale — picking one per field would be the judgement this module exists to replace. A field the hooks moved carries no signal in an instrumented comparison, which is the conclusion `unstable` already reaches about a field that will not hold still, reached the same way: by measuring.
+
+**It changes no verdict, deliberately.** Nothing in the comparison the gate runs today carries hooks, so a perturbed field is evidence about a *future* slice rather than about this clone. Letting it move a verdict now would be the gate reporting a fact about its own roadmap.
+
+`perturbed` is **absent** when the control did not run, and `[]` when it ran and found nothing — the same distinction `unobserved` keeps out of `equal`. Three corpus entries, all CAUGHT, including the wiring one that lets the option be accepted, threaded and reported while the extra drive never happens.
+
 ## The equivalence gate became a command anyone can run (2026-08-17, #171, PR #207)
 
 **`src/equivalence/` had no entry point.** Not in `src/index.ts`, not in `scripts/`, not in `src/serve/` — it was reachable from `bun test` and the mutation corpus and from nowhere else, so **every verdict this repo has quoted about a real site came from a throwaway probe under the gitignored `archives/`.** `bun run equivalence <url>` closes #171's criterion 5: capture → replay → diff, the verdict beside its coverage vector, and a non-zero exit on an unexplained residual.
