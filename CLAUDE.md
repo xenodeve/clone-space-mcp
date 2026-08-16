@@ -107,7 +107,14 @@ Full pipeline in `docs/agents/workflow.md`. The short form:
   PR stuck on *"Expected — waiting for status"*. Tracked as **#2**.
 
   **The honest consequence: a human merging on the web is currently ungated.** The two bullets
-  above only bind commands run locally. Do not describe this repo's gate as complete until #2 closes.
+  above only bind commands run locally.
+
+  **The gate is complete when two commands say so, and not when an issue closes.** `bun run ci:lock`
+  exits non-zero, *and* `gh api repos/xenodeve/clone-space-mcp/rulesets/20028550 --jq
+  '[.rules[].type]'` contains `required_status_checks`. This used to read *"until #2 closes"*, and
+  #2 was closed as `COMPLETED` on 2026-08-14 with neither of those true — so for two days the
+  sentence returned the wrong answer to anyone who evaluated it, which is what a rule keyed on a
+  tracker state buys you. A closed issue is a fact a reader checks in one second and trusts.
 
   **A commit status does not need Actions, and that hole can be closed without them.**
   `bun run verify:status` runs the verify command and posts the result to the head SHA as the
@@ -268,9 +275,13 @@ issue.` Every job of every run fails in seconds without executing a step. Condit
 
 - It is **restated in the body of every PR that merges under it**, so the exemption is visible
   rather than assumed.
-- It **expires the moment a workflow run actually completes.** At that point
-  `.claude/t4.json` gets `"requireGreenCI": true` and this stops being a rule anyone has to
-  remember — `t4-gate` denies the merge itself.
+- It **expires the moment a workflow run actually completes.** At that point `lint`, `typecheck`,
+  `test`, `browser` and `build` go onto ruleset `20028550` as required checks, and this stops being
+  a rule anyone has to remember — the merge itself is denied, on the web as well as locally.
+  **Not by setting `.claude/t4.json` `"requireGreenCI": true`**, which this file used to say: that
+  flag binds only commands an agent runs, so it would leave open the web-merge hole this exemption
+  is about. `.claude/t4.json`'s own note already said as much, and the two documents contradicted
+  each other while `CLAUDE.md`'s version was copied into roughly fifteen PR bodies.
 - **Check it, do not restate it from here.** `bun run ci:lock` reads the latest run and answers:
   `LOCKED` while every job is refused for billing and none ran a step, `UNLOCKED` once any job ran
   one — whatever it concluded, because the exemption is about jobs that cannot start, not jobs that
