@@ -25,9 +25,13 @@
  *     archive 0  restoreTiming=false  8486x3 8544x9   3/12 off-live
  *     archive 0  restoreTiming=true   8544x12         0/12
  *
- * **5/20 against 0/20.** Read it as two counts and one stated calculation, not as a test result: if
- * the flag changed nothing, the twenty flagged replays would be draws from the same 25% rate, and
- * twenty clean has probability 0.75^20 = 0.3%.
+ * **5/20 against 0/20.** Fisher's exact on that table: **p = 0.024 one-tailed, 0.047 two-tailed.**
+ *
+ * The header first said `0.75^20 = 0.3%`, which is wrong by roughly fifteen times — it is a
+ * one-sample probability against a rate the control only *estimated*. The 95% interval for 5/20 is
+ * **11%-47%**, and these twenty runs arrived in three batches on a site #187 itself records as
+ * non-stationary, so they are not independent draws. **Indicative, not decisive** — which is also
+ * why this script exists rather than a single number.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

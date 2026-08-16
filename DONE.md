@@ -6,11 +6,30 @@
 
 ---
 
+## A published probability was wrong by fifteen times, and a second delegated review found it (2026-08-16, #187, PR #206)
+
+**The claim:** *"twenty clean draws from a 25% rate is `0.75^20 = 0.3%`"*, written into `DONE.md`, the memory note, the ledger, a committed script header, a PR body and two issue comments.
+
+**It is a one-sample probability against a rate the control only estimated.** The right comparison is two-sample. Fisher's exact on 5/20 against 0/20, computed here rather than quoted: **`p = 0.024` one-tailed, `0.047` two-tailed** — about fifteen times weaker than what was published. The 95% interval for the control's own 5/20 is **11%–47%**, which is precisely why 25% cannot be treated as known, and the twenty runs arrived in three batches on a site this issue itself records as non-stationary, so they are not independent draws either.
+
+**What makes this worth an entry rather than a quiet edit:** the sentence was dressed as *"stated as a calculation rather than a test result"* — phrasing that reads as *more* careful than a bare claim and was doing the opposite. **A statistic is a claim about the world and needs the same check as a command's output.** Nothing in this repo checks arithmetic: lint, typecheck, 558 unit tests, 95 browser tests and the mutation corpus all passed over it.
+
+**Six other overstatements went with it**, all from the same review — an outsider lens on claim-versus-evidence, on a different back-end from the correctness review that preceded it:
+
+- *"the timing and the bytes can **never** come from different entries"* — two entries with the same method **and** URL still collapse to the earliest arrival. Deliberate, and a remaining gap rather than something the new key removes.
+- *"off by default for a cost rather than a doubt"* — two surfaces (one fixture, one live page) do not settle whether it helps a third.
+- *"#199 and #200 merged through the new gate"* as evidence the gate works — it is evidence the gate **admits** a green PR. **The blocking direction was never tested**, and that is the direction it exists for.
+- *"`replay: 0` means the accusation rests on no replay evidence at all"* — a replay ran; what was never measured is whether the replay side *varies between runs*.
+- *"the claim moved to **verified**"* — twenty runs on one page at `p = 0.047` verify nothing general.
+- The webfont explanation is stated flatly early in the memory note and refuted later in the same note; the flat sentence now says it is inference.
+
+**Both reviews were `clink`, and neither was run until the session was almost over.** Reported to `xenodeve/xeno-skills#130`.
+
 ## The first delegated review of the session found two defects in code that had already merged (2026-08-16, #187, PR #205)
 
 **`restoreTiming` merged with `bun run verify` green and two corpus entries CAUGHT.** One `clink` review (`codex`, `codereviewer`, `high`, framed to refute rather than approve) then returned two real defects in it, plus one in pre-existing code.
 
-- **Keyed by URL alone.** A `POST /submit` that 302s and the redirected `GET /submit` that carries the document are one URL and two arrivals, so the earliest-arrival rule served the document as early as the redirect — the exact divergence the option exists to remove. `routeFromHAR` matches on **method and URL**; the timing layer now keys on the same pair, so the timing and the bytes can never come from different entries.
+- **Keyed by URL alone.** A `POST /submit` that 302s and the redirected `GET /submit` that carries the document are one URL and two arrivals, so the earliest-arrival rule served the document as early as the redirect — the exact divergence the option exists to remove. `routeFromHAR` matches on **method and URL**; the timing layer now keys on the same pair. **Not "they can never come from different entries"**, as this entry first said — two entries with the *same* method and URL still collapse to the earliest arrival, which is deliberate and remains a known gap.
 - **`setTimeout(Infinity)`.** With `navigationStartedAt` initialised to `POSITIVE_INFINITY`, a request handled before `page.goto` computed `arrivesAt - (now - Infinity)` = `Infinity`. Verified in this environment rather than taken on the reviewer's word: `TimeoutOverflowWarning: Infinity does not fit into a 32-bit signed integer. Timeout duration was set to 1.` Right behaviour, reached by a clamp nobody chose, announcing itself in the output.
 - **Not acted on:** `unservableUrlsIn` collapsing a good GET and an unusable POST onto one URL. Real, but pre-existing and **already documented as a deliberate trade** in that function's own comment — refusing on the bad entry alone would drop an asset the archive can serve.
 
@@ -29,17 +48,17 @@
 
 **Graded on the fixture, with the control in the same session:** `?at=t100` off → **12/12 diverge**; on → **0/12**. Two corpus entries, both CAUGHT, and one of them (`restore-timing-never-waits`) covers the **wiring** — the criterion the three earlier attempts failed, having tested pure functions and left the wiring untested.
 
-**Then the live case was measured, which is what the first probe could not do.** That probe read 8544 with the flag off **and** on — the defect not reproducing, the same reading candidate three got. A later run with the control and the candidate in the *same invocation* had a control that actually failed: **5/20 off-live against 0/20**, the control reproducing at 25%. Stated as a calculation rather than a test result — twenty clean draws from a 25% rate is `0.75^20 = 0.3%`.
+**Then the live case was measured, which is what the first probe could not do.** That probe read 8544 with the flag off **and** on — the defect not reproducing, the same reading candidate three got. A later run with the control and the candidate in the *same invocation* had a control that actually failed. **5/20 off-live against 0/20.** Read as a two-sample comparison, because that is what it is: Fisher's exact on that table gives **p = 0.024 one-tailed, 0.047 two-tailed**. An earlier version of this entry said `0.75^20 = 0.3%`, which is **wrong by roughly fifteen times** — it treats the control's own sample estimate as a known rate. The 95% interval for 5/20 is **11%–47%**, and the twenty runs came in three batches on a site this very issue records as non-stationary, so they are not independent draws either. Indicative, not decisive.
 
 **The transferable rule: a clean candidate is worth nothing until the control in the same session is dirty.** Not "run a control" — run one and check it reproduced. Both near-misses on this issue were clean-candidate-plus-clean-control.
 
-Still off by default, now for a cost rather than a doubt: 825 ms → 4577 ms on that site. #187 stays open for criterion 5's remaining half.
+Still off by default. The cost is real — 825 ms → 4577 ms — but two surfaces (one fixture, one live page) do not settle whether it helps a third. #187 stays open for criterion 5's remaining half.
 
 ## `t4-verify` armed, and the web-merge hole closed (2026-08-16, #2)
 
 **The developer authorized it explicitly, so the paragraph below this one about it being deliberately unarmed is now history rather than policy.** Ruleset `20028550` carries `["deletion","non_fast_forward","pull_request","required_status_checks"]` with the `t4-verify` context. **The three pre-existing rules were preserved deliberately** — `PUT` replaces the whole `rules` array, so a payload naming only the new rule would have silently deleted squash-only, the deletion block and the force-push block. The ruleset was read first and both the arming payload and its one-command undo are on #2.
 
-**The two open PRs were given green statuses before arming, not after.** Each ran `bun run verify:status` **on its own branch** — posting from whichever tree happened to be checked out is the exact failure this script nearly shipped with. #199 and #200 then merged through the new gate, which is the only evidence that it passes what it should.
+**The two open PRs were given green statuses before arming, not after.** Each ran `bun run verify:status` **on its own branch** — posting from whichever tree happened to be checked out is the exact failure this script nearly shipped with. #199 and #200 then merged through the new gate. That is evidence it **admits** a PR carrying a green status, and only that — **nothing here tested the blocking direction**, which is the direction the gate exists for. An outside reader raised it; it is recorded rather than quietly left as an implication.
 
 **What it is not.** Self-attested: the machine that ran verify reports its own result, and anyone with push access can post a green status by hand. It guards against forgetting, not against lying. **The five Actions checks are still the real answer and #2 stays open** — `bun run ci:lock` still reports `LOCKED`.
 
