@@ -23,9 +23,11 @@ import { replayArchive } from "../../src/replay/replay.ts";
  * loads this route, so without these two tests the reproducer can stop reproducing and the next
  * session grades a candidate fix against a fixture that agrees with everything.
  *
- * **When #187 is fixed, the second test must be inverted, deliberately.** It asserts a divergence
- * that a replay-side fix is supposed to remove, so a fix that lands with this test untouched has
- * not been graded against the instrument built to grade it.
+ * **Three tests, and the first two are the controls for the third.** `module` shows the fixture can
+ * report agreement, `t100` without `restoreTiming` shows it reproduces the defect, and `t100` with
+ * it shows the fix removes it. Any one alone is worth little: the third candidate on #187 measured
+ * 15/15 at the live value and was reverted because its control, run afterwards, was also clean.
+ * Here the control runs in the same file, on the same archive shape, every time.
  */
 
 /** The image lands at ≈ 310 ms live and ≈ 10 ms in replay; the frozen spacer is read well after
@@ -57,9 +59,9 @@ interface Measured {
  * The fixture origin is **shut down before any replay**, so a divergence cannot be the live server
  * answering something the archive was missing — the same reason `replay.browser.ts` takes it down.
  */
-async function liveAndReplays(at: string): Promise<Measured> {
+async function liveAndReplays(at: string, restoreTiming = false): Promise<Measured> {
   const servers: FixtureServers = await startFixtureServers();
-  const outDir = join(tempDir, `archive-${at}`);
+  const outDir = join(tempDir, `archive-${at}-${restoreTiming}`);
   const url = new URL(`/measure-and-freeze.html?at=${at}`, servers.primary.url).href;
   let live: number;
   try {
@@ -80,7 +82,7 @@ async function liveAndReplays(at: string): Promise<Measured> {
 
   const replays: number[] = [];
   for (let i = 0; i < REPLAYS; i += 1) {
-    const handle = await replayArchive({ archive: outDir, browser: browser as never });
+    const handle = await replayArchive({ archive: outDir, browser: browser as never, restoreTiming });
     try {
       const page = handle.page as unknown as {
         waitForTimeout(ms: number): Promise<void>;
@@ -124,5 +126,14 @@ test("measuring after the replay's own arrival, every replay lays out to a heigh
   assert.ok(
     replays[0]! > live,
     `expected replay to be taller than live ${live} because it froze a measurement taken after the image arrived, got ${replays[0]}`,
+  );
+});
+
+test("restoreTiming holds each response until the archive says it arrived, and the divergence goes", async () => {
+  const { live, replays } = await liveAndReplays("t100", true);
+  assert.deepEqual(
+    replays,
+    Array.from({ length: REPLAYS }, () => live),
+    `expected every replay to match the live height ${live} once the recorded schedule is restored, got ${replays.join(" ")}`,
   );
 });

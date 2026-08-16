@@ -1245,4 +1245,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "reports failure for any non-zero exit",
   },
+  {
+    id: "restore-timing-never-waits",
+    why: "Issue #187 - three candidate fixes were rejected and the third only because its control was run; this is the first that reproduced. The wiring is what makes it real, and the wiring is what nothing tested: the schedule can be computed correctly and then never awaited, which passes every unit test of arrivalScheduleFrom and every existing browser test.",
+    file: "src/replay/replay.ts",
+    find: "        if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));",
+    replace: "        if (remaining > Number.POSITIVE_INFINITY) await new Promise((resolve) => setTimeout(resolve, remaining));",
+    suite: "browser",
+    expect: "restoreTiming holds each response until the archive says it arrived, and the divergence goes",
+  },
+  {
+    id: "arrival-schedule-serves-unrecorded-entries-at-zero",
+    why: "Issue #187 - an entry with no usable timing must stay absent rather than become 0. Playwright writes time:-1 for a request that never completed, and folding that into 0 is indistinguishable from 'recorded as instant' - the same reason the equivalence gate keeps unobserved rather than merging it into equal.",
+    file: "src/replay/arrival-schedule.ts",
+    find: "  if (typeof record.time !== \"number\" || !Number.isFinite(record.time) || record.time < 0) {\n    return undefined;\n  }",
+    replace: "  if (typeof record.time !== \"number\" || !Number.isFinite(record.time) || record.time < 0) {\n    return { url, startedMs, durationMs: 0 };\n  }",
+    suite: "bun",
+    expect: "an entry with no usable timing is left out rather than given a zero",
+  },
 ];

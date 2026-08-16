@@ -6,6 +6,16 @@
 
 ---
 
+## restoreTiming — the fourth candidate for #187, and the first with a control that reproduced (2026-08-16, #187, PR #202)
+
+**What the archive does not carry is *when*.** `routeFromHAR` serves recorded bytes as fast as a route handler can be called, so a page that measures an element and freezes the result reads a different world offline. `replayArchive({ restoreTiming: true })` holds each response until the moment the archive says it finished.
+
+**The design difference from candidate one, which is the whole reason this one runs at all.** That attempt delayed each entry by its own recorded **duration**, stacking a wait onto a request that had already started, so the cost was the sum over every entry and `goto(..., waitUntil: "load")` timed out. This schedules each response at its **offset from the start of the page load**, so entries that overlapped in the recording overlap again. Measured on a 146-entry real site: `goto` 825 ms → **4577 ms**, completed. *Duration and arrival time are not the same quantity.*
+
+**Graded on the fixture, with the control in the same session:** `?at=t100` off → **12/12 diverge**; on → **0/12**. Two corpus entries, both CAUGHT, and one of them (`restore-timing-never-waits`) covers the **wiring** — the criterion the three earlier attempts failed, having tested pure functions and left the wiring untested.
+
+**What is deliberately not claimed.** The fixture reproduces the *opposite direction* from `labs.chaingpt.org` — there the live page is the resource-applied state, here it is the not-arrived one. The real-site probe read 8544 with the flag off **and** on, which is the defect not reproducing rather than the fix working. Mechanism confirmed, fix graded on the fixture, live effect **unmeasured**, and the option stays off by default until that changes. #187 stays open.
+
 ## `t4-verify` armed, and the web-merge hole closed (2026-08-16, #2)
 
 **The developer authorized it explicitly, so the paragraph below this one about it being deliberately unarmed is now history rather than policy.** Ruleset `20028550` carries `["deletion","non_fast_forward","pull_request","required_status_checks"]` with the `t4-verify` context. **The three pre-existing rules were preserved deliberately** — `PUT` replaces the whole `rules` array, so a payload naming only the new rule would have silently deleted squash-only, the deletion block and the force-push block. The ruleset was read first and both the arming payload and its one-command undo are on #2.

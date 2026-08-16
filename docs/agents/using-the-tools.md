@@ -115,6 +115,14 @@ recorded skip rather than a wrong click — but it is still a skip, and it shows
 - `unrepresented` on the graph — see above.
 - `coverage` on an equivalence report — a vector, never a score. A green verdict at low coverage is a
   small claim correctly reported, not a large one.
+- **A replay serves the archive faster than the network did, and some pages notice** (#187). A page
+  that measures an element and freezes the result — without ordering that measurement against the
+  resource its size depends on — can settle to a layout the live page never produced. Measured on
+  `https://labs.chaingpt.org/`: 8544 live, 8486 on roughly one replay in three. `replayArchive`
+  takes **`restoreTiming`**, which holds each response until the moment the archive says it
+  finished; on the fixture that turns 12/12 divergent replays into 0/12, and on a 146-entry real
+  site it took the replay from 825 ms to 4577 ms without failing to load. It is **off by default**,
+  because it slows every replay to buy fidelity only pages that race actually need.
 
 **Nothing in this list is decoration.** Each exists because a number without it was measured to read
 as a larger claim than the run supported.
@@ -220,6 +228,12 @@ Framer จะรายงาน node จำนวนน้อยโดยที�
 - `unrepresented` ของกราฟ — ดูข้างบน
 - `coverage` ของรายงานสมมูล — เป็นเวกเตอร์ ไม่เคยเป็นคะแนน · verdict เขียวที่ความครอบคลุมต่ำคือคำกล่าวเล็กที่รายงาน
   อย่างถูกต้อง ไม่ใช่คำกล่าวใหญ่
+- **replay เสิร์ฟ archive เร็วกว่าที่เครือข่ายเคยเสิร์ฟ และบางหน้าสังเกตเห็น** (#187) · หน้าที่วัด element แล้วแช่ผลไว้ —
+  โดยไม่จัดลำดับการวัดนั้นกับทรัพยากรที่ขนาดของมันขึ้นอยู่กับ — ลงเอยเป็น layout ที่หน้าสดไม่เคยผลิตได้ · วัดบน
+  `https://labs.chaingpt.org/`: ฝั่งสด 8544 ส่วน replay ได้ 8486 ราวหนึ่งในสามรอบ · `replayArchive` รับ
+  **`restoreTiming`** ซึ่งหน่วงแต่ละ response ไว้จนถึงเวลาที่ archive บอกว่ามันเสร็จ · บน fixture มันเปลี่ยน replay ที่
+  ต่างจากฝั่งสด 12/12 ให้เหลือ 0/12 และบนเว็บจริงที่มี 146 entry มันทำให้ replay ไปจาก 825 ms เป็น 4577 ms โดยไม่
+  โหลดล้มเหลว · มัน **ปิดไว้เป็นค่าเริ่มต้น** เพราะมันทำให้ทุก replay ช้าลงเพื่อซื้อความสมจริงที่มีแต่หน้าที่แข่งกันเท่านั้นต้องการ
 
 **ไม่มีอะไรในรายการนี้เป็นของประดับ** · แต่ละอย่างมีอยู่เพราะเคยวัดแล้วพบว่าตัวเลขที่ไม่มีมันกำกับถูกอ่านเป็นคำกล่าวที่ใหญ่
 กว่าที่การรันนั้นรองรับ

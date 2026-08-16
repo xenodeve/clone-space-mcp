@@ -1,6 +1,6 @@
 ---
 name: replay-is-a-different-timing-environment
-description: A page that measures its own layout without waiting for its webfont races; live wins that race every time and a replay loses it about one run in three, with an identical DOM — and two attempts to fix it by reproducing the recorded latency were measured to make it worse, not better
+description: A page that measures its own layout without waiting for its webfont races, and a replay resolves it differently with an identical DOM; three fixes were refuted before a fixture existed, and the fourth — scheduling each response at its recorded offset rather than its duration — is graded on the fixture and still unmeasured on the live case
 metadata:
   type: project
 ---
@@ -83,3 +83,36 @@ clean runs happen about one time in two hundred, which sounds decisive and is no
 prior that the earlier observation was real is much stronger than that. The reproducer is committed
 as `scripts/replay-height-race.ts` for the same reason: an effect nobody can summon is an effect
 nobody can fix. Related: [[evidence-before-claims]], [[verify-where-the-bug-can-reproduce]].
+
+## The fixture was built, and a fourth candidate survived its control
+
+`/measure-and-freeze.html` (2026-08-16). An image delayed 300 ms server-side, a script that measures
+a box on a timer and freezes the result inline. `?at=t100` measures past replay's arrival and short
+of live's: **12/12 replays diverge**. `?at=module` measures before the image on both sides: **0/6**.
+The two ends are each other's control and both run every time, in one file.
+
+**`restoreTiming` holds each response until the archive says it finished, and it took 12/12 to
+0/12** with the control reproducing in the same session — the thing candidate three never had.
+It also did not time out where candidate one did: on a 146-entry real site, `goto` went from 825 ms
+to **4577 ms** and completed.
+
+**Why candidate one timed out and this did not, which is the reusable part.** It delayed each entry
+by its own recorded **duration**, stacking a wait on top of a request that had already started, so
+the cost was the *sum* of every entry's duration. This schedules each response at its recorded
+**offset from the start of the page load**, so entries that overlapped in the recording overlap
+again and the whole replay is bounded by the recorded page load. *Duration and arrival time are not
+the same quantity*, and the first attempt failed on the arithmetic rather than on the idea.
+
+## What is still not shown, and saying so is the point
+
+**The fixture reproduces the opposite direction from the live site.** On `labs.chaingpt.org` the
+live page is the *resource-applied* state and a replay is sometimes the *not-applied* one. On the
+fixture, live is *not-arrived* and replay is *arrived*. Both are the same class — a measurement not
+ordered against a resource — but a fix that moves replay toward live on one direction is **not
+thereby shown to** on the other, and the earlier measurement in this note is a live case where
+adding latency moved it the wrong way.
+
+The real-site probe run alongside this measured 8544 with the flag off **and** on, which is the
+defect not reproducing rather than the fix working. **So: the mechanism is confirmed, the fix is
+graded on the fixture, and its effect on the live case is unmeasured.** That is three different
+registers and collapsing them into "fixed" is exactly what the control caught last time.
