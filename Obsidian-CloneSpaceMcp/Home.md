@@ -21,6 +21,7 @@
 - [[a-control-that-samples-one-side-is-blind-to-the-other]] — the gate proved stability on the live page and judged live-against-replay; four of five proposed fixes were refuted by building them
 - [[a-value-has-more-than-one-spelling]] — a guard matching on text sees only the forms it was built from; measuring one capture found the bracketed IPv6 the HAR actually holds, and only an adversarial reviewer found the two spellings nothing had produced
 - [[a-mutation-run-can-leave-the-defect-behind]] — removing a guard makes what it prevented actually happen; a test that names a fixed path published an archive there and failed the next honest run on the wrong rule
+- [[the-corpus-reach-ends-at-the-process-boundary]] — a defect applied in memory reaches only what the test process loads; a spawned CLI or the Bun fixture server reports `MUTATION NOT APPLIED`, which reads like a hiccup and measures nothing
 - [[a-rule-keyed-on-a-tracker-state-inherits-that-state]] — *"do not call the gate complete until #2 closes"* returned the wrong answer for two days after #2 was wrongly closed; key a completeness rule on a command, and resolve a recorded contradiction instead of recording it
 
 ## project — ongoing goals / constraints not derivable from the code
