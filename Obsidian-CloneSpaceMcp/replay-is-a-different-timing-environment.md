@@ -1,6 +1,6 @@
 ---
 name: replay-is-a-different-timing-environment
-description: An archive served from disk answers instantly, so a page that races its own layout resolves that race differently offline — replay fidelity is about timing as well as bytes, and the difference shows up as an intermittent layout difference with an identical DOM
+description: A page that measures its own layout without waiting for its webfont races; live wins that race every time and a replay loses it about one run in three, with an identical DOM — and two attempts to fix it by reproducing the recorded latency were measured to make it worse, not better
 metadata:
   type: project
 ---
@@ -10,6 +10,9 @@ metadata:
 `routeFromHAR` serves every response from disk with **no latency**. The bytes are the ones the site
 sent; the *conditions* are not the ones the site was written against, and a page whose own scripts
 race the browser will sometimes lose that race the other way.
+
+**What that does NOT license is a guess about which way.** Both guesses in this note's first draft
+were wrong, and both were killed by one command each — see the two measurements below.
 
 Measured on `https://labs.chaingpt.org/` (#187). Two replays of **one** archive lay the document out
 58 px apart, about one replay in three. The DOM is identical — same element count, same element
@@ -22,8 +25,10 @@ h2  tall : width: 563.422px; height: 115.906px
 ```
 
 115.906 is exactly twice 57.953. The heading is **two lines in one state and one in the other**, and
-a script measured it and froze the measurement inline. Live is the two-line state on every load,
-because the network gave the layout time to happen first.
+a script measured it and froze the measurement inline. The short state is the one where the
+**webfont had not applied yet** when the script measured — a fallback face with different metrics
+fits the line. Live is the two-line state on every load; a replay is two-line most of the time and
+one-line about one run in three.
 
 **The generalisable claim:** an archive is a faithful copy of *what the browser received* and not of
 *when*. Anything on the page that reads a layout value and writes it back — split-text and heading
@@ -36,13 +41,25 @@ varies between replays of one archive is not a gate defect and no sampling rule 
 not move *during* a run. The instrument for it is the stability baseline, and the fix, if one is
 wanted, is on the replay side: serve each response no sooner than the archive says it took.
 
-**That fix was built and measured on 2026-08-16 and it does not work as written.** Delaying every
-entry by its recorded time, capped at three seconds, makes `page.goto(..., waitUntil: "load")`
-exceed its timeout — hundreds of entries, each held back, and the load event never arrives. It was
-reverted rather than shipped off-by-default, because an option that times out when you turn it on
-is not an option. Any working version has to be **selective** — the document, the stylesheets and
-the fonts, the things that gate layout — or scaled down, and both are fitted constants that need
-their own measurement first.
+**Two versions of that fix were built and measured on 2026-08-16 and both were refuted.**
+
+- **Every entry at its recorded time**, capped at three seconds: `page.goto(..., waitUntil: "load")`
+  exceeds its timeout. Hundreds of entries each held back and the load event never arrives.
+- **Only what gates layout** — document, stylesheets, fonts — which was the obvious repair and had
+  a readable rule behind it rather than a fitted constant. Measured across ten replays of two
+  archives: **8486 nine times out of ten**, against roughly one in three without it. It did not fail
+  to help; **it made the defect state the normal one.**
+
+Both were reverted rather than shipped off-by-default, because an option that makes things worse
+when you turn it on is not an option.
+
+**The second result inverts the mechanism this note first claimed.** "Replay is too fast, so the
+script measures too early" predicts that adding latency moves replay *towards* live. It moves it
+away. Serving instantly is what usually *produces* the correct two-line state; delaying the font is
+what reliably produces the wrong one. So the page is not losing a race that latency would fix — it
+**never orders its measurement against font application at all** (no `document.fonts.ready`, no
+`FontFaceSet` wait), and live wins by luck that holds every time on the real network. Any fix has
+to change *when the page measures*, which is the page's code, or accept that this field varies.
 
 **And a trap that cost most of an afternoon.** The effect appears about one replay in three, so
 **thirteen replays that all agree is an unremarkable draw, not evidence it is gone.** A session

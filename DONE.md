@@ -31,6 +31,8 @@ h2  tall : height: 115.906px      short: height: 57.9531px
 
 115.906 is twice 57.953, and 57.95 px is the 58 px the document differs by. A script measures the heading and freezes the result inline; **replay serves from disk with no latency**, so it sometimes measures before the layout that wraps the heading to two lines. The page has the race online too — the network just made it lose the same way every time.
 
+**Two fixes were built for it and both were measured to fail, the second in the informative direction.** Serving every entry at its recorded latency times the navigation out. Serving *only* the document, stylesheets and fonts at their recorded latency — the obvious repair, with a readable rule rather than a fitted constant — produced the defect state in **nine of ten replays**, against roughly one in three without it. That inverts the mechanism: replay being fast is what usually produces the *correct* state, and delaying the font is what reliably produces the wrong one. The page never orders its measurement against font application at all. Both were reverted rather than shipped off-by-default.
+
 **What that means for the gate, and it is the useful half:** a field that varies between replays and is constant *within* each one is not a sampling defect and no clock fixes it. The gate noticed something real.
 
 **Evidence:** `bun run verify` — 524 Bun · 92 Node browser · lint, typecheck, build clean. Corpus entry `post-scroll-counts-read-once` CAUGHT. Reproducer committed as `scripts/replay-height-race.ts` because an effect nobody can summon is an effect nobody can fix.
