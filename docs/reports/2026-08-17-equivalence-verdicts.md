@@ -154,13 +154,31 @@ baseline    live 3  replay 3
 minutes earlier with every other field agreeing. `network.origins` is **not** in `unstable`, so the
 three live drives agreed at 27 and the three replays agreed at 28: the difference reproduces.
 
-**The direction is the interesting part and it is not diagnosed.** The replay reaches *more* origins
-than the live drive, not fewer. Two readings are available and this run does not choose between
-them: the archive is built by its own capture drive, so it can legitimately hold an origin the three
-compared live drives did not request; or the replay is reaching something the live page does not.
-**Naming it as "the clone fetches too much" would be the same jump this document had to withdraw one
-section earlier.** It is a reproducible difference on a surface that had no coverage at all, which is
-what the field was added for.
+**Then the request count settled it, and the field was demoted before it merged.**
+
+```
+network     live 248 req / 27 origins   replay 248 req / 28 origins
+```
+
+**248 against a default Resource Timing buffer of 250.** The measurement is saturated: the page
+issues more requests than the buffer holds, so which entries survive is decided by timing rather
+than by what either side fetched. The origin difference is a truncation artefact until proven
+otherwise.
+
+A delegated review had already ranked that explanation among four ways
+`performance.getEntriesByType("resource")` differs from *what the page asked the network for* —
+the bounded buffer, collapsed redirects and invisible service-worker fetches, the document, iframes,
+workers and preflights living on other timelines, and requests still in flight at read time.
+
+**So `network.requests` and `network.origins` are reported and not compared.** They were digest
+fields for about an hour, and in that hour they produced a `FAIL` on this site. A gate that goes red
+for reasons it cannot explain teaches that red means nothing, which is the failure #182 is about.
+
+**And the reduction cannot catch the case the issue names anyway.** Counting distinct requests makes
+a *substitution* invisible: live `{hero.jpg, Cannon_Exterior.hdr}` against replay
+`{hero.jpg, placeholder.svg}` is `requests: 2, origins: 1` on both sides. It catches an omission and
+nothing else — so the sentence above about the unlit 3D scene describes what the field was *for*,
+not what it currently does.
 
 ## What none of these say
 
@@ -249,11 +267,24 @@ issue ระบุเคสรูปธรรมไว้: `www.chaingpt.org` �
 `network.origins` **ไม่ได้**อยู่ใน `unstable` แปลว่า live สามรอบตรงกันที่ 27 และ replay สามรอบตรงกันที่ 28 ·
 ความต่างเกิดซ้ำได้
 
-**ทิศทางคือส่วนที่น่าสนใจ และยังไม่ได้วินิจฉัย** · replay แตะ origin *มากกว่า* ฝั่งสด ไม่ใช่น้อยกว่า · มีสองการอ่านที่
-เป็นไปได้และรอบนี้ไม่ได้เลือกระหว่างสองอัน: archive ถูกสร้างโดยรอบ capture ของตัวเอง มันจึงถืออีก origin หนึ่งที่ live
-สามรอบที่ถูกเทียบไม่ได้ร้องขอได้อย่างชอบธรรม · หรือ replay กำลังแตะบางอย่างที่หน้าสดไม่แตะ · **การเรียกมันว่า "clone
-ดึงของเกิน" คือการกระโดดแบบเดียวกับที่เอกสารนี้ต้องถอนคืนในหัวข้อก่อนหน้า** · มันคือความต่างที่เกิดซ้ำได้บนพื้นผิวที่
-ไม่เคยมีการคุมเลย ซึ่งเป็นเหตุผลที่ฟิลด์นี้ถูกเพิ่มเข้ามา
+**แล้วจำนวน request ก็ตัดสินเรื่องนี้ และฟิลด์ถูกลดชั้นก่อน merge** (ผลอยู่ในบล็อกภาษาอังกฤษด้านบน)
+
+**248 เทียบกับ buffer ของ Resource Timing ที่มีค่าเริ่มต้น 250** · การวัดอิ่มตัว: หน้าเว็บยิง request มากกว่าที่
+buffer เก็บได้ ตัวไหนรอดจึงถูกตัดสินด้วยจังหวะเวลา ไม่ใช่ด้วยสิ่งที่แต่ละฝั่งดึงมา · ความต่างของ origin จึงเป็น artefact
+จากการตัดทิ้ง จนกว่าจะพิสูจน์เป็นอย่างอื่น
+
+รีวิวที่ delegate จัดอันดับคำอธิบายนั้นไว้แล้วในสี่ทางที่ `performance.getEntriesByType("resource")` ต่างจาก *สิ่งที่
+หน้าเว็บขอจากเครือข่าย* — buffer ที่มีขอบเขต · redirect ที่ถูกยุบและ fetch ของ service worker ที่มองไม่เห็น ·
+เอกสาร iframe worker และ preflight ที่อยู่คนละ timeline · และ request ที่ยังค้างอยู่ตอนอ่าน
+
+**`network.requests` และ `network.origins` จึงถูกรายงาน ไม่ถูกเทียบ** · มันเป็นฟิลด์ใน digest อยู่ราวหนึ่งชั่วโมง
+และในชั่วโมงนั้นมันทำให้เว็บนี้ `FAIL` · ด่านที่แดงด้วยเหตุผลที่มันอธิบายไม่ได้ สอนว่าสีแดงไม่มีความหมาย ซึ่งเป็นความ
+ล้มเหลวที่ #182 พูดถึง
+
+**และการลดรูปแบบนี้จับเคสที่ issue ยกมาไม่ได้อยู่ดี** · การนับ request ที่ไม่ซ้ำทำให้การ *แทนที่* มองไม่เห็น: live
+`{hero.jpg, Cannon_Exterior.hdr}` เทียบ replay `{hero.jpg, placeholder.svg}` ได้ `requests: 2, origins: 1`
+เท่ากันทั้งคู่ · มันจับได้แค่การขาดหายไป ไม่จับอย่างอื่น — ประโยคข้างบนเรื่องฉาก 3D ที่ไม่มีแสงจึงอธิบายว่าฟิลด์นี้มีไว้
+*เพื่ออะไร* ไม่ใช่ว่ามันทำอะไรได้ตอนนี้
 
 ## สิ่งที่ไม่มีรอบไหนพูด
 

@@ -181,6 +181,11 @@ export function formatEquivalenceReport(report: EquivalenceReport): string {
     `unstable (${report.unstable.length})   ${report.unstable.join("  ")}`.trimEnd(),
     `baseline    live ${report.baselinePasses.live}  replay ${report.baselinePasses.replay}`,
     ...perturbationLine(report.perturbed),
+    // Reported, never compared — see `EquivalenceReport.network` for the four reasons this is not
+    // a digest field. Printed on both sides so the gap the digest still has is visible rather than
+    // absent.
+    `network     live ${report.network.live.requests} req / ${report.network.live.origins} origins` +
+      `   replay ${report.network.replay.requests} req / ${report.network.replay.origins} origins`,
     "",
     "coverage",
   ];

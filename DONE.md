@@ -6,27 +6,27 @@
 
 ---
 
-## The network attempt set — the gate looks at what the page fetched (2026-08-17, #171, PR #209)
+## The network attempt set, reported and deliberately not compared (2026-08-17, #171, PR #209)
 
-**The digest had no network field at all**, so the gate could return `PASS` on a clone that fetched an entirely different set of things — the opposite of what this project claims. #171's v1 scope names it (*"behaviour multiset, network attempt set with its ADR 0007 classification, and the motion counts"*) and it was never built; found by reading the issue body rather than its checkboxes, the same way the perturbation control was.
+**The digest had no network field at all**, so the gate could return `PASS` on a clone that fetched an entirely different set of things. #171's v1 scope names it — *"behaviour multiset, network attempt set with its ADR 0007 classification, and the motion counts"* — and it was never built; found by reading the issue body rather than its checkboxes, the same way the perturbation control was.
 
-`network.requests` and `network.origins` count the distinct resources and origins the page asked for, read from `performance.getEntriesByType("resource")` **through the same seam on both sides** — a live side read from CDP and a replay side read from the page would be two measurements compared as one. Normalized by ADR 0007 using the **caller's** volatile keys and no invented policy, because `defaultRequestNormalization()` ships an empty list on purpose.
+**It shipped as a compared digest field for about an hour, and in that hour it produced a `FAIL`.** `network.origins live 27 replay 28` on `www.chaingpt.org`, reproducible across three drives each way and not in `unstable`. A delegated review then ranked four ways `performance.getEntriesByType("resource")` differs from *what the page asked the network for*: a bounded buffer, collapsed redirects and invisible service-worker fetches, the document/iframes/workers/preflights on other timelines, and requests still in flight at read time.
 
-**It found a difference on its first real run.** `https://www.chaingpt.org/`, a site that had returned `INCOMPLETE` minutes earlier with every other field agreeing:
+**Printing the request count settled it in one number:**
 
 ```
-residual (1)
-  network.origins  live 27  replay 28
-unstable (1)   motion.settled
+network     live 248 req / 27 origins   replay 248 req / 28 origins
 ```
 
-`network.origins` is not in `unstable`: the three live drives agreed at 27 and the three replays at 28, so it reproduces.
+**248 against a 250-entry default buffer.** The measurement is saturated — which entries survive is decided by timing, not by what either side fetched. The origin difference is a truncation artefact until shown otherwise.
 
-**The direction is not diagnosed and is deliberately not named.** The replay reaches *more* origins, not fewer. The archive is built by its own capture drive, so it can legitimately hold an origin the three compared live drives never requested — or the replay is reaching something the live page does not. Calling it "the clone fetches too much" would be the same jump withdrawn one entry above.
+**So the field is reported, never compared.** A gate that goes red for reasons it cannot explain teaches that red means nothing, which is the failure #182 is about. The two readings print side by side so the gap the digest still has is **visible rather than absent**.
 
-**Two counts, not one:** a clone fetching the same number of things from a different place is a different failure from one fetching a different number, and `network.requests` was equal on that run while `network.origins` was not.
+**And the reduction could not catch the case the issue names anyway.** Counting distinct requests makes a *substitution* invisible: live `{hero.jpg, Cannon_Exterior.hdr}` against replay `{hero.jpg, placeholder.svg}` is `requests: 2, origins: 1` on both sides. It catches an omission and nothing else.
 
-**And the report now prints what each side measured.** `residual (1) network.origins` with no values sends the reader to dig through an archive for a number the run already had in hand. Four corpus entries, all CAUGHT, including that one and the `blob:`/`data:` filter — those entries are the page's own object URLs, not network attempts.
+**The general lesson, and it is the second time today:** a new signal was believed before its own instrument was checked. The perturbation control's first reading was withdrawn because it compared against one pass; this one was demoted because nobody asked how big the buffer was. **Read the instrument's limits before reading its output** — and here one extra printed number did what an hour of reasoning had not.
+
+Four corpus entries, all CAUGHT, including the `blob:`/`data:` filter (those are the page's own object URLs, not network attempts) and the ADR 0007 one (no invented normalization policy). The report also prints what each side measured for a residual field, which it did not.
 
 ## The perturbation control, and the claim it withdrew within the hour (2026-08-17, #171, PR #208)
 

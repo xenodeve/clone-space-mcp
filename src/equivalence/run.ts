@@ -29,7 +29,7 @@ import {
 import { driveInteraction, type DriveReport, type DrivablePage } from "../capture/interaction-drive.ts";
 import { hasSettled, settledSample, tailIsConstant } from "./settle.ts";
 import { perturbedFields } from "./perturbation.ts";
-import { networkDigest } from "./network-digest.ts";
+import { networkDigest, type NetworkDigest } from "./network-digest.ts";
 import { INSTRUMENT_INIT_SCRIPT } from "../capture/instrument.ts";
 
 /** Settle time after each driven action, so the effect it triggers is observable before the next. */
@@ -109,6 +109,37 @@ export interface EquivalenceReport extends ClassifyResult {
    * rather than nothing at all.
    */
   perturbed?: string[];
+  /**
+   * What each side asked the network for (#171's v1 scope) — **reported, never compared.**
+   *
+   * It is deliberately **not a digest field**, and that is a decision rather than an omission. A
+   * delegated review named four ways `performance.getEntriesByType("resource")` differs from *what
+   * the page asked the network for*, in directions that make the two sides **incomparable** rather
+   * than genuinely different:
+   *
+   *   - the buffer holds **250 entries by default** and the page may call
+   *     `performance.clearResourceTimings()`, so a busy page silently drops the rest;
+   *   - redirects collapse and a service worker's own fetches do not appear, so the origin set is
+   *     the page's *logical* one, not the wire's;
+   *   - the document, iframes, workers and CORS preflights are on other timelines entirely;
+   *   - a request still in flight when the digest is taken has no entry at all.
+   *
+   * The first run of it as a compared field produced `network.origins live 27 replay 28` on
+   * `www.chaingpt.org` — reproducible across three drives each way, and **not attributable**: any
+   * of the four above explains it as well as a real clone difference does. Reporting the request
+   * count alongside settled it: that page reads **248 requests against a 250-entry default
+   * buffer**, so the measurement is saturated and which entries survive is decided by timing. A gate that goes red for
+   * reasons it cannot explain teaches that red means nothing, which is the failure #182 is about.
+   *
+   * **And the reduction cannot catch the case the issue names.** Counting distinct requests makes a
+   * *substitution* invisible: live `{hero.jpg, Cannon_Exterior.hdr}` against replay
+   * `{hero.jpg, placeholder.svg}` is `requests: 2, origins: 1` on both sides. It catches an
+   * omission and nothing else.
+   *
+   * So this publishes the two readings side by side and lets a reader see the gap the digest still
+   * has, rather than closing it with a signal that is not yet trustworthy.
+   */
+  network: { live: NetworkDigest; replay: NetworkDigest };
 }
 
 /**
@@ -196,6 +227,8 @@ interface DigestRun {
   /** The plan this pass drove, so later passes can drive exactly the same one. */
   plan: InteractionPlan;
   drive: DriveReport;
+  /** The network attempt set — **reported, never compared**. See `EquivalenceReport.network`. */
+  network: NetworkDigest;
 }
 
 async function collectDigest(
@@ -309,6 +342,7 @@ async function collectDigest(
   return {
     plan,
     drive,
+    network,
     digest: {
     // Whether the page settled at all is itself a comparable fact: one side settling and the other
     // not is a real difference, where the sample index it happened at is not.
@@ -328,12 +362,6 @@ async function collectDigest(
           "layout.scrollHeight": settled.height,
         }
       : {}),
-    // Counts, because the digest compares scalars. Two of them, because a clone fetching the same
-    // number of things from a different place is a different failure from one fetching a different
-    // number — and the issue's own example is the second kind: `www.chaingpt.org` cannot serve its
-    // scene's environment map, so an API-level comparison passes while the scene renders unlit.
-    "network.requests": network.requests,
-    "network.origins": network.origins,
     "motion.gsapPresent": afterScroll.gsapPresent,
     "dom.title": afterScroll.title,
     // Same rule as the settle loop, for the same reason: a count read while the page is still
@@ -372,6 +400,9 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   // in the residual, so every verdict the gate produced before this control existed was noise.
   const passes: Digest[] = [];
   let sharedPlan: InteractionPlan | undefined;
+  // The first pass's reading, to match `live` — which is `passes[0]`.
+  let liveNetwork: NetworkDigest | undefined;
+  let replayNetwork: NetworkDigest | undefined;
   for (let pass = 0; pass < BASELINE_PASSES; pass += 1) {
     const context = (await options.browser.newContext({})) as unknown as LiveContext;
     try {
@@ -380,6 +411,7 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
       const run = await collectDigest(page, sharedPlan, options.sampleBudget);
       sharedPlan ??= run.plan;
       passes.push(run.digest);
+      liveNetwork ??= run.network;
     } finally {
       await context.close();
     }
@@ -427,10 +459,13 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
   for (let pass = 0; pass < BASELINE_PASSES; pass += 1) {
     const replay = await replayArchive({ archive, browser: options.browser });
     try {
-      replayPasses.push(
-        (await collectDigest(replay.page as unknown as EquivalencePage, sharedPlan, options.sampleBudget))
-          .digest,
+      const run = await collectDigest(
+        replay.page as unknown as EquivalencePage,
+        sharedPlan,
+        options.sampleBudget,
       );
+      replayPasses.push(run.digest);
+      replayNetwork ??= run.network;
     } finally {
       await replay.close();
     }
@@ -448,6 +483,7 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
     // Spread conditionally: absent means the control did not run, and `[]` means it ran and found
     // nothing. Publishing `[]` unconditionally would report a measurement nobody took.
     ...(perturbed === undefined ? {} : { perturbed }),
+    network: { live: liveNetwork!, replay: replayNetwork! },
     // Published with every verdict, never reduced to a score. `interaction` is zero because v1
     // drives none, and saying so is the point: a green verdict here is a claim about navigation
     // and scrolling, and about nothing else.
