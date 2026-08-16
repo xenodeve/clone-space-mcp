@@ -1218,4 +1218,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "passes a socket that never connected",
   },
+  {
+    id: "ci-lock-reads-a-stepless-run-as-the-billing-exemption",
+    why: "Issue #2 - the exemption is only valid while jobs are refused *for billing*. A disabled workflow or a permissions failure also produces jobs that ran no steps, and reading those as the exemption launders an unrelated breakage into a rule everyone already merges past. The verdict must be undefined, not locked.",
+    file: "scripts/ci-lock.ts",
+    find: "  if (run.annotations.some((annotation) => annotation.includes(BILLING))) {",
+    replace: "  if (true) {",
+    suite: "bun",
+    expect: "refuses to guess when jobs ran no steps and no billing annotation says why",
+  },
+  {
+    id: "ci-lock-calls-a-failed-run-still-locked",
+    why: "Issue #2 - the exemption ends when a workflow run *completes*, not when it succeeds. A red suite means CI works and the gate should be armed; treating a failing run as still-locked keeps the exemption alive exactly when it should die.",
+    file: "scripts/ci-lock.ts",
+    find: "  const ran = run.jobs.find((job) => job.steps.length > 0);",
+    replace: "  const ran = run.jobs.find((job) => job.steps.length > 0 && job.conclusion === \"success\");",
+    suite: "bun",
+    expect: "reports expired even when the run failed, because a red run is still a run",
+  },
 ];

@@ -6,6 +6,20 @@
 
 ---
 
+## The CI exemption became a command instead of a thing to remember (2026-08-16, #2)
+
+**Goal:** GitHub Actions is locked account-wide for billing, so this repo merges under a standing exemption. `CLAUDE.md` already said the important half is the **expiry** — and that expiry was a thing a person had to notice.
+
+**`bun run ci:lock` answers it.** It reads the latest workflow run and reports `LOCKED` while every job is refused for billing and none ran a step, `UNLOCKED` once any job ran one, and exits non-zero on `UNLOCKED` so a session cannot miss it.
+
+**Two decisions in it that are the whole point.** A job that ran a step ends the exemption **whatever it concluded** — the exemption is about jobs that cannot start, not jobs that fail, and a genuinely red suite means CI works and the gate should be armed. And a stepless run with no billing annotation is reported `UNREADABLE`, not `LOCKED`: a disabled workflow and a permissions failure look identical from outside, and reading one of those as this exemption would launder an unrelated breakage into a rule everyone already merges past. Both are corpus entries and both are CAUGHT.
+
+**What it deliberately cannot do is arm the gate.** Editing `.claude/t4.json` is refused by the permission classifier, which is correct — that file decides what the gate denies, and a script that could rewrite it would be a gate that can disarm itself.
+
+**Verified against the real repo today, 11:46:** `LOCKED`, every job refused in two seconds, annotation `The job was not started because your account is locked due to a billing issue.` The exemption still holds and #2 stays open; it is a billing state no code here can change.
+
+**Evidence:** `bun run verify` — 539 Bun · 92 Node browser · lint, typecheck, build clean.
+
 ## A socket to a private address is refused, by a weaker rule that says it is weaker (2026-08-16, #185)
 
 **Goal:** close the hole #162 left. A WebSocket entry carries **no `serverIPAddress` at all** — measured on this repo's own fixture, where the document and XHR entries beside it carry `"[::1]"` and the socket carries nothing — and `privateNetworkEntries` passes every addressless entry on purpose, because a cached or ServiceWorker response opened no connection.
