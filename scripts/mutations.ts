@@ -1164,4 +1164,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "reads the same value on every one of the six real series",
   },
+  {
+    id: "unsettled-motion-published-and-compared",
+    why: "Issue #182 review - publishing motion.settled: false beside a mid-transition reading does not stop it being compared: the classifier compares every key it is given, so two runs that end mid-transition in the same way classify equal and hand out a PASS the measurement did not earn. The readings must be absent, because an absent key is already unobserved.",
+    file: "src/equivalence/run.ts",
+    find: "    ...(motionSettled",
+    replace: "    ...(true",
+    suite: "browser",
+    expect: "a motion reading that never settled is not compared at all",
+  },
 ];

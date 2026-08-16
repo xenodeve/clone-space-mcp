@@ -3,11 +3,13 @@ import { hasSettled, settledSample, SETTLE_REPEATS } from "../../src/equivalence
 
 /**
  * Real series, measured 2026-08-16 on `https://labs.chaingpt.org/` — three live loads and three
- * replays of one archive, 30 samples at 400 ms, recorded by `archives/probe/probe-tail-rule.mjs`.
+ * replays of one archive, 30 samples at 400 ms, recorded by `scripts/digest-series.ts`.
  *
  * The page holds an entry-animation set of 59, those animations finish, and it rests at 52. Only
- * `css` varies here; `gsap` moves with it and the other two are constant, so a series of css
- * counts is enough to exercise the rule that decides which sample the digest reads.
+ * `css` is reproduced here, because it is what moved. That makes these series a test of *which
+ * sample* the rule reads and not of *which counters* it compares — the counters get their own
+ * cases at the bottom of this file, or a rule that looked at `css` alone would pass everything
+ * above.
  */
 const CSS_SERIES: Record<string, number[]> = {
   "live 0": [59, 59, 59, 59, 59, 59, 59, 58, 58, 58, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52],
@@ -32,7 +34,7 @@ function stopEarlyAt(css: readonly number[], repeats: number): number {
 }
 
 describe("stopping at k agreeing samples", () => {
-  test("no k reads the page's resting value, because the opening plateau is longer than the transition", () => {
+  test("every k below the plateau length reads the plateau, and the ones above it are fitted", () => {
     // This is the whole of #182 in one assertion. The page rests at 52. Every k small enough to
     // stop before the budget ends stops **inside the entry plateau**, which runs 6 to 9 samples:
     const picked = (k: number) => Object.values(CSS_SERIES).map((series) => stopEarlyAt(series, k));
@@ -83,6 +85,11 @@ describe("reading the end of the budget", () => {
 });
 
 describe("hasSettled", () => {
+  test("refuses a repeat count that would make an empty series look settled", () => {
+    expect(() => hasSettled([], 0)).toThrow(/at least one repeat/);
+    expect(() => hasSettled(asSamples([52]), -1)).toThrow(/at least one repeat/);
+  });
+
   test("needs SETTLE_REPEATS samples before it can say anything", () => {
     expect(hasSettled(asSamples([52, 52]))).toBe(false);
     expect(hasSettled(asSamples(Array.from({ length: SETTLE_REPEATS }, () => 52)))).toBe(true);
@@ -91,6 +98,21 @@ describe("hasSettled", () => {
   test("is false while the tail is still moving", () => {
     expect(hasSettled(asSamples([52, 52, 52, 52, 58]))).toBe(false);
   });
+});
+
+describe("every motion counter, not only css", () => {
+  // The measured series vary only in `css`, because that is what moved on that page. A rule that
+  // compared css alone would pass all of the assertions above, so each of the other three gets an
+  // explicit case: a tail that is constant in css and moving in one of them is not settled.
+  const withField = (field: "waapi" | "gsap" | "st", tail: readonly number[]) =>
+    tail.map((value) => ({ css: 52, waapi: 0, gsap: 0, st: 0, [field]: value }));
+
+  for (const field of ["waapi", "gsap", "st"] as const) {
+    test(`a tail moving in ${field} is not settled`, () => {
+      expect(hasSettled(withField(field, [0, 0, 0, 0, 1]))).toBe(false);
+      expect(hasSettled(withField(field, [1, 1, 1, 1, 1]))).toBe(true);
+    });
+  }
 });
 
 describe("settledSample", () => {

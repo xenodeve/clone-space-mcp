@@ -235,10 +235,21 @@ async function collectDigest(
     // Whether the page settled at all is itself a comparable fact: one side settling and the other
     // not is a real difference, where the sample index it happened at is not.
     "motion.settled": motionSettled,
-    "motion.css.settled": settled.css,
-    "motion.css.peak": Math.max(...samples.map((s) => s.css)),
-    "motion.gsap.settled": settled.gsap,
-    "motion.scrollTriggers": settled.st,
+    // #182: the five readings taken from the settle loop are published **only when the budget
+    // was long enough to reach a resting value**. Publishing them beside `motion.settled: false`
+    // is not enough — the classifier compares every key it is given, so two runs that end
+    // mid-transition in the same way classify `equal` and hand out a PASS the measurement did not
+    // earn. An absent key is already `unobserved`, which is exactly the right verdict for a
+    // reading nobody should compare, so the rule reuses that rather than adding one.
+    ...(motionSettled
+      ? {
+          "motion.css.settled": settled.css,
+          "motion.css.peak": Math.max(...samples.map((s) => s.css)),
+          "motion.gsap.settled": settled.gsap,
+          "motion.scrollTriggers": settled.st,
+          "layout.scrollHeight": settled.height,
+        }
+      : {}),
     "motion.gsapPresent": afterScroll.gsapPresent,
     "motion.css.afterScroll": afterScroll.css,
     "motion.scrollTriggers.afterScroll": afterScroll.st,
@@ -246,7 +257,6 @@ async function collectDigest(
     "dom.canvases": afterScroll.canvases,
     "dom.videos": afterScroll.videos,
     "dom.title": afterScroll.title,
-    "layout.scrollHeight": settled.height,
 
     // What the interaction actually did, and what the page became afterwards. These are the
     // fields that can only differ because something *behind a click* differs — everything above

@@ -56,17 +56,21 @@ export function hasSettled<T extends SettleSample>(
   samples: readonly T[],
   repeats: number = SETTLE_REPEATS,
 ): boolean {
+  // A non-positive count would make `slice(-0)` the whole array and report an empty series as
+  // settled — true of nothing, which is the one answer this must never give.
+  if (repeats < 1) throw new Error("equivalence: hasSettled needs at least one repeat");
   if (samples.length < repeats) return false;
   const tail = samples.slice(-repeats);
   return tail.every((sample) => sameMotion(sample, tail[0]!));
 }
 
 /**
- * The sample the digest reads: the **last one taken**, not a detected plateau.
+ * The sample the digest reads: the **last one taken**.
  *
- * The two differ only when the loop stopped early, and stopping early is the caller's decision
- * based on `hasSettled`. Keeping the read at the end means a run that exhausted its budget still
- * reports the most-settled reading it has, paired with `hasSettled` saying it is not settled.
+ * The loop does not stop early, so this is always the end of the budget. It is a separate function
+ * from `hasSettled` because the two answer different questions — *what did we read* and *was the
+ * page still moving when we read it* — and the caller publishes the first only when the second
+ * says yes.
  */
 export function settledSample<T extends SettleSample>(samples: readonly T[]): T {
   const last = samples[samples.length - 1];
