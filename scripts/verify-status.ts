@@ -19,10 +19,11 @@
  * with push access can post a green status by hand. The four Actions checks remain the real answer
  * and #2 stays open for them — this narrows the hole, it does not close it.
  *
- * **Arming it is deliberately not done here.** Adding `t4-verify` to the ruleset changes how every
- * PR on the repo behaves and can block one that never had the command run against it. That is the
- * repository owner's decision; this script only makes the decision available. `#2` carries the
- * one-line instruction.
+ * **It is armed.** Since 2026-08-16, `t4-verify` is a required check on ruleset `20028550`, so
+ * this script is no longer optional: **a PR whose head SHA has no status cannot be merged, by an
+ * agent or by a human on the web.** `t4-gate` runs `bun run verify` before `gh pr merge` but posts
+ * nothing, so a green local run is not a green check — run this on the PR branch. #2 carries the
+ * payload that armed it and the one-command undo.
  */
 
 export const VERIFY_STATUS_CONTEXT = "t4-verify";
