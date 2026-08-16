@@ -6,6 +6,32 @@
 
 ---
 
+## `t4-verify` armed, and the web-merge hole closed (2026-08-16, #2)
+
+**The developer authorized it explicitly, so the paragraph below this one about it being deliberately unarmed is now history rather than policy.** Ruleset `20028550` carries `["deletion","non_fast_forward","pull_request","required_status_checks"]` with the `t4-verify` context. **The three pre-existing rules were preserved deliberately** — `PUT` replaces the whole `rules` array, so a payload naming only the new rule would have silently deleted squash-only, the deletion block and the force-push block. The ruleset was read first and both the arming payload and its one-command undo are on #2.
+
+**The two open PRs were given green statuses before arming, not after.** Each ran `bun run verify:status` **on its own branch** — posting from whichever tree happened to be checked out is the exact failure this script nearly shipped with. #199 and #200 then merged through the new gate, which is the only evidence that it passes what it should.
+
+**What it is not.** Self-attested: the machine that ran verify reports its own result, and anyone with push access can post a green status by hand. It guards against forgetting, not against lying. **The five Actions checks are still the real answer and #2 stays open** — `bun run ci:lock` still reports `LOCKED`.
+
+**The practical consequence for every future PR:** `t4-gate` runs `bun run verify` before a merge but posts nothing, so a green local run is not a green check. Run `bun run verify:status` on the PR branch or the merge is blocked.
+
+## The gate-complete rule was keyed on a tracker state (2026-08-16, #2, PR #199)
+
+**#2 was closed as `COMPLETED` on 2026-08-14 while none of its four steps had happened** — its own first comment, posted 2m29s after the close, listed them. `CLAUDE.md` keyed a rule on that state: *"do not describe this repo's gate as complete until #2 closes."* So for two days the sentence returned **the wrong answer**, while `ci:lock` said `LOCKED` and the ruleset carried no `required_status_checks`. Two later sessions wrote *"this issue stays open"* into comments on an already-closed issue without checking.
+
+The rule is now keyed on two commands that read the world — `bun run ci:lock` and the ruleset's own rules list — neither of which can be satisfied by closing anything. The `requireGreenCI` contradiction that #2's own runbook recorded and left is resolved in `.claude/t4.json`'s favour: the exemption ends by putting the jobs on the ruleset, not by flipping a flag that binds only agent-run commands.
+
+**Memory:** `a-rule-keyed-on-a-tracker-state-inherits-that-state`.
+
+## A fixture that reproduces measure-and-freeze on demand (2026-08-16, #187, PR #200)
+
+**Three candidate fixes had been rejected, the third despite measuring 15/15** — its control was also 10/10 clean, because the bug had stopped reproducing that hour. The live rate went from three-in-nine to zero-in-twenty inside one day, so no candidate could be graded.
+
+`/measure-and-freeze.html` measures an element and freezes the result inline without ordering that measurement against the image its size depends on. Measured: image `responseEnd` is **71–83 ms live** and **8–11 ms in replay**, with `domContentLoadedEventEnd` ≈ 8 ms on both — so parse-time precedes the image everywhere and only a deferred measurement separates the sides. `?at=t100` → **12/12 diverge**; `?at=module` → **0/6**, the negative control that proves the fixture can also show a fix.
+
+**Deterministic on purpose, which departs from the issue's own criterion of "both states across N replays"** — a bimodal fixture would reproduce the property that made the live site useless as an instrument. **No corpus entry, and that is a finding:** corpus defects are applied in memory to the test process, and the fixture server is a separate Bun child a mutation never reaches, so an entry would report `MUTATION NOT APPLIED` — which is not `SURVIVED`. Two browser tests act as each other's control instead.
+
 ## A merge gate that does not need Actions (2026-08-16, #2)
 
 **Goal:** `CLAUDE.md` states the consequence of the locked CI plainly — *"a human merging on the web is currently ungated"* — because `t4-gate` and the `pre-push` guards only ever see commands run locally. That is the actual hole, and it does not need Actions to close.

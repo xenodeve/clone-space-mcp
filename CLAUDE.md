@@ -106,8 +106,9 @@ Full pipeline in `docs/agents/workflow.md`. The short form:
   They were deliberately left out of the ruleset: a required check that never reports leaves every
   PR stuck on *"Expected — waiting for status"*. Tracked as **#2**.
 
-  **The honest consequence: a human merging on the web is currently ungated.** The two bullets
-  above only bind commands run locally.
+  **The two bullets above only bind commands run locally**, so for most of this repo's life a
+  human merging on the web was ungated. That specific hole is closed — see `t4-verify` below — but
+  it was closed by a **self-attested** check, not by CI.
 
   **The gate is complete when two commands say so, and not when an issue closes.** `bun run ci:lock`
   exits non-zero, *and* `gh api repos/xenodeve/clone-space-mcp/rulesets/20028550 --jq
@@ -116,14 +117,20 @@ Full pipeline in `docs/agents/workflow.md`. The short form:
   sentence returned the wrong answer to anyone who evaluated it, which is what a rule keyed on a
   tracker state buys you. A closed issue is a fact a reader checks in one second and trusts.
 
-  **A commit status does not need Actions, and that hole can be closed without them.**
-  `bun run verify:status` runs the verify command and posts the result to the head SHA as the
-  `t4-verify` context; adding that context to ruleset `20028550` makes a web merge wait for it.
-  **Arming it is the repository owner's decision and is deliberately not done in code** — a
-  required check blocks any PR the command was never run against, which is the same failure #2
-  cites for the Actions checks. And it is **self-attested**: the machine that ran verify reports
-  the result, so it guards against forgetting, not against lying. The four Actions checks remain
-  the real answer.
+  **A commit status does not need Actions, and `t4-verify` is armed.** `bun run verify:status`
+  runs the verify command and posts the result to the head SHA as the `t4-verify` context, and
+  since **2026-08-16** that context is a required check on ruleset `20028550` — so a web merge
+  waits for it too. Arming it was the repository owner's call and was made explicitly; the payload
+  and its one-command undo are on #2.
+
+  **What that means for you, in practice: run `bun run verify:status` on the PR branch before
+  merging, or the merge is blocked.** `t4-gate` runs `bun run verify` for you but posts nothing,
+  so a green local run is not a green check.
+
+  **Do not read this as CI.** It is **self-attested** — the machine that ran verify reports its
+  own result, and anyone with push access can post a green status by hand. It guards against
+  forgetting, not against lying. The five Actions checks remain the real answer and #2 stays open
+  for them.
 
 Everything else — TDD discipline, `/simplify`, review depth — is agent discipline.
 
