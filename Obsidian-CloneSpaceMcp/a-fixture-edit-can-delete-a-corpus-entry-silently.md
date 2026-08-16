@@ -39,6 +39,16 @@ because an entry that cannot fail is not evidence — see [[evidence-before-clai
   the plan size are the same number. Only the *denominator* encodes the claim that coverage is a
   ratio of driven to planned.
 
+  **What it was left as, and why that is not the same entry.** The repoint was abandoned and the
+  rotted anchor stayed, so on `main` the entry answered `MUTATION NOT APPLIED` — reading as one of
+  120 passing lines — until #162 ran the whole corpus again. It is now anchored at the numerator
+  with the replacement `0` rather than the plan size, which **is** CAUGHT, because zero coverage
+  fails the same assertion that full coverage satisfies. That is a different claim from the one the
+  entry was written for: it proves the numerator is *what the clone drove* rather than a constant,
+  and it still cannot express over-claiming. **An entry whose original claim has no falsifier should
+  say so in its own `why`** — otherwise the next reader takes its id at face value, which is exactly
+  how a repoint gets abandoned twice.
+
 **The generalisable form:** a mechanism has a dependency it does not declare. Ask what the check is
 *standing on* — a fixture, a variable name, a value that happens to differ between two paths — and
 whether the thing you are about to edit is that. `FAILED` and `SURVIVED` are both this failure

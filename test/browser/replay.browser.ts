@@ -36,7 +36,7 @@ async function captureThenTakeTheOriginDown(): Promise<string> {
   const servers: FixtureServers = await startFixtureServers();
   const outDir = join(tempDir, `archive-${(archiveCounter += 1)}`);
   try {
-    await captureHar({ browser: browser as never, url: servers.primary.url, outDir });
+    await captureHar({ allowPrivateNetwork: true, browser: browser as never, url: servers.primary.url, outDir });
   } finally {
     await servers.stop();
   }
@@ -186,7 +186,7 @@ test("refuses to reach a live origin for what the archive is missing", async () 
   const servers: FixtureServers = await startFixtureServers();
   const archive = join(tempDir, `archive-${(archiveCounter += 1)}`);
   try {
-    await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+    await captureHar({ allowPrivateNetwork: true, browser: browser as never, url: servers.primary.url, outDir: archive });
 
     // Truncate to the document entry alone. Everything the page then asks for is something the
     // archive cannot answer but the live origin still can.
@@ -228,7 +228,7 @@ test("still refuses a live origin when the unservable handler is installed", asy
   const servers: FixtureServers = await startFixtureServers();
   const archive = join(tempDir, `archive-${(archiveCounter += 1)}`);
   try {
-    await captureHar({ browser: browser as never, url: servers.primary.url, outDir: archive });
+    await captureHar({ allowPrivateNetwork: true, browser: browser as never, url: servers.primary.url, outDir: archive });
 
     const harPath = join(archive, "network.har");
     const har = JSON.parse(readFileSync(harPath, "utf8")) as {

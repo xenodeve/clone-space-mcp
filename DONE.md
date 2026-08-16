@@ -6,6 +6,28 @@
 
 ---
 
+## The archive may not come from a private address (2026-08-16, #162)
+
+**Goal:** close the three ways private-network content still reached a *published* archive — a page-initiated subresource no origin policy covers, DNS rebinding between the pre-flight lookup and the navigation, and a same-host rebind whose origin never differs from the requested one.
+
+**One rule replaces three that could not work.** Every check before this resolved a *hostname* at a moment that was not the moment the socket opened. A HAR entry's `serverIPAddress` is a fact about the connection that happened, so `captureHar` now refuses to publish when any entry classifies as loopback/link-local/private/unique-local/unspecified, unless `allowPrivateNetwork` says otherwise. It does not stop the fetch; it stops the archive, which is where this project's other guarantees are enforced. Absent means refuse, the same stance `assertOriginAllowed` already took.
+
+**The measurement that made the guard correct.** Playwright writes IPv6 into the HAR **bracketed**: 11 of 12 entries of one fixture capture carried `"[::1]"` and one carried `"::1"`, in the same file. `isIP("[::1]")` is `0`, so the range table that already existed — reused rather than rewritten, in `src/capture/private-address.ts` — had to normalize brackets before classifying or it would report the loopback address it exists to catch as public. Corpus entry `private-address-not-normalized-for-brackets` encodes exactly that.
+
+**42 call sites had to say what they were doing.** The fixture servers run on loopback, so every capture in this repo's own suite *is* a capture from a private address; the default was left denying and each site now passes the opt-in. `capture_page`, `runEquivalence` and the MCP tool schema thread the caller's choice through to the archive check.
+
+**Two things found by running the corpus rather than the suite.** `coverage-claims-an-interaction-it-never-drove` had been `MUTATION NOT APPLIED` on `main` since #180 rewrote the line it anchored to — an entry measuring nothing while reading as one of 120 passing. And `capture-tool-reaches-the-private-network`, with its guard removed, *publishes* into the fixed `never-created` path the test names, after which the next honest run fails on "already exists" and blames the wrong rule; the test now uses a unique directory.
+
+**Evidence:** `bun run verify` — 505 Bun · 91 Node browser · lint, typecheck, build clean. Three new corpus entries CAUGHT, plus the re-anchored one; 27 entries anchored in the changed files re-run and CAUGHT.
+
+**A delegated adversarial review found three classifier gaps and all three were real.** Asked to refute "no published archive can contain content served from a private address", `codex` returned: link-local narrowed to the literal `fe80:` prefix while the block is `fe80::/10`, so `fe81::` through `febf::` classified as public; IPv4-mapped addresses matched only in dotted form, so `::ffff:7f00:1` and `::ffff:127.0.0.1` — the same address — classified differently; and CGNAT `100.64.0.0/10` unclassified, which is not routable on the public internet and is the block Tailscale assigns from. Each was fixed test-first, with a corpus entry for the first two.
+
+**Its fourth finding was filed rather than fixed (#185).** A WebSocket entry carries no `serverIPAddress` at all — measured on the fixture, where the WS entry has none while the document and XHR entries beside it carry `"[::1]"` — so a socket to a private address is published. The only signal it offers is its URL host, which is the name-based check this whole rule exists because it could not answer. Adopting it is a policy decision for one entry kind, not a classifier gap, so it got an issue with the measurement in it.
+
+**Known and deliberate:** refusing the whole archive rather than dropping the entry. A second reviewer flagged the cost — one leftover `http://127.0.0.1/…` beacon, or a corporate split-horizon answer, fails an otherwise fine public capture. Dropping the entry was rejected because #156 is the lesson that an archive quietly missing what the page asked for is the worse failure.
+
+---
+
 ## §6.5 request normalization shipped end-to-end (2026-08-09, AFK batch, #84 #85 #86 #87 #90 #91 #92 #93)
 
 **Goal:** make a logically identical request (fresh nonce/timestamp) replayable from the archive, and never let replay guess between distinct archived responses.

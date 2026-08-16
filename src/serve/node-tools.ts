@@ -31,7 +31,7 @@ export const CAPTURE_TOOL: ToolDefinition = {
       .boolean()
       .optional()
       .describe(
-        "Allow the URL to resolve to a loopback, link-local or private address. Off by default, because this process has the host's network position and not the caller's.",
+        "Allow a loopback, link-local, private, unique-local or CGNAT-shared address anywhere in the capture: the URL's own lookup, any origin the navigation lands on, and — since #162 — any address the archive was actually served from, including a subresource the page fetched itself. Off by default, because this process has the host's network position and not the caller's. With it off, a capture that reaches one is refused rather than published.",
       ),
   },
   run: (params) =>

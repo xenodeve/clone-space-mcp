@@ -45,6 +45,7 @@ import {
   terminationOutcome,
   type Budgets,
 } from "./budget.ts";
+import { privateNetworkEntries } from "./private-address.ts";
 import {
   defaultRequestNormalization,
   findAmbiguousNormalizedRequests,
@@ -182,6 +183,15 @@ export interface CaptureHarOptions {
    * address check it runs pre-flight.
    */
   assertOriginAllowed?: (origin: string) => Promise<void>;
+  /**
+   * Allow the published archive to contain content served from a private address (#162).
+   * **Absent means refuse**, the same stance as `assertOriginAllowed` above: every check before
+   * this one resolved a *hostname* at a moment that was not the moment the socket opened, so a
+   * page-initiated `fetch("http://169.254.169.254/…")` and both rebinding windows reached the
+   * archive unexamined. The fixture servers run on loopback, which is why this repo's own capture
+   * tests pass it.
+   */
+  allowPrivateNetwork?: boolean;
 }
 
 async function assertEmptyOutputDirectory(path: string): Promise<void> {
@@ -636,6 +646,25 @@ export async function captureHar(options: CaptureHarOptions): Promise<string> {
     const harEntries = redactedHar.log?.entries;
     if (harEntries === undefined) {
       throw new Error("capture: redacted HAR has no log.entries");
+    }
+    // #162: refuse to publish an archive holding content served from a private address.
+    // `serverIPAddress` is a fact about the connection that happened, so one rule here covers what
+    // three name-based checks could not: a page-initiated subresource no origin policy sees, DNS
+    // rebinding between the pre-flight lookup and the navigation, and a same-host rebind whose
+    // origin never differs from the requested one. It does not stop the fetch; it stops the
+    // archive — the same shape as the ambiguity contract below.
+    if (options.allowPrivateNetwork !== true) {
+      const fromPrivateNetwork = privateNetworkEntries(harEntries);
+      if (fromPrivateNetwork.length > 0) {
+        const named = fromPrivateNetwork
+          .slice(0, 5)
+          .map((entry) => `${entry.url || "<no url>"} (${entry.kind} ${entry.address})`);
+        throw new Error(
+          `capture: ${fromPrivateNetwork.length} archived request(s) were served from a private address; ` +
+            "refusing to publish. Pass allowPrivateNetwork to archive them deliberately. " +
+            `${named.join(", ")}${fromPrivateNetwork.length > named.length ? ", …" : ""}`,
+        );
+      }
     }
     // §6.10 + #156. Playwright writes both a failed request and one still in flight at teardown
     // with `response.status: -1`, and only `_failureText` tells them apart. The distinction is the

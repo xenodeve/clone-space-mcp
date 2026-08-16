@@ -110,6 +110,7 @@ test("replay installs the observation layer when asked, and hands its observatio
   try {
     const outDir = join(dir, "archive");
     await captureHar({
+      allowPrivateNetwork: true,
       browser: browser as never,
       url: new URL("/instrumented-case.html", servers.primary.url).href,
       outDir,
@@ -148,6 +149,7 @@ test("replay installs nothing unless asked", async () => {
   try {
     const outDir = join(dir, "archive");
     await captureHar({
+      allowPrivateNetwork: true,
       browser: browser as never,
       url: new URL("/instrumented-case.html", servers.primary.url).href,
       outDir,

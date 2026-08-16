@@ -29,6 +29,7 @@ after(async () => {
 async function graphOfFixtureCase() {
   const outDir = join(tempDir, `archive-${(counter += 1)}`);
   await captureHar({
+    allowPrivateNetwork: true,
     browser: browser as never,
     url: new URL("/discriminating-case.html", servers.primary.url).href,
     outDir,
@@ -69,6 +70,7 @@ test("a class-less element gets a selector that resolves to exactly one element"
 test("every target resolves to exactly one element in the replayed page", async () => {
   const outDir = join(tempDir, `archive-${(counter += 1)}`);
   await captureHar({
+    allowPrivateNetwork: true,
     browser: browser as never,
     url: new URL("/discriminating-case.html", servers.primary.url).href,
     outDir,

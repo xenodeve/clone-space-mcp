@@ -81,6 +81,7 @@ after(async () => {
 
 test("captures cross-origin stylesheet and iframe document requests in the HAR", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -125,6 +126,7 @@ test("captures cross-origin stylesheet and iframe document requests in the HAR",
 
 test("sweeps the page to capture the IntersectionObserver-gated lazy image", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -141,6 +143,7 @@ test("sweeps the page to capture the IntersectionObserver-gated lazy image", asy
 
 test("captures the published sourcemap request in the HAR", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -165,6 +168,7 @@ test("captures the published sourcemap request in the HAR", async () => {
 
 test("requests the instrumented script exactly once (no discovery re-fetch)", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -186,6 +190,7 @@ test("captures the sourcemap of a cross-origin script the page cannot read", asy
   const sourcemap = new URL("/instrumented.js.map", servers.crossOrigin.url);
 
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: page.href,
     outDir: nextCaptureOutDir(),
@@ -204,6 +209,7 @@ test("captures the sourcemap of a cross-origin script the page cannot read", asy
 
 test("redacts transport credentials from the HAR and attached request bodies", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: new URL("/credential-probe.html", servers.primary.url).href,
     outDir: nextCaptureOutDir(),
@@ -220,6 +226,7 @@ test("redacts transport credentials from the HAR and attached request bodies", a
 
 test("publishes a checkpoints.json that validateCheckpoints accepts", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -232,6 +239,7 @@ test("publishes a checkpoints.json that validateCheckpoints accepts", async () =
 
 test("associates the published checkpoints document with the run HAR", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -248,6 +256,7 @@ test("associates the published checkpoints document with the run HAR", async () 
 
 test("publishes detected capabilities for the primary motion fixture", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -275,6 +284,7 @@ test("publishes detected capabilities for the primary motion fixture", async () 
 
 test("publishes true capabilities for the capability fixture", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.capability.url,
     outDir: nextCaptureOutDir(),
@@ -304,6 +314,7 @@ test("publishes true capabilities for the capability fixture", async () => {
 test("publishes the requested and observed environment without non-allowlisted storage", async () => {
   const outDir = nextCaptureOutDir();
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: new URL("/environment-probe.html", servers.primary.url).href,
     outDir,
@@ -384,6 +395,7 @@ test("publishes the requested and observed environment without non-allowlisted s
 test("publishes a capture that redirected cross-origin, without that origin's storage", async () => {
   const outDir = nextCaptureOutDir();
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: new URL("/cross-origin-redirect.html", servers.primary.url).href,
     outDir,
@@ -421,6 +433,7 @@ test("does not publish raw credentials when a failed capture is retried", async 
 
   await assert.rejects(
     captureHar({
+      allowPrivateNetwork: true,
       browser,
       url: new URL("/credential-probe-fail.html", servers.primary.url).href,
       outDir,
@@ -435,6 +448,7 @@ test("does not publish raw credentials when a failed capture is retried", async 
   );
 
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: new URL("/credential-probe.html", servers.primary.url).href,
     outDir,
@@ -448,6 +462,7 @@ test("continues when an external script cannot be read for sourcemap discovery",
 
   await assert.doesNotReject(
     captureHar({
+      allowPrivateNetwork: true,
       browser,
       url: `data:text/html,${page}`,
       outDir: nextCaptureOutDir(),
@@ -464,6 +479,7 @@ test("stops after three empty checkpoints when scrolling cannot advance", async 
 
   await Promise.race([
     captureHar({
+      allowPrivateNetwork: true,
       browser,
       url: `data:text/html,${lockedPage}`,
       outDir: nextCaptureOutDir(),
@@ -476,6 +492,7 @@ test("stops after three empty checkpoints when scrolling cannot advance", async 
 
 test("publishes an opaque document epoch instead of the page URL", async () => {
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -495,7 +512,7 @@ test("publishes an opaque document epoch instead of the page URL", async () => {
 
 test("gives two different documents two different opaque epochs", async () => {
   const epochOf = async (url: string): Promise<string> => {
-    const harPath = await captureHar({ browser, url, outDir: nextCaptureOutDir() });
+    const harPath = await captureHar({ allowPrivateNetwork: true, browser, url, outDir: nextCaptureOutDir() });
     const doc = JSON.parse(readFileSync(resolve(dirname(harPath), "checkpoints.json"), "utf8")) as {
       checkpoints: Array<{ primaryTarget: { documentEpoch: string } }>;
     };
@@ -522,6 +539,7 @@ test("binds environment.json to the final checkpoint", async () => {
   // document epoch, and monotonic timestamp. A presence-only check would accept
   // garbage; naming a non-final checkpoint is the incoherence §6.3 exists to catch.
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: servers.primary.url,
     outDir: nextCaptureOutDir(),
@@ -573,6 +591,7 @@ test("binds environment.json to the final checkpoint", async () => {
 test("captures the volatile-key policy and preserves the raw request evidence", async () => {
   const pageUrl = new URL("/request-normalization.html", servers.capability.url);
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: pageUrl.href,
     outDir: nextCaptureOutDir(),
@@ -618,6 +637,7 @@ test("refuses an ambiguous capture in Chromium and leaves no published archive",
 
   await assert.rejects(
     captureHar({
+      allowPrivateNetwork: true,
       browser,
       url: ambiguousUrl.href,
       outDir,
@@ -633,6 +653,7 @@ test("refuses an ambiguous capture in Chromium and leaves no published archive",
   // A subsequent positive capture in the same test process must succeed (no stale state leaks).
   const positiveUrl = new URL("/request-normalization.html", servers.capability.url);
   const positiveHar = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: positiveUrl.href,
     outDir: nextCaptureOutDir(),
@@ -644,6 +665,7 @@ test("refuses an ambiguous capture in Chromium and leaves no published archive",
 test("an infinite-scroll page terminates via the wall-clock budget, not forever", async () => {
   const url = new URL("/infinite-scroll.html", servers.capability.url);
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: url.href,
     outDir: nextCaptureOutDir(),
@@ -667,6 +689,7 @@ test("an infinite-scroll page terminates via the wall-clock budget, not forever"
 test("an in-place live page is not misreported as complete before its budget fires", async () => {
   const url = new URL("/in-place-live.html", servers.capability.url);
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: url.href,
     outDir: nextCaptureOutDir(),
@@ -702,7 +725,7 @@ test("an in-place live page is not misreported as complete before its budget fir
  */
 test("does not fetch a sourcemap that is published inline as a data URI", async () => {
   const url = new URL("/inline-sourcemap.html", servers.primary.url);
-  const harPath = await captureHar({ browser, url: url.href, outDir: nextCaptureOutDir() });
+  const harPath = await captureHar({ allowPrivateNetwork: true, browser, url: url.href, outDir: nextCaptureOutDir() });
 
   const har = JSON.parse(readFileSync(harPath, "utf8")) as {
     log: { entries: { request: { url: string } }[] };
@@ -732,7 +755,7 @@ test("does not fetch a sourcemap that is published inline as a data URI", async 
  */
 test("does not report complete when a response was never received", async () => {
   const url = new URL("/unanswered-request.html", servers.primary.url);
-  const harPath = await captureHar({ browser, url: url.href, outDir: nextCaptureOutDir() });
+  const harPath = await captureHar({ allowPrivateNetwork: true, browser, url: url.href, outDir: nextCaptureOutDir() });
 
   const har = JSON.parse(readFileSync(harPath, "utf8")) as {
     log: {
@@ -796,6 +819,7 @@ test("does not report complete when a response was never received", async () => 
 test("waits for a response that arrives after the sweep has ended", async () => {
   const url = new URL("/late-response.html", servers.primary.url);
   const harPath = await captureHar({
+    allowPrivateNetwork: true,
     browser,
     url: url.href,
     outDir: nextCaptureOutDir(),
@@ -814,4 +838,40 @@ test("waits for a response that arrives after the sweep has ended", async () => 
   ) as { stats: { unansweredRequests: number; networkDrainSettled: boolean } };
   assert.equal(termination.stats.unansweredRequests, 0, "an answered request was counted as outstanding");
   assert.equal(termination.stats.networkDrainSettled, true, "the drain reported that it gave up");
+});
+
+/**
+ * #162. `assertReachableUrl` resolves a hostname before the navigation and the browser resolves it
+ * again when it connects, so every check before this one was name-based and time-shifted. A HAR
+ * entry's `serverIPAddress` is the address a connection actually went to, which is why one rule at
+ * publish covers a page-initiated subresource, DNS rebinding between the two lookups, and a
+ * same-host rebind whose origin never differs from the requested one.
+ *
+ * The fixture servers are on loopback, so this whole file is a capture from a private address —
+ * which is what makes the opt-in above every other `captureHar` call in it a true statement rather
+ * than boilerplate.
+ */
+test("refuses to publish an archive served from a private address", async () => {
+  const outDir = nextCaptureOutDir();
+
+  await assert.rejects(
+    captureHar({ browser, url: servers.primary.url, outDir }),
+    /private address/,
+  );
+  assert.equal(existsSync(outDir), false, "a refused capture published its archive");
+  assert.equal(
+    readdirSync(tempDir).some((name) => name.startsWith(`.${basename(outDir)}-capture-`)),
+    false,
+    "a refused capture left private staging behind",
+  );
+});
+
+test("publishes over loopback when the caller opts in", async () => {
+  const harPath = await captureHar({
+    browser,
+    url: servers.primary.url,
+    outDir: nextCaptureOutDir(),
+    allowPrivateNetwork: true,
+  });
+  assert.equal(existsSync(harPath), true, "the opt-in did not publish the archive");
 });

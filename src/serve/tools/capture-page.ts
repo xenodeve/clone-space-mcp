@@ -87,6 +87,11 @@ export async function capturePage(
       assertOriginAllowed: async (origin) => {
         await assertReachableUrl(origin, params.allowPrivateNetwork === true, params.resolveHost);
       },
+      // The same choice, applied a third time — to the addresses the archive was actually served
+      // from (#162). The two checks above read a *hostname* before the socket opened; this one
+      // reads what the connections went to, which is the only form that covers a subresource the
+      // page fetched itself.
+      allowPrivateNetwork: params.allowPrivateNetwork === true,
     });
       return { archive: outDir, har, url: params.url };
     } finally {

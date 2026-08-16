@@ -83,6 +83,7 @@ function fakeBrowser(har: unknown) {
 async function captureFixtureArchive(): Promise<string> {
   const outDir = join(mkdtempSync(join(tmpdir(), "clone-space-archive-")), "archive");
   await captureHar({
+    allowPrivateNetwork: true,
     browser: fakeBrowser({ log: { entries: [] } }),
     url: "https://example.com",
     outDir,
