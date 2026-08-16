@@ -6,6 +6,30 @@
 
 ---
 
+## The gate reads the end of its budget, not the first plateau (2026-08-16, #182)
+
+**Goal:** make the equivalence gate's verdict reproducible — it returned FAIL, PASS and INCOMPLETE on the same unchanged site, and a mechanism whose verdict depends on sampling phase is a measurement being read as one.
+
+**What was refuted, by measuring rather than reasoning.** Six real series from `labs.chaingpt.org` — three live loads and three replays of one archive, 30 samples at 400 ms, recorded by the newly committed `scripts/digest-series.ts`. Against them, every rule of the form *stop when k consecutive samples agree*:
+
+| k | reads |
+|---|---|
+| 2 (the rule in use) to 5 | 59 on all six, on a page that rests at 52 — the entry plateau is six to nine samples long |
+| 6 to 9 | 59 on some runs and 52 on others — **#182's non-reproducible verdict, expressed as a constant** |
+| 10 | 52 on all six, and fitted to the loads observed; an earlier measurement of the same page needed 6 |
+
+A second observable was tried and also refuted: *no finite animation is still running* reads zero at the **first** sample, before the transition begins, and oscillates between 0 and 2 forever once the page is at rest.
+
+**What shipped.** The loop runs its whole budget and the digest reads the last sample; `hasSettled` became a *report about* the reading rather than the thing that chose it, so a page whose intro outlives the budget says `motion.settled: false` instead of presenting a mid-transition value as settled. Budget 20 samples — eight seconds — with the six measured series reaching their resting value by sample 12 at the latest.
+
+**The result, and the half it did not fix.** After it, `motion.css` and `motion.gsap` are identical across all six runs and no motion field appears in any residual — including `gsap` 49-live-against-50-on-the-clone, a difference that was never one. Three gate runs still gave INCOMPLETE, FAIL and PASS, and **every field they varied on was `dom.elements` or `layout.scrollHeight`**. Those are constant across all 30 samples of a run and differ *between replays of one archive*: 8544 live always, 8544/8486/8486 on the clone. No clock fixes that, because it does not move during a run. Filed as **#187**.
+
+**The cost, stated because it is real.** Sampling the whole budget takes the fixture's equivalence tests from seconds to about 100 s, and `bun run verify` with them. One test leaves the default budget alone so the number a real site is measured with is exercised once per run; the other passes a short budget with the reason written beside it.
+
+**Evidence:** `bun run verify` — 516 Bun · 91 Node browser · lint, typecheck, build clean. Two new corpus entries CAUGHT, one restoring the early stop and one moving the reading off the end of the budget.
+
+---
+
 ## The archive may not come from a private address (2026-08-16, #162)
 
 **Goal:** close the three ways private-network content still reached a *published* archive — a page-initiated subresource no origin policy covers, DNS rebinding between the pre-flight lookup and the navigation, and a same-host rebind whose origin never differs from the requested one.

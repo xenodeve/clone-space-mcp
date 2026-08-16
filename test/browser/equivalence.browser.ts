@@ -86,6 +86,10 @@ test("a field only one side produced is unobserved and blocks a PASS", async () 
       browser: browser as never,
       // The fixture servers are on loopback (#162).
       allowPrivateNetwork: true,
+      // The fixture page rests before the first sample, so the full eight-second budget buys this
+      // assertion nothing and costs six passes of it. The test above leaves the default alone, so
+      // the number a real site is measured with is still exercised once per run (#182).
+      sampleBudget: 4,
       // Injected so the test can produce the one-sided case without breaking a real page.
       extraLiveField: { "probe.oneSided": 1 },
     });

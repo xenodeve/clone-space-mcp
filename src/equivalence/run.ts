@@ -27,14 +27,10 @@ import {
   type InteractionPlan,
 } from "../capture/interaction.ts";
 import { driveInteraction, type DriveReport, type DrivablePage } from "../capture/interaction-drive.ts";
+import { hasSettled, settledSample } from "./settle.ts";
 
 /** Settle time after each driven action, so the effect it triggers is observable before the next. */
 const INTERACTION_SETTLE_MS = 150;
-
-/** Two readings agree when every motion count in them does. */
-function sameMotion(a: MotionSample, b: MotionSample): boolean {
-  return a.css === b.css && a.waapi === b.waapi && a.gsap === b.gsap && a.st === b.st;
-}
 
 /** The slice of a page the driver needs. Structural, so a fake can stand in. */
 export interface EquivalencePage {
@@ -71,6 +67,14 @@ export interface EquivalenceOptions {
    * matching `captureHar`; the gate's own fixture runs on loopback, so its tests pass it.
    */
   allowPrivateNetwork?: boolean;
+  /**
+   * Samples per pass, overriding the measured default (#182). Present so the fixture suite, whose
+   * page rests before the first sample, does not pay eight seconds per pass six times over — not
+   * so a caller can tune the gate. A run that shortens it below its page's entry transition reads
+   * a mid-transition value and reports `motion.settled: false`; the default is what a real site
+   * should be measured with, and one fixture test deliberately leaves it alone.
+   */
+  sampleBudget?: number;
   /** Test seam: a field forced onto the live digest, to exercise the one-sided case. */
   extraLiveField?: Digest;
 }
@@ -82,20 +86,28 @@ export interface EquivalenceReport extends ClassifyResult {
 }
 
 /**
- * Sampling until the page stops changing, rather than at a fixed count.
+ * The sampling budget, in samples (#182). Twenty at `SAMPLE_GAP_MS` is eight seconds.
  *
- * The plan's rule is to compare at *normalised progress*, never at a wall-clock instant, and a
- * fixed sample count does not obey it: a page's entry animations settle whenever they settle, and
- * live and replay do not reach that point together. Measured — the first real-site run had
- * `motion.gsap.settled` differing 196 against 190 on `www.chaingpt.org` and 49 against 50 on
- * `labs.chaingpt.org`, while an earlier six-sample probe showed both sides converging on the same
- * value. Those were readings taken mid-flight, not differences.
+ * It is a **budget, not a settle detector**: the digest reads the last sample taken and
+ * `motion.settled` reports whether the tail had stopped moving by then. Six real series measured
+ * on `labs.chaingpt.org` — three live loads and three replays of one archive — reach their resting
+ * value by sample 12 at the latest, so twenty leaves eight samples of margin and a constant tail
+ * of at least five. A page with a longer intro reads a mid-transition value and says
+ * `motion.settled: false`, which is the honest outcome rather than a wrong reading presented as a
+ * settled one.
  *
- * So the driver waits for two consecutive identical readings and uses that, bounded so a page that
- * never settles cannot hold the gate open.
+ * **Why not stop early.** Every rule of the form "stop when k consecutive samples agree" was
+ * measured against those six series: k from 2 to 5 reads 59 every time, on a page that rests at
+ * 52, because the entry plateau is six to nine samples long; k from 6 to 9 reads 59 on some runs
+ * and 52 on others, which is #182's non-reproducible verdict expressed as a constant; k of 10
+ * clears them and is fitted to the loads observed. `test/equivalence/settle.test.ts` holds the
+ * series and the arithmetic.
+ *
+ * **And why not a different observable.** "No finite animation is still running" was measured and
+ * refuted: on the same page it reads zero at the very first sample, before the transition has
+ * begun, and oscillates between 0 and 2 forever once the page is at rest.
  */
-const STABLE_REPEATS = 2;
-const MAX_SAMPLES = 12;
+const MAX_SAMPLES = 20;
 const SAMPLE_GAP_MS = 400;
 /** Scroll steps the driver takes, on both sides, so the scroll dimension is genuinely covered. */
 const SCROLL_STEPS = 4;
@@ -137,11 +149,16 @@ interface DigestRun {
 async function collectDigest(
   page: EquivalencePage,
   interactionPlan?: InteractionPlan,
+  sampleBudget: number = MAX_SAMPLES,
 ): Promise<DigestRun> {
+  // #182: the loop runs its whole budget rather than stopping at the first agreeing pair.
+  // Measured on six real series from `labs.chaingpt.org` — three live loads and three replays of
+  // one archive — every k small enough to stop early reads a value the page is not at when it
+  // rests, and k between 6 and 9 reads *different* values on different runs of the same page.
+  // Reading the end of the budget read 52 on all six. `hasSettled` is now a report about the
+  // reading rather than the thing that chose it.
   const samples: MotionSample[] = [];
-  let stableFor = 0;
-  let settledAfter = MAX_SAMPLES;
-  for (let i = 0; i < MAX_SAMPLES; i += 1) {
+  for (let i = 0; i < sampleBudget; i += 1) {
     samples.push(
       await page.evaluate(() => {
         const win = globalThis as unknown as {
@@ -158,15 +175,9 @@ async function collectDigest(
         };
       }),
     );
-    const previous = samples[samples.length - 2];
-    const latest = samples[samples.length - 1]!;
-    stableFor = previous !== undefined && sameMotion(previous, latest) ? stableFor + 1 : 0;
-    if (stableFor >= STABLE_REPEATS - 1 && samples.length > 1) {
-      settledAfter = samples.length;
-      break;
-    }
     await page.waitForTimeout(SAMPLE_GAP_MS);
   }
+  const motionSettled = hasSettled(samples);
 
   // The scroll half of the driver, identical on both sides.
   for (let step = 1; step <= SCROLL_STEPS; step += 1) {
@@ -216,14 +227,14 @@ async function collectDigest(
     };
   });
 
-  const settled = samples[samples.length - 1]!;
+  const settled = settledSample(samples);
   return {
     plan,
     drive,
     digest: {
     // Whether the page settled at all is itself a comparable fact: one side settling and the other
     // not is a real difference, where the sample index it happened at is not.
-    "motion.settled": settledAfter < MAX_SAMPLES,
+    "motion.settled": motionSettled,
     "motion.css.settled": settled.css,
     "motion.css.peak": Math.max(...samples.map((s) => s.css)),
     "motion.gsap.settled": settled.gsap,
@@ -264,7 +275,7 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
     try {
       const page = await context.newPage();
       await page.goto(options.url, { waitUntil: "load" });
-      const run = await collectDigest(page, sharedPlan);
+      const run = await collectDigest(page, sharedPlan, options.sampleBudget);
       sharedPlan ??= run.plan;
       passes.push(run.digest);
     } finally {
@@ -289,7 +300,8 @@ export async function runEquivalence(options: EquivalenceOptions): Promise<Equiv
     const replay = await replayArchive({ archive, browser: options.browser });
     try {
       replayPasses.push(
-        (await collectDigest(replay.page as unknown as EquivalencePage, sharedPlan)).digest,
+        (await collectDigest(replay.page as unknown as EquivalencePage, sharedPlan, options.sampleBudget))
+          .digest,
       );
     } finally {
       await replay.close();
