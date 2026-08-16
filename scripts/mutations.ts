@@ -1246,6 +1246,15 @@ export const MUTATIONS: Mutation[] = [
     expect: "reports failure for any non-zero exit",
   },
   {
+    id: "baseline-power-borrows-the-live-count",
+    why: "Issue #187 criterion 5 - the whole point of publishing baselinePasses is that a FAIL resting on no replay evidence and one resting on three agreeing replay passes were the same output. Reporting the live count on the replay side restores exactly that: a live-only baseline reads as fully certified on the side that actually moves.",
+    file: "src/equivalence/classify.ts",
+    find: "      replay: baseline?.replayPasses.length ?? 0,",
+    replace: "      replay: baseline?.livePasses.length ?? 0,",
+    suite: "bun",
+    expect: "a FAIL certified by nothing on the replay side says so",
+  },
+  {
     id: "restore-timing-never-waits",
     why: "Issue #187 - three candidate fixes were rejected and the third only because its control was run; this is the first that reproduced. The wiring is what makes it real, and the wiring is what nothing tested: the schedule can be computed correctly and then never awaited, which passes every unit test of arrivalScheduleFrom and every existing browser test.",
     file: "src/replay/replay.ts",

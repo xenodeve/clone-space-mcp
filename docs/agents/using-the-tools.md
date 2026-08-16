@@ -115,6 +115,12 @@ recorded skip rather than a wrong click — but it is still a skip, and it shows
 - `unrepresented` on the graph — see above.
 - `coverage` on an equivalence report — a vector, never a score. A green verdict at low coverage is a
   small claim correctly reported, not a large one.
+- `baselinePasses` on an equivalence report — how many passes the stability control actually had on
+  each side, e.g. `{ live: 3, replay: 0 }`. **A `FAIL` is only as good as the side that moves was
+  measured.** A group of fewer than two passes cannot show a field varying, and the gate reads that
+  as *stable* — so a live-only baseline certifies `layout.scrollHeight`, which is steady at 8544
+  across live drives and reads 8486/8544/8486 across replays of one archive. `replay: 0` beside a
+  residual means the accusation rests on no replay evidence at all.
 - **A replay serves the archive faster than the network did, and some pages notice** (#187). A page
   that measures an element and freezes the result — without ordering that measurement against the
   resource its size depends on — can settle to a layout the live page never produced. Measured on
@@ -228,6 +234,11 @@ Framer จะรายงาน node จำนวนน้อยโดยที�
 - `unrepresented` ของกราฟ — ดูข้างบน
 - `coverage` ของรายงานสมมูล — เป็นเวกเตอร์ ไม่เคยเป็นคะแนน · verdict เขียวที่ความครอบคลุมต่ำคือคำกล่าวเล็กที่รายงาน
   อย่างถูกต้อง ไม่ใช่คำกล่าวใหญ่
+- `baselinePasses` ของรายงานสมมูล — จำนวน pass ที่ตัวควบคุมความเสถียรมีจริงในแต่ละฝั่ง เช่น
+  `{ live: 3, replay: 0 }` · **`FAIL` ดีได้เท่าที่ฝั่งที่ขยับถูกวัดเท่านั้น** · กลุ่มที่มี pass น้อยกว่าสองครั้งแสดงไม่ได้ว่าฟิลด์แกว่ง
+  และด่านอ่านค่านั้นว่า *เสถียร* — baseline ที่วัดแต่ฝั่งสดจึงรับรอง `layout.scrollHeight` ซึ่งนิ่งที่ 8544 ตอนขับฝั่งสด
+  แต่อ่านได้ 8486/8544/8486 ตอน replay archive ชุดเดียวกัน · `replay: 0` ที่อยู่ข้าง residual แปลว่าคำกล่าวหานั้นไม่มี
+  หลักฐานฝั่ง replay รองรับเลย
 - **replay เสิร์ฟ archive เร็วกว่าที่เครือข่ายเคยเสิร์ฟ และบางหน้าสังเกตเห็น** (#187) · หน้าที่วัด element แล้วแช่ผลไว้ —
   โดยไม่จัดลำดับการวัดนั้นกับทรัพยากรที่ขนาดของมันขึ้นอยู่กับ — ลงเอยเป็น layout ที่หน้าสดไม่เคยผลิตได้ · วัดบน
   `https://labs.chaingpt.org/`: ฝั่งสด 8544 ส่วน replay ได้ 8486 ราวหนึ่งในสามรอบ · `replayArchive` รับ

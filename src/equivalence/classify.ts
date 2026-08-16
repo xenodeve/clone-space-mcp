@@ -110,6 +110,25 @@ export interface ClassifyResult {
   /** Fields that differ and nothing covers. Empty is the only shape a `PASS` may have. */
   residual: string[];
   /**
+   * How many passes the stability baseline actually had on each side (#187).
+   *
+   * **The sample size is load-bearing and was invisible.** `variesWithin` returns `false` for a
+   * group of fewer than two passes and the caller reads that as *stable*, so a baseline with an
+   * empty `replayPasses` certifies every field on the side that moves — which is exactly
+   * `layout.scrollHeight`, steady at 8544 across three live drives and 8486/8544/8486 across three
+   * replays. A `FAIL` resting on no replay evidence and a `FAIL` resting on three agreeing replay
+   * passes were previously the same output.
+   *
+   * `{ live: 0, replay: 0 }` when no baseline was supplied — a number rather than an absent field,
+   * because a reader's `?? 3` would otherwise invent evidence nobody gathered.
+   *
+   * This reports the basis; it deliberately does not change the verdict. Making a difference
+   * inconclusive unless **both** sides were measured twice is a real option and it contradicts a
+   * test that currently says otherwise on purpose, so it is a decision to take explicitly rather
+   * than to slip in beside a report.
+   */
+  baselinePasses: { live: number; replay: number };
+  /**
    * `PASS` when nothing differs uncovered and every field was observed on both sides.
    * `INCOMPLETE` when the residual is empty but a field was only half observed, or could not be
    * measured twice the same way — **neither is agreement**, and a caller reading a boolean would
@@ -201,7 +220,16 @@ export function classify(
   }
 
   const verdict = residual.length > 0 ? "FAIL" : inconclusive ? "INCOMPLETE" : "PASS";
-  return { fields, residual, unstable, verdict };
+  return {
+    fields,
+    residual,
+    unstable,
+    baselinePasses: {
+      live: baseline?.livePasses.length ?? 0,
+      replay: baseline?.replayPasses.length ?? 0,
+    },
+    verdict,
+  };
 }
 
 /**
