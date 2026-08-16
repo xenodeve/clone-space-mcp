@@ -6,6 +6,35 @@
 
 ---
 
+## The gate stopped reading instants, and #187 got a root cause (2026-08-16, #182, #187, #189, #190)
+
+**Goal:** finish making the gate's verdict reproducible, and find out what the one remaining varying field actually is.
+
+**There were two places the gate read an instant, not one.** #188 fixed the settle loop. The reading taken *after the scroll pass* still came from a single sample, and every count in the digest that is not from the settle loop comes from it. Measured on `labs.chaingpt.org`, three runs of live against replay — `dom.elements` at the moment the gate reads it, then fourteen more times at 400 ms:
+
+```
+live    2821  2767 2767 2767 … (fourteen identical)
+replay  2819  2767 2767 2767 … (fourteen identical)
+```
+
+The first read differs by two elements on two of three runs; every read after it agrees. That was the `dom.elements` residual, and it was never the clone's fault. Fixed by sampling that reading over a short budget and publishing its counts only when the tail held still — `hasSettled` generalised into `tailIsConstant`, so it is the same rule and the same code.
+
+**After it, `layout.scrollHeight` is the only field the verdict varies on.**
+
+**#187 went from "did not reproduce" to a named line, and a wrong hypothesis of mine died on the way.** Thirteen replays across three archives all read 8544, which looked like the effect was gone; it is not, it is **one replay in three**, and thirteen clean draws at that rate is unremarkable. I then proposed the state belonged to the *archive*, on the strength of one gate run whose three replay passes agreed. Measured immediately — three archives, three replays each — and the split is *inside* two of the three archives. Refuted in one command.
+
+**The cause, with the line.** Eight replays deep, diffing every element's box height between an 8544 and an 8486 replay of one archive: identical DOM, identical five loaded font faces, identical images, and exactly one difference —
+
+```
+h2  tall : height: 115.906px      short: height: 57.9531px
+```
+
+115.906 is twice 57.953, and 57.95 px is the 58 px the document differs by. A script measures the heading and freezes the result inline; **replay serves from disk with no latency**, so it sometimes measures before the layout that wraps the heading to two lines. The page has the race online too — the network just made it lose the same way every time.
+
+**What that means for the gate, and it is the useful half:** a field that varies between replays and is constant *within* each one is not a sampling defect and no clock fixes it. The gate noticed something real.
+
+**Evidence:** `bun run verify` — 524 Bun · 92 Node browser · lint, typecheck, build clean. Corpus entry `post-scroll-counts-read-once` CAUGHT. Reproducer committed as `scripts/replay-height-race.ts` because an effect nobody can summon is an effect nobody can fix.
+
 ## The gate reads the end of its budget, not the first plateau (2026-08-16, #182)
 
 **Goal:** make the equivalence gate's verdict reproducible — it returned FAIL, PASS and INCOMPLETE on the same unchanged site, and a mechanism whose verdict depends on sampling phase is a measurement being read as one.
