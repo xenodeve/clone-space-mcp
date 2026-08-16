@@ -19,6 +19,8 @@
 - [[a-selector-is-a-position-not-an-identity]] — a plan decided at one moment and executed at another must re-validate; on #176 a live page invalidated 28 of 32 selectors while the plan ran
 - [[a-fixture-edit-can-delete-a-corpus-entry-silently]] — a mechanism has dependencies it does not declare; a fixture edit removed the only case one corpus entry could fail on, and only `mutate` said so
 - [[a-control-that-samples-one-side-is-blind-to-the-other]] — the gate proved stability on the live page and judged live-against-replay; four of five proposed fixes were refuted by building them
+- [[a-value-has-more-than-one-spelling]] — a guard matching on text sees only the forms it was built from; measuring one capture found the bracketed IPv6 the HAR actually holds, and only an adversarial reviewer found the two spellings nothing had produced
+- [[a-mutation-run-can-leave-the-defect-behind]] — removing a guard makes what it prevented actually happen; a test that names a fixed path published an archive there and failed the next honest run on the wrong rule
 
 ## project — ongoing goals / constraints not derivable from the code
 - [[replay-reexecutes-original-js]] — the architectural commitment the whole project rests on, and the approach it rejects
