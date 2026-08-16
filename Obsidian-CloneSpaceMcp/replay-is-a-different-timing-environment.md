@@ -61,6 +61,20 @@ what reliably produces the wrong one. So the page is not losing a race that late
 `FontFaceSet` wait), and live wins by luck that holds every time on the real network. Any fix has
 to change *when the page measures*, which is the page's code, or accept that this field varies.
 
+**A third attempt looked like it worked, and the control is the only reason it did not ship.**
+The second measurement said the order that matters is *font before script*, so the third held the
+**scripts** back instead and left fonts at disk speed. Fifteen replays, fifteen at the live value —
+against a baseline that had been failing about one run in three, which is a result you would ship.
+Then the control: the same ten replays with the flag **off**, same machine, same hour. **Also ten
+out of ten clean.** The defect was simply not reproducing in that window, so the fifteen proved
+nothing at all, and the fix was reverted with the other two.
+
+Twenty clean replays in a row after a morning of one-in-three is itself a fact worth carrying: the
+rate is not stable across hours, and a *live site* is therefore not a surface a fix for this can be
+validated against. What #187 needs before another attempt is a **fixture that reproduces the race
+on demand** — a page served with a slow font and a script that measures a heading and freezes its
+height — because every candidate fix will otherwise be graded by whichever hour it was run in.
+
 **And a trap that cost most of an afternoon.** The effect appears about one replay in three, so
 **thirteen replays that all agree is an unremarkable draw, not evidence it is gone.** A session
 concluded "not reproduced" from exactly that and nearly stopped. Before calling an intermittent
