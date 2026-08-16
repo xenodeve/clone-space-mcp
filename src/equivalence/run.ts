@@ -27,7 +27,7 @@ import {
   type InteractionPlan,
 } from "../capture/interaction.ts";
 import { driveInteraction, type DriveReport, type DrivablePage } from "../capture/interaction-drive.ts";
-import { hasSettled, settledSample } from "./settle.ts";
+import { hasSettled, settledSample, tailIsConstant } from "./settle.ts";
 
 /** Settle time after each driven action, so the effect it triggers is observable before the next. */
 const INTERACTION_SETTLE_MS = 150;
@@ -113,6 +113,32 @@ const SAMPLE_GAP_MS = 400;
 const SCROLL_STEPS = 4;
 
 /**
+ * Samples of the post-scroll reading (#182/#187). Eight at `SAMPLE_GAP_MS` is 3.2 seconds, enough
+ * for the tail of five the constancy check needs plus the moving samples in front of it. Measured
+ * on `labs.chaingpt.org`: the counts moved once, 400 ms in, and were identical on both sides for
+ * every reading after that.
+ */
+const AFTER_SCROLL_SAMPLES = 8;
+
+interface AfterScrollSample {
+  css: number;
+  st: number;
+  gsapPresent: boolean;
+  elements: number;
+  canvases: number;
+  videos: number;
+  title: string;
+}
+
+/**
+ * What has to hold still for the post-scroll counts to be worth comparing. `title` and
+ * `gsapPresent` are deliberately out: they do not bounce, and a run where the counts never settle
+ * should still publish them rather than lose a stable signal to an unstable neighbour.
+ */
+const afterScrollKey = (sample: AfterScrollSample): string =>
+  `${sample.elements}|${sample.canvases}|${sample.videos}|${sample.css}|${sample.st}`;
+
+/**
  * Live passes driven to establish which fields carry signal at all (#182).
  *
  * Two was the original number and it is measurably too few: a field that plateaus at one of two
@@ -187,22 +213,40 @@ async function collectDigest(
     await page.waitForTimeout(SAMPLE_GAP_MS);
   }
 
-  const afterScroll = await page.evaluate(() => {
-    const win = globalThis as unknown as {
-      gsap?: { globalTimeline: { getChildren(): unknown[] } };
-      ScrollTrigger?: { getAll(): unknown[] };
-    };
-    const animations = document.getAnimations();
-    return {
-      css: animations.filter((a) => a.constructor.name === "CSSAnimation").length,
-      st: win.ScrollTrigger?.getAll().length ?? 0,
-      gsapPresent: win.gsap !== undefined,
-      elements: document.querySelectorAll("*").length,
-      canvases: document.querySelectorAll("canvas").length,
-      videos: document.querySelectorAll("video").length,
-      title: document.title,
-    };
-  });
+  // #182/#187: the reading after the scroll pass had the same defect the settle loop just lost —
+  // the gate took exactly **one** sample of it. Measured on `labs.chaingpt.org`, three runs of
+  // live-against-replay: that one sample read `dom.elements` as 2821 live against 2819 on the
+  // clone on two of three runs, while every reading after it agreed at 2767 for fourteen straight
+  // samples. So it is sampled over a short budget and read at the end, exactly as above.
+  // One knob, not two: `sampleBudget` caps this reading as well, so a caller that shortens the
+  // run shortens both and a test that asks for an unsettled run gets one at *both* readings.
+  const afterScrollBudget = Math.min(AFTER_SCROLL_SAMPLES, sampleBudget);
+  const afterScrollSamples: AfterScrollSample[] = [];
+  for (let i = 0; i < afterScrollBudget; i += 1) {
+    afterScrollSamples.push(await sampleAfterScroll(page));
+    await page.waitForTimeout(SAMPLE_GAP_MS);
+  }
+  const afterScroll = settledSample(afterScrollSamples);
+  const afterScrollSettled = tailIsConstant(afterScrollSamples, afterScrollKey);
+
+  async function sampleAfterScroll(target: EquivalencePage): Promise<AfterScrollSample> {
+    return target.evaluate(() => {
+      const win = globalThis as unknown as {
+        gsap?: { globalTimeline: { getChildren(): unknown[] } };
+        ScrollTrigger?: { getAll(): unknown[] };
+      };
+      const animations = document.getAnimations();
+      return {
+        css: animations.filter((a) => a.constructor.name === "CSSAnimation").length,
+        st: win.ScrollTrigger?.getAll().length ?? 0,
+        gsapPresent: win.gsap !== undefined,
+        elements: document.querySelectorAll("*").length,
+        canvases: document.querySelectorAll("canvas").length,
+        videos: document.querySelectorAll("video").length,
+        title: document.title,
+      };
+    });
+  }
 
   // The interaction half (#176). The plan is **discovered once, on the live page, and driven
   // unchanged on every pass** — including the clone's. Letting each side discover its own would
@@ -251,12 +295,20 @@ async function collectDigest(
         }
       : {}),
     "motion.gsapPresent": afterScroll.gsapPresent,
-    "motion.css.afterScroll": afterScroll.css,
-    "motion.scrollTriggers.afterScroll": afterScroll.st,
-    "dom.elements": afterScroll.elements,
-    "dom.canvases": afterScroll.canvases,
-    "dom.videos": afterScroll.videos,
     "dom.title": afterScroll.title,
+    // Same rule as the settle loop, for the same reason: a count read while the page is still
+    // mounting nodes is not a fact about the page, and publishing it beside a flag saying so is
+    // not enough — the classifier compares every key it is given.
+    "dom.settled": afterScrollSettled,
+    ...(afterScrollSettled
+      ? {
+          "motion.css.afterScroll": afterScroll.css,
+          "motion.scrollTriggers.afterScroll": afterScroll.st,
+          "dom.elements": afterScroll.elements,
+          "dom.canvases": afterScroll.canvases,
+          "dom.videos": afterScroll.videos,
+        }
+      : {}),
 
     // What the interaction actually did, and what the page became afterwards. These are the
     // fields that can only differ because something *behind a click* differs — everything above

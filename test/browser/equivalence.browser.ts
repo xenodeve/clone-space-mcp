@@ -133,7 +133,16 @@ test("a motion reading that never settled is not compared at all", async () => {
     // Not compared at all — the readings are absent from the digest, so there is no verdict for
     // them to carry. A field present on one side only would be `unobserved`; a field on neither
     // is simply not a comparison anyone made.
-    for (const field of ["motion.css.settled", "motion.gsap.settled", "layout.scrollHeight"]) {
+    for (const field of [
+      "motion.css.settled",
+      "motion.gsap.settled",
+      "layout.scrollHeight",
+      // The post-scroll counts obey the same rule (#182/#187): the gate used to take exactly one
+      // sample of them, and on a real site that one sample read `dom.elements` as 2821 live
+      // against 2819 on the clone while every reading after it agreed.
+      "dom.elements",
+      "motion.css.afterScroll",
+    ]) {
       assert.equal(
         report.fields.find((entry) => entry.field === field),
         undefined,
@@ -143,6 +152,11 @@ test("a motion reading that never settled is not compared at all", async () => {
     // And the report says how little it compared, which is the design's answer rather than a
     // verdict downgrade: a green verdict at zero motion coverage is a small claim, stated.
     assert.equal(report.coverage.motion_settled, 0);
+    assert.equal(
+      report.fields.find((field) => field.field === "dom.settled")?.verdict,
+      "equal",
+      "both sides should agree that the post-scroll counts never settled",
+    );
   } finally {
     await servers.stop();
   }
