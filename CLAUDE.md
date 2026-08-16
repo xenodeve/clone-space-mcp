@@ -262,6 +262,12 @@ issue.` Every job of every run fails in seconds without executing a step. Condit
 - It **expires the moment a workflow run actually completes.** At that point
   `.claude/t4.json` gets `"requireGreenCI": true` and this stops being a rule anyone has to
   remember — `t4-gate` denies the merge itself.
+- **Check it, do not restate it from here.** `bun run ci:lock` reads the latest run and answers:
+  `LOCKED` while every job is refused for billing and none ran a step, `UNLOCKED` once any job ran
+  one — whatever it concluded, because the exemption is about jobs that cannot start, not jobs that
+  fail. It exits non-zero on `UNLOCKED`, and on `UNREADABLE` rather than guessing: a disabled
+  workflow and a permissions failure look identical from the outside, and reporting one of those as
+  this exemption would launder an unrelated breakage into a rule everyone already merges past.
 
 **Why the expiry is the important half:** a perpetually-red gate that everyone merges past is
 worse than no gate, because it teaches that red means nothing. This exemption is only tolerable
