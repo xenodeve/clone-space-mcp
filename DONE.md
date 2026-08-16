@@ -14,7 +14,11 @@
 
 **Graded on the fixture, with the control in the same session:** `?at=t100` off → **12/12 diverge**; on → **0/12**. Two corpus entries, both CAUGHT, and one of them (`restore-timing-never-waits`) covers the **wiring** — the criterion the three earlier attempts failed, having tested pure functions and left the wiring untested.
 
-**What is deliberately not claimed.** The fixture reproduces the *opposite direction* from `labs.chaingpt.org` — there the live page is the resource-applied state, here it is the not-arrived one. The real-site probe read 8544 with the flag off **and** on, which is the defect not reproducing rather than the fix working. Mechanism confirmed, fix graded on the fixture, live effect **unmeasured**, and the option stays off by default until that changes. #187 stays open.
+**Then the live case was measured, which is what the first probe could not do.** That probe read 8544 with the flag off **and** on — the defect not reproducing, the same reading candidate three got. A later run with the control and the candidate in the *same invocation* had a control that actually failed: **5/20 off-live against 0/20**, the control reproducing at 25%. Stated as a calculation rather than a test result — twenty clean draws from a 25% rate is `0.75^20 = 0.3%`.
+
+**The transferable rule: a clean candidate is worth nothing until the control in the same session is dirty.** Not "run a control" — run one and check it reproduced. Both near-misses on this issue were clean-candidate-plus-clean-control.
+
+Still off by default, now for a cost rather than a doubt: 825 ms → 4577 ms on that site. #187 stays open for criterion 5's remaining half.
 
 ## `t4-verify` armed, and the web-merge hole closed (2026-08-16, #2)
 

@@ -1,6 +1,6 @@
 ---
 name: replay-is-a-different-timing-environment
-description: A page that measures its own layout without waiting for its webfont races, and a replay resolves it differently with an identical DOM; three fixes were refuted before a fixture existed, and the fourth — scheduling each response at its recorded offset rather than its duration — is graded on the fixture and still unmeasured on the live case
+description: A page that measures its own layout without waiting for its webfont races, and a replay resolves it differently with an identical DOM; three fixes were refuted, and the fourth — scheduling each response at its recorded offset rather than its duration — took the live case from 5/20 to 0/20 with a control that reproduced in the same session, which is the reading that separates it from the near-miss
 metadata:
   type: project
 ---
@@ -103,7 +103,26 @@ the cost was the *sum* of every entry's duration. This schedules each response a
 again and the whole replay is bounded by the recorded page load. *Duration and arrival time are not
 the same quantity*, and the first attempt failed on the arithmetic rather than on the idea.
 
-## What is still not shown, and saying so is the point
+## The live case was then measured, and it is the row that was missing
+
+Same day, two invocations of `scripts/live-height-race-graded.ts`, **control and candidate in the
+same invocation** so a non-reproducing window shows up as a clean control instead of a false pass:
+
+```
+live  8544x3
+restoreTiming=false   1/4 · 1/4 · 3/12  off-live      →  5/20
+restoreTiming=true    0/4 · 0/4 · 0/12               →  0/20
+```
+
+The control reproduced at **25%**, which matches the rate this note recorded from the start — so
+unlike the third candidate, the twenty flagged replays were drawn in a window where the defect was
+live. **Read it as two counts and one stated calculation:** if the flag changed nothing, twenty
+clean draws from a 25% rate has probability `0.75^20 = 0.3%`.
+
+It is still **off by default**, and now for a reason that is a cost rather than a doubt: on that
+site it takes a replay from 825 ms to 4577 ms.
+
+## What was not shown until that run, and why the gap mattered
 
 **The fixture reproduces the opposite direction from the live site.** On `labs.chaingpt.org` the
 live page is the *resource-applied* state and a replay is sometimes the *not-applied* one. On the
@@ -112,7 +131,12 @@ ordered against a resource — but a fix that moves replay toward live on one di
 thereby shown to** on the other, and the earlier measurement in this note is a live case where
 adding latency moved it the wrong way.
 
-The real-site probe run alongside this measured 8544 with the flag off **and** on, which is the
-defect not reproducing rather than the fix working. **So: the mechanism is confirmed, the fix is
-graded on the fixture, and its effect on the live case is unmeasured.** That is three different
-registers and collapsing them into "fixed" is exactly what the control caught last time.
+The first real-site probe measured 8544 with the flag off **and** on — the defect not reproducing
+rather than the fix working, which is the same reading candidate three got. Reporting *that* as
+success would have repeated the exact mistake this note exists to record. The claim only moved to
+**verified** when a later run in the same session had a control that actually failed.
+
+**The transferable rule: a clean candidate is worth nothing until the control in the same session
+is dirty.** Not "run a control" — run one and *check that it reproduced*. Both of this issue's
+near-misses were clean-candidate-plus-clean-control, and only the second reading distinguishes
+them.
