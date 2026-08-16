@@ -46,10 +46,12 @@ leftover `http://127.0.0.1/…` beacon fails, and the fix is to re-run with the 
 decided that reaching your own network is what you meant. Capturing this repo's fixture site, which
 runs on localhost, needs the flag for the same reason.
 
-**One thing that refusal does not cover, measured: a WebSocket.** Its HAR entry carries no
-`serverIPAddress` at all, so a socket opened to a private address is published like any other —
-tracked as **#185**. Frames are still redacted for credential material; the archive simply does not
-decide whether the socket should have been kept.
+**A WebSocket is covered by a weaker rule, and the gap that leaves is worth knowing.** Its HAR
+entry carries no `serverIPAddress` at all, so the address check cannot see it (#185). A socket
+whose URL host is already an **IP literal** — `ws://127.0.0.1/`, `wss://[fe80::1]/` — is refused on
+that host. A socket to a **hostname** is not: resolving one at publish time would be a lookup at a
+moment that is not the moment the socket opened, which is the thing this whole refusal exists
+because it could not rely on. Frames are redacted for credential material either way.
 
 ## What "which line" actually returns
 
@@ -159,9 +161,11 @@ HAR ซึ่งเป็นที่อยู่ที่การเชื่�
 `http://127.0.0.1/…` อยู่อันเดียวก็ล้ม และวิธีแก้คือรันใหม่พร้อม flag เมื่อคุณตัดสินใจแล้วว่าการเข้าถึงเครือข่ายของตัวเอง
 คือสิ่งที่ตั้งใจ · การ capture เว็บ fixture ของ repo นี้ซึ่งรันบน localhost ก็ต้องใช้ flag ด้วยเหตุผลเดียวกัน
 
-**สิ่งหนึ่งที่การปฏิเสธนั้นไม่ครอบคลุม และวัดมาแล้ว: WebSocket** · entry ของมันใน HAR ไม่มี `serverIPAddress` เลย
-socket ที่เปิดไปยังที่อยู่ภายในจึงถูกเผยแพร่เหมือน entry อื่น — ติดตามไว้ที่ **#185** · frame ยังถูก redact เรื่อง
-credential อยู่ · archive แค่ไม่ได้ตัดสินว่า socket นั้นควรถูกเก็บไว้หรือไม่
+**WebSocket ถูกคุมด้วยกฎที่อ่อนกว่า และช่องว่างที่เหลือควรรู้ไว้** · entry ของมันใน HAR ไม่มี `serverIPAddress`
+เลย การตรวจที่อยู่จึงมองไม่เห็นมัน (#185) · socket ที่ host ของ URL เป็น **IP ตรง ๆ** — `ws://127.0.0.1/` ·
+`wss://[fe80::1]/` — จะถูกปฏิเสธจาก host นั้น · ส่วน socket ที่ชี้ไป **hostname** ไม่ถูกปฏิเสธ: การ resolve มัน
+ตอน publish คือการค้นหา ณ ขณะที่ไม่ใช่ขณะที่ socket เปิด ซึ่งเป็นสิ่งที่การปฏิเสธทั้งหมดนี้มีอยู่เพราะพึ่งมันไม่ได้ ·
+frame ถูก redact เรื่อง credential ทั้งสองทาง
 
 ## "บรรทัดไหน" คืนอะไรจริง ๆ
 

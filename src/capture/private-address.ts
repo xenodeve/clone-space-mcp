@@ -80,6 +80,10 @@ export function privateAddressKind(address: string | undefined): PrivateAddressK
 export interface AddressedHarEntry {
   request?: { url?: unknown };
   serverIPAddress?: unknown;
+  /** Playwright's own marker, not part of the HAR format — read as a hint, never as the test (#185). */
+  _resourceType?: unknown;
+  /** `_failureText` present means the request never got an answer. Loose, like the rest of this. */
+  response?: { status?: unknown; _failureText?: unknown };
 }
 
 export interface PrivateNetworkEntry {
@@ -95,12 +99,10 @@ export interface PrivateNetworkEntry {
  * ServiceWorker opened no connection, so absence is not evidence of a private one, and refusing on
  * absence would refuse archives that are fine.
  *
- * **A WebSocket entry is indistinguishable from those and is a known hole (#185).** Measured on
- * the fixture: its entry carries `_resourceType: "websocket"` and no `serverIPAddress` at all,
- * while the document and XHR entries beside it carry `"[::1]"`. So a socket opened to a private
- * address is published. The only signal such an entry offers is its URL host, which is the
- * name-based check this whole rule exists because it could not answer — adopting it here needs to
- * be a stated policy for one entry kind, not a quiet extension of this one.
+ * **A WebSocket entry is indistinguishable from those** — measured on the fixture, its entry
+ * carries `_resourceType: "websocket"` and no `serverIPAddress` at all while the document and XHR
+ * entries beside it carry `"[::1]"`. That is why `webSocketToPrivateAddress` below exists as a
+ * separate, deliberately weaker rule rather than a quiet extension of this one (#185).
  */
 export function privateNetworkEntries(
   entries: readonly AddressedHarEntry[],
@@ -113,6 +115,58 @@ export function privateNetworkEntries(
     if (kind === undefined) continue;
     const url = entry.request?.url;
     found.push({ url: typeof url === "string" ? url : "", address, kind });
+  }
+  return found;
+}
+
+/**
+ * Sockets opened to a **literal** private address (#185).
+ *
+ * A WebSocket entry carries no `serverIPAddress`, so the rule above cannot see it and passes it
+ * with every other addressless entry. The only signal it offers is its URL host, which is the
+ * name-based, time-shifted check that `privateNetworkEntries` exists because it could not answer —
+ * so this is adopted **for one entry kind, and only when the host is already an IP literal**.
+ *
+ * **A hostname is deliberately not resolved.** Resolving one at publish time would be a lookup at
+ * a moment that is not the moment the socket opened, which is the whole property #162 established
+ * cannot be relied on. A socket to a rebound hostname therefore stays uncovered, and #185 says so
+ * rather than the code implying otherwise.
+ *
+ * An entry that already carries an address is skipped: if Playwright ever starts recording one,
+ * `privateNetworkEntries` is the better evidence and this rule steps aside rather than reporting
+ * the same entry twice.
+ */
+export function webSocketToPrivateAddress(
+  entries: readonly AddressedHarEntry[],
+): PrivateNetworkEntry[] {
+  const found: PrivateNetworkEntry[] = [];
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const record = entry;
+    if (typeof record.serverIPAddress === "string" && record.serverIPAddress !== "") continue;
+    // A refused connection served nothing, so no private content reached the archive. This is the
+    // same reasoning `termination.json` already uses to keep `failedRequests` out of the outcome,
+    // and without it a page that probes `wss://127.0.0.1:9/` fails an otherwise public capture.
+    if (record.response?._failureText !== undefined) continue;
+    const url = record.request?.url;
+    if (typeof url !== "string") continue;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    // The scheme is what the entry **is**; `_resourceType` is Playwright's own field and no part of
+    // the HAR format guarantees it. Reading only the marker made the rule depend on it.
+    const isSocket = parsed.protocol === "ws:" || parsed.protocol === "wss:";
+    if (!isSocket && record._resourceType !== "websocket") continue;
+    const host = parsed.hostname;
+    // `URL.hostname` keeps the brackets on an IPv6 literal; `privateAddressKind` strips them, and
+    // the reported address is the bare form so it reads the same as every other finding.
+    const bare = host.replace(/^\[|\]$/g, "");
+    const kind = privateAddressKind(bare);
+    if (kind === undefined) continue;
+    found.push({ url, address: bare, kind });
   }
   return found;
 }
