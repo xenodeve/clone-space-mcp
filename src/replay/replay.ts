@@ -21,7 +21,7 @@ import {
   INSTRUMENT_INIT_SCRIPT,
   type Observation,
 } from "../capture/instrument.ts";
-import { arrivalScheduleFrom } from "./arrival-schedule.ts";
+import { arrivalScheduleFrom, delayBefore, scheduleKey } from "./arrival-schedule.ts";
 
 export interface ReplayArchiveOptions {
   /** Path to a published archive directory. */
@@ -67,7 +67,9 @@ export interface ReplayBrowserContext {
 
 /** The slice of Playwright's Route this needs to abort one request and defer the rest. */
 export interface ReplayRoute {
-  request(): { url(): string };
+  /** `method()` is here for the arrival schedule, which keys on the same pair `routeFromHAR`
+   *  matches a body on — one URL can carry a redirecting POST and the GET that follows it. */
+  request(): { url(): string; method(): string };
   abort(): Promise<void>;
   fallback(): Promise<void>;
 }
@@ -187,12 +189,16 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
   if (options.restoreTiming === true) {
     const schedule = arrivalScheduleFrom(har);
     await context.route("**/*", async (route) => {
-      const arrivesAt = schedule.get(route.request().url());
-      if (arrivesAt !== undefined) {
-        // An absent key is "not recorded", which is served at once — distinct from a recorded 0.
-        const remaining = arrivesAt - (Date.now() - navigationStartedAt);
-        if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
-      }
+      const request = route.request();
+      // An absent key is "not recorded" and `delayBefore` answers 0 — served at once, and
+      // deliberately distinct from a recorded 0. It also answers 0 while the navigation clock has
+      // not started, which is the case that used to reach `setTimeout(Infinity)`.
+      const wait = delayBefore(
+        schedule.get(scheduleKey(request.method(), request.url())),
+        navigationStartedAt,
+        Date.now(),
+      );
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
       await route.fallback();
     });
   }

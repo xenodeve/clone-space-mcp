@@ -26,19 +26,34 @@ function entriesOf(har: unknown): unknown[] {
 }
 
 interface RecordedArrival {
-  url: string;
+  key: string;
   startedMs: number;
   durationMs: number;
 }
 
+/**
+ * How the schedule is keyed: **method and URL**, the same pair `routeFromHAR` matches a body on.
+ *
+ * Keying on the URL alone was the first shape and a delegated review refuted it. A `POST /submit`
+ * that 302s at 10 ms and the redirected `GET /submit` that carries the document at 110 ms are one
+ * URL and two arrivals; the earliest-arrival rule then serves the document 100 ms early, which is
+ * precisely the divergence this module exists to remove. Aligning with the layer that picks the
+ * body means the timing and the bytes can never come from different entries.
+ */
+export function scheduleKey(method: string, url: string): string {
+  return `${method.toUpperCase()} ${url}`;
+}
+
 function arrivalOf(entry: unknown): RecordedArrival | undefined {
   const record = entry as {
-    request?: { url?: unknown };
+    request?: { url?: unknown; method?: unknown };
     startedDateTime?: unknown;
     time?: unknown;
   };
   const url = record.request?.url;
   if (typeof url !== "string" || url.length === 0) return undefined;
+  const method = record.request?.method;
+  if (typeof method !== "string" || method.length === 0) return undefined;
   if (typeof record.startedDateTime !== "string") return undefined;
   const startedMs = Date.parse(record.startedDateTime);
   if (Number.isNaN(startedMs)) return undefined;
@@ -50,11 +65,12 @@ function arrivalOf(entry: unknown): RecordedArrival | undefined {
   if (typeof record.time !== "number" || !Number.isFinite(record.time) || record.time < 0) {
     return undefined;
   }
-  return { url, startedMs, durationMs: record.time };
+  return { key: scheduleKey(method, url), startedMs, durationMs: record.time };
 }
 
 /**
- * `url` → milliseconds after the earliest recorded request at which its response finished.
+ * `"<METHOD> <url>"` → milliseconds after the earliest recorded request at which its response
+ * finished.
  *
  * The origin is the **earliest entry**, not the document. A preconnect or a redirect can be
  * recorded before the document, and anchoring on the document would make those offsets negative
@@ -76,8 +92,40 @@ export function arrivalScheduleFrom(har: unknown): Map<string, number> {
   const schedule = new Map<string, number>();
   for (const arrival of arrivals) {
     const offset = arrival.startedMs - origin + arrival.durationMs;
-    const known = schedule.get(arrival.url);
-    if (known === undefined || offset < known) schedule.set(arrival.url, offset);
+    const known = schedule.get(arrival.key);
+    if (known === undefined || offset < known) schedule.set(arrival.key, offset);
   }
   return schedule;
+}
+
+/**
+ * How long to hold a response, given when the archive says it arrived and when this replay's
+ * navigation started. Zero means serve it now.
+ *
+ * **Every non-answer is zero, and none of them may be infinite.** A delegated review found the
+ * case: with `navigationStartedAt` initialised to `Number.POSITIVE_INFINITY` so that "the clock has
+ * not started" is representable, `arrivesAt - (now - start)` evaluates to `Infinity`. Measured on
+ * this machine —
+ *
+ *     TimeoutOverflowWarning: Infinity does not fit into a 32-bit signed integer.
+ *     Timeout duration was set to 1.
+ *
+ * — so the request was served almost immediately *and* printed a warning. The behaviour was right
+ * by accident, reached through a clamp nobody chose, and it announced itself in the output of every
+ * replay that raced the assignment. A request the navigation clock cannot place is served at once,
+ * deliberately: holding it back would be scheduling against a start time that does not exist yet.
+ */
+export function delayBefore(
+  arrivesAt: number | undefined,
+  navigationStartedAt: number,
+  now: number,
+): number {
+  if (arrivesAt === undefined) return 0;
+  const remaining = arrivesAt - (now - navigationStartedAt);
+  // `Number.isFinite` here is doing two jobs and the second is the one that matters: it is also
+  // what answers a non-finite `navigationStartedAt`. A separate guard for that was written first
+  // and `bun run mutate` reported it SURVIVED — removing it changed no behaviour, because
+  // `Infinity - (-Infinity)` is `Infinity` and lands here anyway. Deleting the write rather than
+  // guarding it, per `remove-the-write-dont-guard-it`.
+  return Number.isFinite(remaining) && remaining > 0 ? remaining : 0;
 }
