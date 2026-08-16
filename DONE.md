@@ -20,7 +20,11 @@
 
 **Evidence:** `bun run verify` — 505 Bun · 91 Node browser · lint, typecheck, build clean. Three new corpus entries CAUGHT, plus the re-anchored one; 27 entries anchored in the changed files re-run and CAUGHT.
 
-**Known and not fixed here:** the range table classifies neither CGNAT `100.64.0.0/10` nor multicast/benchmark space, and it is shared with the pre-flight check, so widening it changes a shipped guard's behaviour — recorded rather than done silently. Refusing the whole archive rather than dropping the entry is deliberate and is the trade a reviewer flagged: one leftover `http://127.0.0.1/…` beacon on an otherwise public page fails the capture.
+**A delegated adversarial review found three classifier gaps and all three were real.** Asked to refute "no published archive can contain content served from a private address", `codex` returned: link-local narrowed to the literal `fe80:` prefix while the block is `fe80::/10`, so `fe81::` through `febf::` classified as public; IPv4-mapped addresses matched only in dotted form, so `::ffff:7f00:1` and `::ffff:127.0.0.1` — the same address — classified differently; and CGNAT `100.64.0.0/10` unclassified, which is not routable on the public internet and is the block Tailscale assigns from. Each was fixed test-first, with a corpus entry for the first two.
+
+**Its fourth finding was filed rather than fixed (#185).** A WebSocket entry carries no `serverIPAddress` at all — measured on the fixture, where the WS entry has none while the document and XHR entries beside it carry `"[::1]"` — so a socket to a private address is published. The only signal it offers is its URL host, which is the name-based check this whole rule exists because it could not answer. Adopting it is a policy decision for one entry kind, not a classifier gap, so it got an issue with the measurement in it.
+
+**Known and deliberate:** refusing the whole archive rather than dropping the entry. A second reviewer flagged the cost — one leftover `http://127.0.0.1/…` beacon, or a corporate split-horizon answer, fails an otherwise fine public capture. Dropping the entry was rejected because #156 is the lesson that an archive quietly missing what the page asked for is the worse failure.
 
 ---
 

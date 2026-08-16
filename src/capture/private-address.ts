@@ -24,7 +24,8 @@ export type PrivateAddressKind =
   | "unspecified"
   | "link-local"
   | "unique-local"
-  | "private";
+  | "private"
+  | "shared";
 
 /**
  * Ranges that are not "somewhere on the internet": the host's own position, not the caller's.
@@ -40,9 +41,19 @@ export function privateAddressKind(address: string | undefined): PrivateAddressK
   if (family === 6) {
     if (normalized === "::1") return "loopback";
     if (normalized === "::") return "unspecified";
-    if (normalized.startsWith("fe80:")) return "link-local";
+    // fe80::/10 is the whole link-local block — first hextet fe80 through febf. Matching the
+    // literal prefix "fe80:" leaves fe81:: to febf:: reported as somewhere on the internet.
+    if (/^fe[89ab]/.test(normalized)) return "link-local";
     if (/^f[cd]/.test(normalized)) return "unique-local";
-    // IPv4 carried inside IPv6, e.g. ::ffff:127.0.0.1
+    // IPv4 carried inside IPv6. Both spellings of the same address have to classify the same way,
+    // or the verdict depends on which form the reporter happened to print: ::ffff:7f00:1 is
+    // ::ffff:127.0.0.1.
+    const mappedHex = normalized.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (mappedHex) {
+      const high = Number.parseInt(mappedHex[1]!, 16);
+      const low = Number.parseInt(mappedHex[2]!, 16);
+      return privateAddressKind(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+    }
     const mapped = normalized.match(/(\d+\.\d+\.\d+\.\d+)$/);
     return mapped ? privateAddressKind(mapped[1]!) : undefined;
   }
@@ -55,6 +66,10 @@ export function privateAddressKind(address: string | undefined): PrivateAddressK
   if (a === 169 && b === 254) return "link-local";
   if (a === 172 && b >= 16 && b <= 31) return "private";
   if (a === 192 && b === 168) return "private";
+  // 100.64.0.0/10, shared address space. Not routable on the public internet, so a response can
+  // only come from it over a carrier network or an overlay the capture host is inside —
+  // Tailscale assigns from this block, which puts it on developer machines rather than in theory.
+  if (a === 100 && b >= 64 && b <= 127) return "shared";
   return undefined;
 }
 
@@ -79,6 +94,13 @@ export interface PrivateNetworkEntry {
  * An entry with no recorded address is **passed**. A response from the HTTP cache or a
  * ServiceWorker opened no connection, so absence is not evidence of a private one, and refusing on
  * absence would refuse archives that are fine.
+ *
+ * **A WebSocket entry is indistinguishable from those and is a known hole (#185).** Measured on
+ * the fixture: its entry carries `_resourceType: "websocket"` and no `serverIPAddress` at all,
+ * while the document and XHR entries beside it carry `"[::1]"`. So a socket opened to a private
+ * address is published. The only signal such an entry offers is its URL host, which is the
+ * name-based check this whole rule exists because it could not answer — adopting it here needs to
+ * be a stated policy for one entry kind, not a quiet extension of this one.
  */
 export function privateNetworkEntries(
   entries: readonly AddressedHarEntry[],

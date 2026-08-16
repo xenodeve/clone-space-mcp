@@ -1128,4 +1128,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "refuses an archive whose connections went to a private address",
   },
+  {
+    id: "link-local-narrowed-to-the-fe80-prefix",
+    why: "Issue #162 review - link-local is fe80::/10, first hextet fe80 through febf. Matching the literal prefix \"fe80:\" reports fe81:: to febf:: as somewhere on the internet, so an address inside the block the guard names is published.",
+    file: "src/capture/private-address.ts",
+    find: "    if (/^fe[89ab]/.test(normalized)) return \"link-local\";",
+    replace: "    if (normalized.startsWith(\"fe80:\")) return \"link-local\";",
+    suite: "bun",
+    expect: "classifies the whole of fe80::/10, not only addresses beginning fe80",
+  },
+  {
+    id: "ipv4-mapped-classified-only-in-dotted-form",
+    why: "Issue #162 review - ::ffff:7f00:1 and ::ffff:127.0.0.1 are the same address. Matching only the dotted tail makes the verdict depend on which spelling the reporter printed, which is the same class of mistake as not stripping the brackets Playwright writes.",
+    file: "src/capture/private-address.ts",
+    find: "    const mappedHex = normalized.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);",
+    replace: "    const mappedHex = null;",
+    suite: "bun",
+    expect: "classifies an IPv4-mapped address written in hexadecimal",
+  },
 ];

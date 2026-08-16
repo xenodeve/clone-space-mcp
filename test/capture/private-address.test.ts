@@ -24,6 +24,34 @@ describe("privateAddressKind", () => {
     expect(privateAddressKind("0.0.0.0")).toBe("unspecified");
   });
 
+  test("classifies the whole of fe80::/10, not only addresses beginning fe80", () => {
+    // Link-local is fe80::/10 — first hextet fe80 through febf. Checking the literal prefix
+    // "fe80:" leaves fe81:: to febf:: classified as somewhere on the internet.
+    expect(privateAddressKind("fe90::1")).toBe("link-local");
+    expect(privateAddressKind("febf::1")).toBe("link-local");
+    expect(privateAddressKind("fe80::1")).toBe("link-local");
+    // fec0::/10 is the deprecated site-local block and is not link-local; it stays out.
+    expect(privateAddressKind("fec0::1")).toBeUndefined();
+  });
+
+  test("classifies an IPv4-mapped address written in hexadecimal", () => {
+    // ::ffff:7f00:1 and ::ffff:127.0.0.1 are the same address. Matching only the dotted tail
+    // makes the classifier depend on which form the reporter chose to print.
+    expect(privateAddressKind("::ffff:7f00:1")).toBe("loopback");
+    expect(privateAddressKind("[::ffff:a00:1]")).toBe("private");
+    expect(privateAddressKind("::ffff:a9fe:a9fe")).toBe("link-local");
+    expect(privateAddressKind("::ffff:5db8:d822")).toBeUndefined();
+  });
+
+  test("classifies shared address space, which a machine on Tailscale or behind CGNAT can reach", () => {
+    // 100.64.0.0/10 is not routable on the public internet, so a response can only come from it
+    // over an overlay or a carrier network the capture host is inside.
+    expect(privateAddressKind("100.64.0.1")).toBe("shared");
+    expect(privateAddressKind("100.127.255.255")).toBe("shared");
+    expect(privateAddressKind("100.63.255.255")).toBeUndefined();
+    expect(privateAddressKind("100.128.0.0")).toBeUndefined();
+  });
+
   test("leaves a public address and a non-address unclassified", () => {
     expect(privateAddressKind("93.184.216.34")).toBeUndefined();
     expect(privateAddressKind("[2606:2800:220:1:248:1893:25c8:1946]")).toBeUndefined();
