@@ -6,6 +6,18 @@
 
 ---
 
+## `Closes #171's acceptance criteria 5 and 7` closed #171 (2026-08-17, #171, PR #210)
+
+PR #207's body opened with that sentence. It says *two of the criteria*; **GitHub read `Closes #171` and closed the issue** when the PR merged, at `2026-08-16T18:25:28Z`. The clause that narrows it is invisible to the parser — `closes part of`, `closes the first half of` and `closes #171's criterion 5` all close #171.
+
+**The same session had already recorded the mirror image.** #2 was closed as `COMPLETED` while its condition was live, and two later comments asserted *"this issue stays open"* onto an already-closed issue; that produced `a-rule-keyed-on-a-tracker-state-inherits-that-state` and a `CLAUDE.md` change. **Hours later the same session did it from the other direction** — decided deliberately not to close #171, wrote a comment explaining why, and posted it onto an issue its own PR body had closed an hour earlier.
+
+**Knowing the failure mode did not prevent it**, because the two look nothing alike: one is a wrong click, the other is a sentence. Four other PR bodies in the same session used `Part of #N` correctly.
+
+**The final state happened to be right** — the work was complete and a closing comment with evidence went on afterwards — **which is exactly why it would have gone unnoticed.** A silent action that lands on the answer you wanted is still a mechanism nobody controls.
+
+The rule, now in `a-closing-keyword-fires-on-its-prefix`: mean *closes* → `Closes #N` alone on the line; mean anything narrower → `Part of #N`; and after a merge read `gh issue view <n> --json state,closedAt` rather than the PR body's intent.
+
 ## The network attempt set, reported and deliberately not compared (2026-08-17, #171, PR #209)
 
 **The digest had no network field at all**, so the gate could return `PASS` on a clone that fetched an entirely different set of things. #171's v1 scope names it — *"behaviour multiset, network attempt set with its ADR 0007 classification, and the motion counts"* — and it was never built; found by reading the issue body rather than its checkboxes, the same way the perturbation control was.
