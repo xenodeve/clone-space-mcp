@@ -6,6 +6,22 @@
 
 ---
 
+## The perturbation control, and the claim it withdrew within the hour (2026-08-17, #171, PR #208)
+
+#171's body asked for a **third drive mode** that never became a checkbox: *"instrumented against uninstrumented on the same side — with a perturbation budget."* It belongs to slice 0 because comparing an instrumented live page against an instrumented replay compares **two pages that both carry hooks**, and no number of same-mode passes can say whether the hooks moved the numbers.
+
+`bun run equivalence <url> --measure-perturbation` drives the live page once more with the observation layer installed.
+
+**Its first measurement was wrong, and the story is the useful part.** It reported `perturbed (2) dom.elements dom.elements.afterInteraction` on `www.chaingpt.org`, and the attribution rested on those fields being absent from `unstable` — they had held across three live and three replay passes. **It compared the hooked drive against the first plain pass only.** A delegated review named the exact scenario: a field reading `1, 2, 1` across three plain drives and `2` under hooks is a value the page produces unaided.
+
+Comparing against **every** plain pass — perturbed only when the hooked reading matches none of them — is the fix. Re-measured immediately on the same site: **`perturbed (0)`**, with those same two fields now in `unstable (3)`. The earlier finding was the baseline's own noise, attributable-looking only because three passes happened to agree that time.
+
+**What stands:** the control runs, reports, and distinguishes *measured and clean* from *not measured*. It has **not yet found a perturbation that survives comparison against every plain pass** — a much smaller statement than the one made an hour earlier, and **absence of a finding across two runs is not a budget**.
+
+**Two other review findings, one acted on and one recorded.** `perturbedFields` iterated the plain side alone, so a field the digest publishes *only when settled* appearing under hooks — the hooks changing whether it settled — was invisible; it now compares the union, and the asymmetry it used to guard was protecting against a case that cannot occur, because **nothing in the digest is the instrument's own output**. Not acted on: the instrumented drive reuses the plain side's interaction plan, which keeps the drives comparable but hides a perturbation that changes *which elements are discoverable*.
+
+**The budget is a set, not a tolerance** — a numeric slack needs a unit per field and the digest has no shared scale. **It changes no verdict**, because nothing in today's comparison carries hooks. `perturbed` is **absent** when the control did not run and `[]` when it ran and found nothing. Five corpus entries, all CAUGHT, including the one that lets the option be accepted and reported while the extra drive never happens.
+
 ## The equivalence gate became a command anyone can run (2026-08-17, #171, PR #207)
 
 **`src/equivalence/` had no entry point.** Not in `src/index.ts`, not in `scripts/`, not in `src/serve/` — it was reachable from `bun test` and the mutation corpus and from nowhere else, so **every verdict this repo has quoted about a real site came from a throwaway probe under the gitignored `archives/`.** `bun run equivalence <url>` closes #171's criterion 5: capture → replay → diff, the verdict beside its coverage vector, and a non-zero exit on an unexplained residual.
