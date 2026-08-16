@@ -6,6 +6,21 @@
 
 ---
 
+## The first delegated review of the session found two defects in code that had already merged (2026-08-16, #187, PR #205)
+
+**`restoreTiming` merged with `bun run verify` green and two corpus entries CAUGHT.** One `clink` review (`codex`, `codereviewer`, `high`, framed to refute rather than approve) then returned two real defects in it, plus one in pre-existing code.
+
+- **Keyed by URL alone.** A `POST /submit` that 302s and the redirected `GET /submit` that carries the document are one URL and two arrivals, so the earliest-arrival rule served the document as early as the redirect — the exact divergence the option exists to remove. `routeFromHAR` matches on **method and URL**; the timing layer now keys on the same pair, so the timing and the bytes can never come from different entries.
+- **`setTimeout(Infinity)`.** With `navigationStartedAt` initialised to `POSITIVE_INFINITY`, a request handled before `page.goto` computed `arrivesAt - (now - Infinity)` = `Infinity`. Verified in this environment rather than taken on the reviewer's word: `TimeoutOverflowWarning: Infinity does not fit into a 32-bit signed integer. Timeout duration was set to 1.` Right behaviour, reached by a clamp nobody chose, announcing itself in the output.
+- **Not acted on:** `unservableUrlsIn` collapsing a good GET and an unusable POST onto one URL. Real, but pre-existing and **already documented as a deliberate trade** in that function's own comment — refusing on the bad entry alone would drop an asset the archive can serve.
+
+**Then `bun run mutate` found two more, in the repair itself.** Both as `SURVIVED`, which is the useful half of that signal:
+
+- The new guard on a non-finite `navigationStartedAt` was **redundant** — `Number.isFinite(remaining)` already answers it, because `Infinity - (-Infinity)` lands there. Deleted rather than kept beside a test that could only pass by construction (`remove-the-write-dont-guard-it`).
+- `arrival-schedule-serves-unrecorded-entries-at-zero` had **rotted**: its `find` still matched, but renaming a field made its `replace` produce an object the code no longer reads, so the mutation expressed nothing. A textually-valid anchor is not a working entry (`a-corpus-anchor-rots-when-review-feedback-edits-its-line`).
+
+**The lesson is about when, not whether.** The repo's `CLAUDE.md` says delegation is the default; this session delegated nothing across six PRs and wrote a false reason for it into every one — that *the session cannot dispatch agents*, true of the built-in agent tool and never checked against `clink`, which was available throughout. Reported to `xenodeve/xeno-skills#130`. Four green gates did not find what one adversarial reader found in six minutes.
+
 ## restoreTiming — the fourth candidate for #187, and the first with a control that reproduced (2026-08-16, #187, PR #202)
 
 **What the archive does not carry is *when*.** `routeFromHAR` serves recorded bytes as fast as a route handler can be called, so a page that measures an element and freezes the result reads a different world offline. `replayArchive({ restoreTiming: true })` holds each response until the moment the archive says it finished.

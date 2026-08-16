@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { arrivalScheduleFrom } from "../../src/replay/arrival-schedule.ts";
+import { arrivalScheduleFrom, delayBefore } from "../../src/replay/arrival-schedule.ts";
 
 /**
  * #187. A HAR records **when** each response finished, and `routeFromHAR` discards it — measured
@@ -13,7 +13,7 @@ import { arrivalScheduleFrom } from "../../src/replay/arrival-schedule.ts";
  * bounds the whole replay at the recorded page load, however many entries there are.
  */
 const entry = (url: string, startedDateTime: string, time: number) => ({
-  request: { url },
+  request: { url, method: "GET" },
   response: { status: 200 },
   startedDateTime,
   time,
@@ -30,8 +30,8 @@ describe("arrivalScheduleFrom", () => {
       ),
     );
 
-    expect(schedule.get("https://example.com/")).toBe(20);
-    expect(schedule.get("https://example.com/late.svg")).toBe(350);
+    expect(schedule.get("GET https://example.com/")).toBe(20);
+    expect(schedule.get("GET https://example.com/late.svg")).toBe(350);
   });
 
   test("the document does not have to be the earliest entry for the origin to be right", () => {
@@ -44,8 +44,8 @@ describe("arrivalScheduleFrom", () => {
       ),
     );
 
-    expect(schedule.get("https://example.com/early.css")).toBe(10);
-    expect(schedule.get("https://example.com/")).toBe(105);
+    expect(schedule.get("GET https://example.com/early.css")).toBe(10);
+    expect(schedule.get("GET https://example.com/")).toBe(105);
   });
 
   test("a URL fetched twice keeps its earliest arrival", () => {
@@ -58,7 +58,7 @@ describe("arrivalScheduleFrom", () => {
       ),
     );
 
-    expect(schedule.get("https://example.com/a.js")).toBe(40);
+    expect(schedule.get("GET https://example.com/a.js")).toBe(40);
   });
 
   test("an entry with no usable timing is left out rather than given a zero", () => {
@@ -67,15 +67,15 @@ describe("arrivalScheduleFrom", () => {
     // same reason the equivalence gate has `unobserved` rather than folding it into `equal`.
     const schedule = arrivalScheduleFrom(
       har(
-        { request: { url: "https://example.com/no-time" }, startedDateTime: "2026-08-16T10:00:00.000Z" },
-        { request: { url: "https://example.com/no-date" }, time: 10 },
+        { request: { url: "https://example.com/no-time", method: "GET" }, startedDateTime: "2026-08-16T10:00:00.000Z" },
+        { request: { url: "https://example.com/no-date", method: "GET" }, time: 10 },
         entry("https://example.com/ok", "2026-08-16T10:00:00.000Z", 10),
       ),
     );
 
-    expect(schedule.has("https://example.com/no-time")).toBe(false);
-    expect(schedule.has("https://example.com/no-date")).toBe(false);
-    expect(schedule.get("https://example.com/ok")).toBe(10);
+    expect(schedule.has("GET https://example.com/no-time")).toBe(false);
+    expect(schedule.has("GET https://example.com/no-date")).toBe(false);
+    expect(schedule.get("GET https://example.com/ok")).toBe(10);
   });
 
   test("a negative recorded duration cannot pull an arrival before its own request", () => {
@@ -85,11 +85,65 @@ describe("arrivalScheduleFrom", () => {
       har(entry("https://example.com/pending", "2026-08-16T10:00:00.000Z", -1)),
     );
 
-    expect(schedule.has("https://example.com/pending")).toBe(false);
+    expect(schedule.has("GET https://example.com/pending")).toBe(false);
   });
 
   test("a HAR with no entries is an empty schedule rather than a throw", () => {
     expect(arrivalScheduleFrom({ log: { entries: [] } }).size).toBe(0);
     expect(arrivalScheduleFrom(undefined).size).toBe(0);
+  });
+});
+
+/**
+ * Found by a delegated adversarial review (`codex`, refutation-framed) after the option had already
+ * merged, and both are defects the author's own tests encoded as intended behaviour.
+ */
+describe("the schedule keys on method as well as url", () => {
+  test("a redirect and its target do not share one arrival", () => {
+    // The reviewer's scenario. `POST /submit` 302s at 10 ms and the redirected `GET /submit`
+    // carries the document at 110 ms. Keyed by URL alone, the earliest-arrival rule gives both
+    // 10 ms — so the document is served 100 ms early, which is exactly the class of divergence
+    // `restoreTiming` exists to remove. `routeFromHAR` already matches on method, so keying on it
+    // here aligns the timing layer with the layer that picks the body.
+    const schedule = arrivalScheduleFrom(
+      har(
+        { request: { url: "https://example.com/submit", method: "POST" }, startedDateTime: "2026-08-16T10:00:00.000Z", time: 10 },
+        { request: { url: "https://example.com/submit", method: "GET" }, startedDateTime: "2026-08-16T10:00:00.010Z", time: 100 },
+      ),
+    );
+
+    expect(schedule.get("POST https://example.com/submit")).toBe(10);
+    expect(schedule.get("GET https://example.com/submit")).toBe(110);
+  });
+
+  test("an entry with no method is left out, like one with no url", () => {
+    const schedule = arrivalScheduleFrom(
+      har({ request: { url: "https://example.com/x" }, startedDateTime: "2026-08-16T10:00:00.000Z", time: 5 }),
+    );
+    expect(schedule.size).toBe(0);
+  });
+});
+
+describe("delayBefore", () => {
+  test("waits the remainder of the recorded offset", () => {
+    expect(delayBefore(300, 1000, 1120)).toBe(180);
+  });
+
+  test("is zero once the recorded arrival has already passed", () => {
+    expect(delayBefore(300, 1000, 1400)).toBe(0);
+  });
+
+  test("is zero for a url the archive recorded no timing for", () => {
+    expect(delayBefore(undefined, 1000, 1100)).toBe(0);
+  });
+
+  test("is zero before the navigation clock starts, rather than infinite", () => {
+    // Measured on this machine: `Number.POSITIVE_INFINITY` as the start time makes
+    // `arrivesAt - (now - start)` evaluate to `Infinity`, and `setTimeout` answers with
+    // `TimeoutOverflowWarning: Infinity does not fit into a 32-bit signed integer. Timeout
+    // duration was set to 1.` So the request was served immediately *and* printed a warning —
+    // the right behaviour reached by a clamp nobody chose.
+    expect(delayBefore(300, Number.POSITIVE_INFINITY, 1100)).toBe(0);
+    expect(delayBefore(300, Number.NaN, 1100)).toBe(0);
   });
 });
