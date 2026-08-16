@@ -38,7 +38,12 @@ interface RecordedArrival {
  * that 302s at 10 ms and the redirected `GET /submit` that carries the document at 110 ms are one
  * URL and two arrivals; the earliest-arrival rule then serves the document 100 ms early, which is
  * precisely the divergence this module exists to remove. Aligning with the layer that picks the
- * body means the timing and the bytes can never come from different entries.
+ * body means a redirect and its target can no longer share one arrival.
+ *
+ * **It does not make the two inseparable, and an outside reader caught the overstatement.** Two
+ * entries with the *same* method and URL — a cache-busting refetch, a retry — still collapse to the
+ * earliest arrival, so a second fetch is served at the first one's offset. That is deliberate (see
+ * below) and it is a remaining known gap, not a property this key removes.
  */
 export function scheduleKey(method: string, url: string): string {
   return `${method.toUpperCase()} ${url}`;

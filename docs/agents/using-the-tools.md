@@ -120,7 +120,9 @@ recorded skip rather than a wrong click — but it is still a skip, and it shows
   measured.** A group of fewer than two passes cannot show a field varying, and the gate reads that
   as *stable* — so a live-only baseline certifies `layout.scrollHeight`, which is steady at 8544
   across live drives and reads 8486/8544/8486 across replays of one archive. `replay: 0` beside a
-  residual means the accusation rests on no replay evidence at all.
+  residual does **not** mean no replay ran — it means the gate never measured whether the replay
+  side *varies between runs*, so it cannot tell a difference the clone caused from one it would
+  have produced against itself.
 - **A replay serves the archive faster than the network did, and some pages notice** (#187). A page
   that measures an element and freezes the result — without ordering that measurement against the
   resource its size depends on — can settle to a layout the live page never produced. Measured on
@@ -129,7 +131,8 @@ recorded skip rather than a wrong click — but it is still a skip, and it shows
   finished. Measured on that site with the control and the candidate in the same session: **5/20
   replays off-live with it off, 0/20 with it on**, the control reproducing at 25%. On the fixture,
   12/12 divergent becomes 0/12. It costs wall-clock — 825 ms to 4577 ms on a 146-entry site — and
-  is **off by default** for that reason, not from doubt about whether it works.
+  is **off by default** for that reason. What is measured is one synthetic fixture and one live
+  page; whether it helps any other site is unmeasured, so do not read the default as settled.
 
 **Nothing in this list is decoration.** Each exists because a number without it was measured to read
 as a larger claim than the run supported.

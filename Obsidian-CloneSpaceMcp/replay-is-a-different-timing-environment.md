@@ -116,11 +116,25 @@ restoreTiming=true    0/4 · 0/4 · 0/12               →  0/20
 
 The control reproduced at **25%**, which matches the rate this note recorded from the start — so
 unlike the third candidate, the twenty flagged replays were drawn in a window where the defect was
-live. **Read it as two counts and one stated calculation:** if the flag changed nothing, twenty
-clean draws from a 25% rate has probability `0.75^20 = 0.3%`.
+live.
 
-It is still **off by default**, and now for a reason that is a cost rather than a doubt: on that
-site it takes a replay from 825 ms to 4577 ms.
+**And then the arithmetic beside it was wrong, which is worth more than the result.** This note
+first said *"if the flag changed nothing, twenty clean draws from a 25% rate has probability
+`0.75^20 = 0.3%`"*. That is a **one-sample** probability against a rate the control only *estimated*,
+and it overstates by roughly fifteen times. The honest figure is a two-sample comparison — Fisher's
+exact on 5/20 against 0/20 gives **p = 0.024 one-tailed, 0.047 two-tailed**. The 95% interval for
+5/20 is **11%–47%**, and the twenty runs arrived in three batches on a site this note itself records
+as non-stationary, so they are not independent draws either.
+
+**The generalisable half:** *stating a calculation* is not the same as *stating the right
+calculation*, and dressing a number as "a calculation rather than a test result" made it read as
+more careful than it was. A wrong statistic is a claim like any other and needs the same check the
+rest of this repo applies to a command's output. It was caught by an outside reader, not by any
+gate.
+
+It is still **off by default**. The cost is real — 825 ms to 4577 ms on that site — but calling the
+default *"a cost rather than a doubt"*, as this note first did, claims more than two surfaces can
+support: one synthetic fixture and one live page. Whether it helps a third site is unmeasured.
 
 ## What was not shown until that run, and why the gap mattered
 
@@ -133,8 +147,11 @@ adding latency moved it the wrong way.
 
 The first real-site probe measured 8544 with the flag off **and** on — the defect not reproducing
 rather than the fix working, which is the same reading candidate three got. Reporting *that* as
-success would have repeated the exact mistake this note exists to record. The claim only moved to
-**verified** when a later run in the same session had a control that actually failed.
+success would have repeated the exact mistake this note exists to record. The claim only became
+worth stating at all when a later run in the same session had a control that actually failed — and
+even then it is **one live page in one window at p = 0.047**, not a verified property of the fix.
+This note said *"moved to **verified**"* until an outside reader pointed out that twenty runs on one
+site do not verify anything general.
 
 **The transferable rule: a clean candidate is worth nothing until the control in the same session
 is dirty.** Not "run a control" — run one and *check that it reproduced*. Both of this issue's
