@@ -230,3 +230,45 @@ describe("stability measured on both sides", () => {
     expect(classify({ a: 1 }, { a: 2 }, [], baseline).residual).toEqual(["a"]);
   });
 });
+
+/**
+ * #187, criterion 5 — *"the gate's treatment of `layout.scrollHeight` is decided deliberately
+ * rather than by the stability baseline's sample size."*
+ *
+ * The sample size is load-bearing and was invisible. `variesWithin` returns `false` for a group of
+ * fewer than two passes, and the caller reads that as **stable** — so a baseline with an empty
+ * `replayPasses` certifies every field on the side that actually moves. That is not a bug in
+ * `variesWithin`: a group of one genuinely has no evidence either way. It is that a `FAIL` resting
+ * on no replay evidence and a `FAIL` resting on three agreeing replay passes were the same output.
+ *
+ * The decision taken here is **to report the basis, not to change the verdict.** Reversing it — a
+ * difference may only be `different` when both sides were measured twice — is a real option and it
+ * contradicts a test above that deliberately says otherwise, so it is the developer's call and is
+ * written up in the issue rather than taken here.
+ */
+describe("the baseline reports how much evidence it had", () => {
+  test("counts the passes on each side", () => {
+    const result = classify({ a: 1 }, { a: 2 }, [], {
+      livePasses: [{ a: 1 }, { a: 1 }, { a: 1 }],
+      replayPasses: [{ a: 2 }, { a: 2 }],
+    });
+    expect(result.baselinePasses).toEqual({ live: 3, replay: 2 });
+  });
+
+  test("a FAIL certified by nothing on the replay side says so", () => {
+    // The exact shape that produced #182's false accusation: live rock steady, replay never
+    // measured, and `layout.scrollHeight` is the field that moves on the replay side alone.
+    const result = classify({ "layout.scrollHeight": 8544 }, { "layout.scrollHeight": 8486 }, [], {
+      livePasses: [{ "layout.scrollHeight": 8544 }, { "layout.scrollHeight": 8544 }],
+      replayPasses: [],
+    });
+    expect(result.verdict).toBe("FAIL");
+    expect(result.residual).toEqual(["layout.scrollHeight"]);
+    expect(result.baselinePasses).toEqual({ live: 2, replay: 0 });
+  });
+
+  test("no baseline at all is zero on both sides, not an absent field", () => {
+    // An absent key would make a reader's `?? 3` quietly invent evidence that was never gathered.
+    expect(classify({ a: 1 }, { a: 2 }, []).baselinePasses).toEqual({ live: 0, replay: 0 });
+  });
+});
