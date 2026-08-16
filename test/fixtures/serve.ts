@@ -50,6 +50,15 @@ const CONTENT_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
+/**
+ * #187. How long `/race-image.svg` is held back on the **live** side only. Sized for margin, not
+ * for realism: replay delivers the same image at ≈ 8–11 ms, so a measurement at 100 ms has ≈ 90 ms
+ * of headroom on the replay side and ≈ 200 ms on the live side. An earlier 60 ms / 30 ms pair
+ * reproduced 16/16 on this machine but leaves 20 ms of margin, which is the width of one slow
+ * event loop.
+ */
+const RACE_IMAGE_DELAY_MS = 300;
+
 function contentTypeFor(path: string): string {
   const dot = path.lastIndexOf(".");
   return (dot === -1 ? undefined : CONTENT_TYPES[path.slice(dot)]) ?? "application/octet-stream";
@@ -228,6 +237,84 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         return new Response("globalThis.slowAnswer = true;", {
           headers: { "content-type": CONTENT_TYPES[".js"]! },
         });
+      }
+      // #187. **Measure-and-freeze against an async resource** — the class of defect that makes
+      // two replays of one archive lay out to different heights. A script measures an element and
+      // writes the result into an inline style, without ordering that measurement against the
+      // resource the element's size depends on. Nothing here is broken by itself: the page is
+      // internally consistent at whichever moment it happens to measure.
+      //
+      // The image is delayed so the **live** side is stable — at module-execution time it has
+      // certainly not arrived, so `#frame` is 0 and the spacer freezes small. Replay serves the
+      // same bytes from the HAR with the recorded latency discarded, so the image can land before
+      // the module runs, and the spacer freezes ~`IMAGE_H` larger. Which one wins is the race, and
+      // it is not decided by anything the archive records.
+      //
+      // `scripts/fixture-height-race.ts` measures the split rate; the number is stated there
+      // rather than assumed here, because the whole reason this fixture exists is that #187's
+      // rate on a live site was not stable across hours.
+      // `?at=` chooses **when** the page measures, and it is the only knob that decides whether
+      // the two sides can disagree. Measured 2026-08-16 on this machine, `responseEnd` for the
+      // image with a 60 ms delay: **live ≈ 71–83 ms**, **replay ≈ 8–11 ms** — the HAR serves the
+      // recorded body and discards the recorded latency. `domContentLoadedEventEnd` is ≈ 7–10 ms
+      // on both sides, so parse-time is *before* the image everywhere and only a deferred
+      // measurement can tell the two apart.
+      //
+      // The value picks what the fixture demonstrates:
+      //
+      //   `module`  end of parse, ≈ 8 ms — before the image on **both** sides, so they agree. The
+      //             negative control, and it is not optional: a fixture that can only ever show
+      //             the defect cannot show a fix.
+      //   `raf`     first animation frame, ≈ 9–11 ms — lands on replay's own arrival edge, where a
+      //             genuine coin-flip would live. Measured 16/16 **agreeing**, so the edge is
+      //             narrower than the jitter and this is not the value to grade a fix with.
+      //   `t<N>`    a timer at N ms. Past replay's arrival and short of live's, the two sides
+      //             disagree **deterministically**.
+      //
+      // **The determinism is deliberate and is a departure from #187's own acceptance criterion**,
+      // which asks for both states across N replays. A bimodal fixture would reproduce the live
+      // site's *symptom*; it would also reproduce the property that made the live site useless as
+      // an instrument — the rate moved from three-in-nine to zero-in-twenty inside one day, and
+      // the third candidate fix measured 15/15 against a control that had silently stopped
+      // reproducing. A falsifier that fires every time is strictly the better instrument, and the
+      // mechanism under test is identical either way: the page measures itself without ordering
+      // that measurement against the resource its size depends on.
+      if (pathname === "/measure-and-freeze.html") {
+        const requested = new URL(req.url).searchParams.get("at") ?? "raf";
+        const timer = /^t(\d{1,4})$/.exec(requested);
+        const at = timer ? `setTimeout(measure, ${Number(timer[1])});` : undefined;
+        const measure = `() => {
+               const measured = Math.round(document.getElementById("frame").getBoundingClientRect().height);
+               document.getElementById("spacer").style.height = (measured + 200) + "px";
+               document.documentElement.dataset.measured = String(measured);
+             }`;
+        return new Response(
+          `<!doctype html><title>measure and freeze</title>
+           <style>
+             body { margin: 0 }
+             #frame { width: 300px }
+             #frame img { display: block; width: 100% }
+             #spacer { background: #eee }
+           </style>
+           <body>
+             <div id="frame"><img id="pic" src="/race-image.svg" alt=""></div>
+             <div id="spacer"></div>
+             <script type="module">
+               const measure = ${measure};
+               ${at ?? (requested === "module" ? "measure();" : "requestAnimationFrame(measure);")}
+             </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
+      if (pathname === "/race-image.svg") {
+        // Delayed on the live side only. Replay never sees this wait — `routeFromHAR` serves the
+        // recorded body without the recorded timing, which is the asymmetry the fixture exists to
+        // expose rather than a shortcoming of replay.
+        await new Promise((resolve) => setTimeout(resolve, RACE_IMAGE_DELAY_MS));
+        return new Response(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="#c0d8f0"/></svg>`,
+          { headers: { "content-type": CONTENT_TYPES[".svg"]! } },
+        );
       }
       if (pathname === "/cross-origin-script.html") {
         const script = new URL("/instrumented.js", crossOriginUrl);
