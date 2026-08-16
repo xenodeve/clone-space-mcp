@@ -193,3 +193,42 @@ describe("webSocketToPrivateAddress", () => {
     ).toEqual([]);
   });
 });
+
+describe("webSocketToPrivateAddress, after review", () => {
+  test("reads the URL scheme too, so a socket entry without the non-standard marker is still seen", () => {
+    // `_resourceType` is Playwright's own field, not part of the HAR spec. Gating only on it makes
+    // the rule depend on a marker no format guarantees; `ws:`/`wss:` is what the entry *is*.
+    expect(
+      webSocketToPrivateAddress([
+        { request: { url: "ws://127.0.0.1/socket" }, response: { status: 101 } },
+      ]),
+    ).toEqual([{ url: "ws://127.0.0.1/socket", address: "127.0.0.1", kind: "loopback" }]);
+  });
+
+  test("passes a socket that never connected", () => {
+    // A refused connection served nothing, so no private content reached the archive — the same
+    // reasoning `termination.json` already uses to keep `failedRequests` out of the outcome. A page
+    // that probes `wss://127.0.0.1:9/` and is refused must not fail an otherwise public capture.
+    expect(
+      webSocketToPrivateAddress([
+        {
+          request: { url: "wss://127.0.0.1:9/probe" },
+          response: { status: -1, _failureText: "net::ERR_CONNECTION_REFUSED" },
+          _resourceType: "websocket",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("still reports a socket that did connect", () => {
+    expect(
+      webSocketToPrivateAddress([
+        {
+          request: { url: "ws://10.0.0.5/socket" },
+          response: { status: 101 },
+          _resourceType: "websocket",
+        },
+      ]),
+    ).toEqual([{ url: "ws://10.0.0.5/socket", address: "10.0.0.5", kind: "private" }]);
+  });
+});

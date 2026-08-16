@@ -12,7 +12,9 @@
 
 **The rule is the one the issue called weaker, adopted as such.** A socket whose URL host is already an **IP literal** is refused on that host. A socket to a **hostname** is not: resolving one at publish time is a lookup at a moment that is not the moment the socket opened, which is the property #162 established cannot answer, and reintroducing it quietly for one entry kind would be worse than the gap. `using-the-tools.md` states the gap rather than implying the refusal is total.
 
-**Two corpus entries, both CAUGHT.** One removes the rule; the other makes it fall back to `"private"` for an unresolvable host, which is the mistake of treating a hostname as an address — caught by the test that asserts a hostname is passed.
+**Four corpus entries, all CAUGHT.** One removes the rule; one makes it fall back to `"private"` for an unresolvable host, which is the mistake of treating a hostname as an address — caught by the test asserting a hostname is *passed*. The other two came from a delegated adversarial review and were both real: the rule gated on `_resourceType`, **Playwright's own field that no part of the HAR format guarantees**, so a socket entry without the marker bypassed it; and it refused a socket that *never connected*, which served nothing and made a page probing `wss://127.0.0.1:9/` fail an otherwise public capture. The scheme is what the entry is, and `_failureText` is the same signal `termination.json` already refuses to let into the outcome.
+
+**No URL-spelling bypass was found, by either of us.** WHATWG `URL` treats `ws:`/`wss:` as special schemes, so `ws://2130706433/`, `ws://0177.0.0.1/`, `ws://0x7f.1/`, `ws://user@127.0.0.1/`, `ws://127.0.0.1./` and `WS://127.0.0.1/` all normalise to `127.0.0.1` before the rule sees them, and `ws://[::ffff:7f00:1]/` is classified by the hex-mapped branch added in #186.
 
 **Evidence:** `bun run verify` — 531 Bun · 92 Node browser · lint, typecheck, build clean.
 

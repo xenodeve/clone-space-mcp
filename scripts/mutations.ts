@@ -1200,4 +1200,22 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "passes a socket to a hostname, and says nothing about where it resolved",
   },
+  {
+    id: "websocket-rule-gated-on-playwright-s-own-marker",
+    why: "Issue #185 review - `_resourceType` is Playwright's field and no part of the HAR format guarantees it, so gating on it alone lets a socket entry without the marker through both checks. The scheme is what the entry is.",
+    file: "src/capture/private-address.ts",
+    find: "    const isSocket = parsed.protocol === \"ws:\" || parsed.protocol === \"wss:\";",
+    replace: "    const isSocket = false;",
+    suite: "bun",
+    expect: "reads the URL scheme too, so a socket entry without the non-standard marker is still seen",
+  },
+  {
+    id: "refused-socket-fails-a-public-capture",
+    why: "Issue #185 review - a socket that never connected served nothing, so no private content reached the archive. Refusing on it makes a page that probes wss://127.0.0.1:9/ fail an otherwise public capture, which is over-strict in the same way termination.json already refuses to be by keeping failedRequests out of the outcome.",
+    file: "src/capture/private-address.ts",
+    find: "    if (record.response?._failureText !== undefined) continue;",
+    replace: "",
+    suite: "bun",
+    expect: "passes a socket that never connected",
+  },
 ];

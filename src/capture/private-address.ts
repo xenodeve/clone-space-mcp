@@ -80,8 +80,10 @@ export function privateAddressKind(address: string | undefined): PrivateAddressK
 export interface AddressedHarEntry {
   request?: { url?: unknown };
   serverIPAddress?: unknown;
-  /** Present on a WebSocket entry, which is the one kind that carries no address (#185). */
+  /** Playwright's own marker, not part of the HAR format — read as a hint, never as the test (#185). */
   _resourceType?: unknown;
+  /** `_failureText` present means the request never got an answer. Loose, like the rest of this. */
+  response?: { status?: unknown; _failureText?: unknown };
 }
 
 export interface PrivateNetworkEntry {
@@ -141,16 +143,24 @@ export function webSocketToPrivateAddress(
   for (const entry of entries) {
     if (typeof entry !== "object" || entry === null) continue;
     const record = entry;
-    if (record._resourceType !== "websocket") continue;
     if (typeof record.serverIPAddress === "string" && record.serverIPAddress !== "") continue;
+    // A refused connection served nothing, so no private content reached the archive. This is the
+    // same reasoning `termination.json` already uses to keep `failedRequests` out of the outcome,
+    // and without it a page that probes `wss://127.0.0.1:9/` fails an otherwise public capture.
+    if (record.response?._failureText !== undefined) continue;
     const url = record.request?.url;
     if (typeof url !== "string") continue;
-    let host: string;
+    let parsed: URL;
     try {
-      host = new URL(url).hostname;
+      parsed = new URL(url);
     } catch {
       continue;
     }
+    // The scheme is what the entry **is**; `_resourceType` is Playwright's own field and no part of
+    // the HAR format guarantees it. Reading only the marker made the rule depend on it.
+    const isSocket = parsed.protocol === "ws:" || parsed.protocol === "wss:";
+    if (!isSocket && record._resourceType !== "websocket") continue;
+    const host = parsed.hostname;
     // `URL.hostname` keeps the brackets on an IPv6 literal; `privateAddressKind` strips them, and
     // the reported address is the bare form so it reads the same as every other finding.
     const bare = host.replace(/^\[|\]$/g, "");
