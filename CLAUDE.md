@@ -37,7 +37,9 @@ is the whole point. See `docs/adr/`.
 
 ```
 UBIQUITOUS_LANGUAGE.md     canonical term glossary — it wins on any naming conflict
-src/            pipeline stages: capture · replay · extract · serve (see src/index.ts)
+src/            capture · replay · extract · serve, plus two subsystems the stage list hides:
+                identity/    the `wa:` handle and its ตัวจับคู่ — the contract every stage names an element by
+                equivalence/ the differential gate: does the clone behave like the page (bun run equivalence)
 test/           bun test suite; test/fixtures/ holds the controlled fixture site
 docs/agents/    how agents work here — workflow, tracker, labels, domain
 docs/adr/       architecture decision records
