@@ -8,7 +8,7 @@ re-deriving it. A decision that overturns an earlier one marks the old ADR **Sup
 | # | Title | Area | Status |
 |---|-------|------|--------|
 | [0001](0001-node-drives-the-browser-bun-runs-everything-else.md) | Node drives the browser; Bun runs everything else | Infra | Accepted |
-| [0002](0002-element-identity-wa-ids-with-fingerprint-reconciliation.md) | `wa:` element identity, with fingerprint reconciliation and an explicit unresolved state | Identity | Accepted — **injection impl pending** (#9) |
+| [0002](0002-element-identity-wa-ids-with-fingerprint-reconciliation.md) | `wa:` element identity, with fingerprint reconciliation and an explicit unresolved state | Identity | Accepted — implemented by #9; the injector is `src/identity/inject.ts` |
 | [0003](0003-redact-transport-credentials-before-publishing-captures.md) | Redact transport credentials before publishing captures | Capture / security | Accepted |
 | [0004](0004-separate-environment-evidence-from-replay-configuration.md) | Separate environment evidence from replay configuration | Capture / replay / security | Accepted — implemented by #42 |
 | [0005](0005-checkpoint-coherence-for-archive-artifacts.md) | Checkpoint coherence for archive artifacts | Capture / archive integrity | Accepted — contract via #45, implementation via #47 |
