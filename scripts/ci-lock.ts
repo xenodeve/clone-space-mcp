@@ -41,6 +41,28 @@ export interface LockVerdict {
 
 const BILLING = "locked due to a billing issue";
 
+/** The `name:` of `.github/workflows/t4-verify.yml` — the workflow the exemption is about. */
+export const OWN_WORKFLOW = "T4 verify";
+
+export interface ListedRun {
+  databaseId: number;
+  displayTitle: string;
+  workflowName: string;
+}
+
+/**
+ * The newest run of **this repository's own workflow** (#218), newest first as `gh run list`
+ * returns them.
+ *
+ * Not the newest run of any workflow: Dependabot's GitHub-managed runs execute while the billing
+ * lock holds, and reading one printed `UNLOCKED` — measured — the same hour this workflow's jobs all
+ * ran 0 steps. `undefined` when it never ran, so the caller reports UNREADABLE instead of reading
+ * something else.
+ */
+export function latestOwnRun(runs: ListedRun[]): ListedRun | undefined {
+  return runs.find((run) => run.workflowName === OWN_WORKFLOW);
+}
+
 /**
  * Read one workflow run and say whether the exemption still holds.
  *
@@ -83,13 +105,12 @@ async function main(): Promise<void> {
   const run = (args: string[]): string =>
     execFileSync(gh, args, { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
 
-  const listed = JSON.parse(run(["run", "list", "--repo", repo, "--limit", "1", "--json", "databaseId,displayTitle"])) as {
-    databaseId: number;
-    displayTitle: string;
-  }[];
-  const latest = listed[0];
+  const listed = JSON.parse(
+    run(["run", "list", "--repo", repo, "--limit", "50", "--json", "databaseId,displayTitle,workflowName"]),
+  ) as ListedRun[];
+  const latest = latestOwnRun(listed);
   if (latest === undefined) {
-    console.log("UNREADABLE  no workflow run to read — cannot say whether the exemption still holds");
+    console.log(`UNREADABLE  no ${OWN_WORKFLOW} run among the latest 50 — cannot say whether the exemption still holds`);
     process.exitCode = 2;
     return;
   }

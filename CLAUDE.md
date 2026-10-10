@@ -292,7 +292,7 @@ issue.` Every job of every run fails in seconds without executing a step. Condit
   flag binds only commands an agent runs, so it would leave open the web-merge hole this exemption
   is about. `.claude/t4.json`'s own note already said as much, and the two documents contradicted
   each other while `CLAUDE.md`'s version was copied into roughly fifteen PR bodies.
-- **Check it, do not restate it from here.** `bun run ci:lock` reads the latest run and answers:
+- **Check it, do not restate it from here.** `bun run ci:lock` reads the latest run of this repo's own `T4 verify` workflow — not of any workflow, since Dependabot's runs execute through the lock (#218) — and answers:
   `LOCKED` while every job is refused for billing and none ran a step, `UNLOCKED` once any job ran
   one — whatever it concluded, because the exemption is about jobs that cannot start, not jobs that
   fail. It exits non-zero on `UNLOCKED`, and on `UNREADABLE` rather than guessing: a disabled
