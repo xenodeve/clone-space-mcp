@@ -6,6 +6,12 @@
 
 ---
 
+## Every corpus entry is checked to apply, and one that applied measured nothing (2026-10-10, #216)
+
+A ten-line script found three entries that could not do their job: one anchor matched nothing (rewritten in `1dac2e5`), one matched twice, one `expect` named no test. `test/scripts/mutations-corpus.test.ts` now checks **every** entry's anchor-count and `expect` in one file read each, so the next rot fails `bun test` instead of waiting for someone to look.
+
+**Repairing the dead anchor showed it had never measured anything.** `shader-origin-invented-when-the-stack-is-unreadable` SURVIVED once it applied: the test it names compiles a shader whose stack always has a readable frame. The shader path now calls `creationFrame(stack, [])` — the same rule, already proven by `animation-source-placeholder-when-unreadable` — and the entry was deleted. **A rotted anchor hides two things: that the entry does not run, and whether it would catch anything if it did.** The `settle` entry's expect was chosen by applying the mutation and reading which tests failed, not by matching titles.
+
 ## A running CSS transition is no longer reported as WAAPI (2026-10-10, #219)
 
 Found by the north-star run on `https://labs.chaingpt.org/`: the one node #215 could not cite was a 500 ms `waapi` animation on `#cookie-consent-banner`. A probe of the replayed page read `CSSTransition cookie-consent-banner opacity` — `collectInPage` labelled everything that was not a `CSSAnimation` as WAAPI, so an agent would have been told a script called `element.animate()`.

@@ -8,7 +8,8 @@
 import { extractBehaviour, type BehaviourGraph } from "../../extract/behaviour.ts";
 import { replayArchive } from "../../replay/replay.ts";
 import type { ReplayLauncher } from "./replay-page.ts";
-import { parseStackFrames, type StackFrame } from "../../capture/instrument.ts";
+import { type StackFrame } from "../../capture/instrument.ts";
+import { creationFrame } from "../../extract/provenance.ts";
 import { indexArchiveSources } from "../../extract/archive-sources.ts";
 import type { ResolvedFrame } from "../../extract/sourcemap.ts";
 
@@ -85,7 +86,9 @@ export async function extractBehaviourFromArchive(
           const source = String(observation.detail.source ?? "");
           // The innermost readable frame. Absent rather than invented when the stack names no
           // coordinate — a guessed origin is a fabricated citation.
-          const origin = parseStackFrames(observation.stack)[0];
+          // The same frame rule the behaviour nodes use (#216): the innermost readable frame, and
+          // nothing rather than a placeholder — proven by its corpus entry, not by this call site.
+          const origin = creationFrame(observation.stack, []);
           shaders.push({
             chars: source.length,
             source: source.slice(0, SHADER_EXCERPT),
