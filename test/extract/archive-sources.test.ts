@@ -234,3 +234,61 @@ describe("indexArchiveSources", () => {
     expect(index.mapped).toEqual(["https://x.test/app.js"]);
   });
 });
+
+describe("keyframes (#215)", () => {
+  test("cites a unique @keyframes rule at its 1-based line and column", async () => {
+    writeFileSync(
+      join(root, "network.har"),
+      har([entry("https://x.test/s.css", { text: "a{}\n\n  @keyframes pulse {\n}" }, "text/css; charset=utf-8")]),
+    );
+    const index = await indexArchiveSources(root);
+    expect(index.keyframes("pulse")).toEqual({ url: "https://x.test/s.css", line: 3, column: 3 });
+  });
+
+  test("finds a rule in a document's inline style as well as in a stylesheet", async () => {
+    writeFileSync(
+      join(root, "network.har"),
+      har([entry("https://x.test/", { text: "<style>@-webkit-keyframes spin{}</style>" }, "text/html")]),
+    );
+    const index = await indexArchiveSources(root);
+    expect(index.keyframes("spin")).toEqual({ url: "https://x.test/", line: 1, column: 8 });
+  });
+
+  test("matches a name written as a CSS string, which animation-name reports unquoted", async () => {
+    writeFileSync(
+      join(root, "network.har"),
+      har([entry("https://x.test/s.css", { text: "@keyframes 'fade in' {}" }, "text/css")]),
+    );
+    expect((await indexArchiveSources(root)).keyframes("fade in")).toEqual({
+      url: "https://x.test/s.css",
+      line: 1,
+      column: 1,
+    });
+  });
+
+  test("returns nothing when the name is declared twice, rather than picking one", async () => {
+    writeFileSync(
+      join(root, "network.har"),
+      har([
+        entry("https://x.test/a.css", { text: "@keyframes pulse{}" }, "text/css"),
+        entry("https://x.test/b.css", { text: "@keyframes pulse{}" }, "text/css"),
+      ]),
+    );
+    expect((await indexArchiveSources(root)).keyframes("pulse")).toBeUndefined();
+  });
+
+  test("does not match a longer name, and ignores a map's copy of the stylesheet", async () => {
+    writeFileSync(
+      join(root, "network.har"),
+      har([
+        entry("https://x.test/a.css", { text: "@keyframes pulse-slow{}\n@keyframes pulse{}" }, "text/css"),
+        entry("https://x.test/a.css.map", { text: '{"sourcesContent":["@keyframes pulse{}"]}' }, "application/json"),
+      ]),
+    );
+    expect((await indexArchiveSources(root)).keyframes("pulse")).toEqual({
+      url: "https://x.test/a.css",
+      line: 2,
+      column: 1,
+    });
+  });
+});

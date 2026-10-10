@@ -47,3 +47,33 @@ describe("the #20 fingerprint defect is in the corpus", () => {
     expect(countOccurrences(source, mutation!.find)).toBe(1);
   });
 });
+
+/**
+ * #216. The check above, for every entry rather than one. Measured 2026-10-10 by a ten-line script:
+ * of 165 entries one anchor matched nothing (rewritten in 1dac2e5), one matched twice, and one
+ * `expect` named no test — each of them a rule with no mechanism behind it, found only because
+ * someone thought to look. `bun run mutate` would have reported them, at the cost of a full suite
+ * per entry; this costs one file read per entry.
+ */
+describe("every corpus entry can apply and be judged (#216)", () => {
+  const walk = (dir: string): string[] => {
+    const { readdirSync } = require("node:fs") as typeof import("node:fs");
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() ? walk(resolve(dir, entry.name)) : [resolve(dir, entry.name)],
+    );
+  };
+  const testText = walk(resolve(repoRoot, "test"))
+    .filter((file) => /\.(test|browser)\.ts$/.test(file))
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n");
+
+  for (const mutation of MUTATIONS) {
+    test(`${mutation.id}: its anchor matches the source exactly once`, () => {
+      const source = readFileSync(resolve(repoRoot, mutation.file), "utf8");
+      expect(countOccurrences(source, mutation.find)).toBe(1);
+    });
+    test(`${mutation.id}: its expect names a test that exists`, () => {
+      expect(testText.includes(mutation.expect)).toBe(true);
+    });
+  }
+});

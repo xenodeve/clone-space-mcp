@@ -56,4 +56,13 @@ export function compileFixtureShader(canvas: HTMLCanvasElement): boolean {
   return true;
 }
 
+/**
+ * Start a WAAPI animation **from inside this module** (#215), so the creation stack names a
+ * position in the minified bundle and the sourcemap carries the citation back to this line.
+ * Opt-in for the same reason as the shader above: `index.html`'s motion is ground truth elsewhere.
+ */
+export function animateFixtureMarker(marker: HTMLElement): Animation {
+  return marker.animate([{ opacity: 1 }, { opacity: 0.5 }], { duration: 900, iterations: Infinity });
+}
+
 bindHeroParallax();
