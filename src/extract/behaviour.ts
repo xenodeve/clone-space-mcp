@@ -195,9 +195,15 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> & {
   // Parallel to `nodes`: the stack recorded when each one's object was created, if it was seen.
   // Only `add` writes either array, so the two cannot fall out of step.
   const creationStacks: (string | undefined)[] = [];
-  const add = (node: BehaviourNode, createdBy: unknown): void => {
+  // `createdBy` in order of preference: the first object with a recorded stack is the citation.
+  const add = (node: BehaviourNode, ...createdBy: unknown[]): void => {
     nodes.push(node);
-    const stack = createdBy !== null && typeof createdBy === "object" ? stacks?.get(createdBy) : undefined;
+    let stack: unknown;
+    for (const object of createdBy) {
+      if (object === null || (typeof object !== "object" && typeof object !== "function")) continue;
+      stack = stacks?.get(object);
+      if (typeof stack === "string") break;
+    }
     creationStacks.push(typeof stack === "string" ? stack : undefined);
   };
 
@@ -295,7 +301,10 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> & {
         toggleActions: typeof vars.toggleActions === "string" ? vars.toggleActions : null,
         triggerTarget: selectorFor(trigger.trigger),
       },
-    }, trigger.animation);
+      // The tween's citation first, the trigger's own `create()` second. The order is **not claimed
+      // as proven**: a corpus entry reversing it SURVIVED, because a trigger made from a tween's
+      // `scrollTrigger:` vars does not pass through the public `create`, so it is never tagged.
+    }, trigger.animation, instance);
   }
 
   // One pass, one getComputedStyle per element: what the graph cannot represent, counted so a

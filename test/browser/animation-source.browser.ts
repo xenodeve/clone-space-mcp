@@ -164,3 +164,44 @@ test("an animation created inside a mapped bundle cites the original source line
   assert.equal(source!.original!.line, expected);
   assert.match(source!.original!.excerpt.find((line) => line.line === expected)?.text ?? "", /marker\.animate\(/);
 });
+
+/**
+ * A trigger with no tween has nothing to inherit a citation from, so it is cited at its own
+ * `ScrollTrigger.create()` — the only way `labs.chaingpt.org` made its eight triggers, every one of
+ * which reported no source before this.
+ */
+test("a ScrollTrigger made with ScrollTrigger.create() cites that call", async () => {
+  const { readFileSync } = await import("node:fs");
+  const launcher = {
+    launch: async () =>
+      ({
+        newContext: (o: unknown) => (browser as never as { newContext(o: unknown): unknown }).newContext(o),
+        version: () => browser.version(),
+        newBrowserCDPSession: () => (browser as never as { newBrowserCDPSession(): unknown }).newBrowserCDPSession(),
+        close: async () => {},
+      }) as never,
+  };
+  const servers: FixtureServers = await startFixtureServers();
+  let archive: string;
+  const url = new URL("/scrolltrigger-create.html", servers.primary.url).href;
+  try {
+    archive = (
+      await capturePage({ url, outDir: join(tempDir, "st-create"), allowPrivateNetwork: true }, launcher as never)
+    ).archive;
+  } finally {
+    await servers.stop();
+  }
+  const graph = await extractBehaviourFromArchive({ archive }, launcher as never);
+
+  // Ground truth: the line of the archived document that holds the call.
+  const har = JSON.parse(readFileSync(join(archive, "network.har"), "utf8")) as {
+    log: { entries: { request: { url: string }; response: { content: { text?: string; _file?: string } } }[] };
+  };
+  const doc = har.log.entries.find((entry) => entry.request.url === url)!.response.content;
+  const body = doc.text ?? readFileSync(join(archive, doc._file!), "utf8");
+  const expected = body.split("\n").findIndex((line) => line.includes("ScrollTrigger.create(")) + 1;
+  assert.ok(expected > 0);
+
+  const triggers = graph.nodes.filter((node) => node.mechanism === "gsap-scrolltrigger");
+  assert.deepEqual(triggers.map(cited), [`/scrolltrigger-create.html:${expected}`]);
+});

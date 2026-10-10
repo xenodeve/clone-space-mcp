@@ -91,7 +91,7 @@ css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /
 | Mechanism | What is cited |
 |---|---|
 | GSAP tween | the `gsap.to/from/fromTo/set` or timeline `.to/.from/...` call that created it — a chained call cites its own line |
-| ScrollTrigger | the call that created the tween it drives |
+| ScrollTrigger | the call that created the tween it drives, or its own `ScrollTrigger.create()` when it drives none |
 | WAAPI | the `element.animate(...)` call |
 | CSS `@keyframes` | the rule's position in an archived stylesheet or inline `<style>` |
 
@@ -101,10 +101,13 @@ when the creation stack named no readable frame, when GSAP never assigned its gl
 watches `window.gsap` arrive), or when a `@keyframes` name is declared in more than one place —
 which rule wins is a cascade question this does not answer.
 
-Three limits of the GSAP half, each measured or traced rather than guessed:
+Measured on `https://labs.chaingpt.org/`, through the stdio server: **272 of 273 nodes cite a line**
+in the page's own code — `itemTl.from(` at `/:1642`, `ScrollTrigger.create({` at `/:1668` for all
+eight triggers, `@keyframes move {` at `/:397`. The one left is #219: a running CSS transition the
+graph mislabels as WAAPI, correctly found to have no `animate()` call.
 
-- **A `ScrollTrigger.create()` with no tween has no `source`.** A trigger is cited through the
-  tween it drives, and that one drives none.
+Two limits of the GSAP half, each measured or traced rather than guessed:
+
 - **A tween a library creates internally cites the library**, which is true and not useful: on the
   fixture, two `<non-element>` delayedCalls cite `ScrollTrigger.min.js:10`. Only the script that
   assigned `window.gsap` is skipped as a library, and only when it is a classic script — an ES module
@@ -254,7 +257,7 @@ css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /
 | Mechanism | สิ่งที่ถูกอ้าง |
 |---|---|
 | GSAP tween | การเรียก `gsap.to/from/fromTo/set` หรือ `.to/.from/...` ของ timeline ที่สร้างมัน — การเรียกแบบต่อ chain อ้างบรรทัดของตัวเอง |
-| ScrollTrigger | การเรียกที่สร้าง tween ที่มันขับ |
+| ScrollTrigger | การเรียกที่สร้าง tween ที่มันขับ หรือ `ScrollTrigger.create()` ของตัวมันเองเมื่อไม่ได้ขับ tween ไหน |
 | WAAPI | การเรียก `element.animate(...)` |
 | CSS `@keyframes` | ตำแหน่งของ rule ใน stylesheet ที่อยู่ใน archive หรือใน `<style>` ของเอกสาร |
 
@@ -263,10 +266,12 @@ css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /
 ที่อ่านได้ เมื่อ GSAP ไม่เคยตั้ง global ของมัน (hook ดักตอน `window.gsap` ถูกตั้ง) หรือเมื่อชื่อ `@keyframes` ถูกประกาศมากกว่าหนึ่งที่
 — rule ไหนชนะเป็นเรื่องของ cascade ซึ่งตรงนี้ไม่ได้ตอบ
 
-ข้อจำกัดสามข้อของฝั่ง GSAP แต่ละข้อวัดหรือไล่โค้ดมาแล้ว ไม่ได้เดา:
+วัดบน `https://labs.chaingpt.org/` ผ่าน stdio server: **node 272 จาก 273 ตัวอ้างบรรทัดในโค้ดของหน้าเว็บเองได้** —
+`itemTl.from(` ที่ `/:1642`, `ScrollTrigger.create({` ที่ `/:1668` สำหรับ trigger ทั้งแปดตัว, `@keyframes move {` ที่ `/:397`
+ตัวที่เหลือคือ #219: CSS transition ที่กำลังทำงานซึ่ง graph ติดป้ายผิดเป็น WAAPI และหาการเรียก `animate()` ของมันไม่เจออย่างถูกต้อง
 
-- **`ScrollTrigger.create()` ที่ไม่มี tween จะไม่มี `source`** trigger ถูกอ้างผ่าน tween ที่มันขับ
-  และตัวนี้ไม่ได้ขับอะไร
+ข้อจำกัดสองข้อของฝั่ง GSAP แต่ละข้อวัดหรือไล่โค้ดมาแล้ว ไม่ได้เดา:
+
 - **tween ที่ library สร้างเองภายในจะอ้างไปที่ library** ซึ่งเป็นความจริงแต่ไม่มีประโยชน์: บน fixture
   delayedCall ที่เป็น `<non-element>` สองตัวอ้าง `ScrollTrigger.min.js:10` มีแค่ script ที่ตั้ง `window.gsap`
   ที่ถูกข้ามในฐานะ library และเฉพาะเมื่อเป็น classic script — ES module ไม่มี `document.currentScript`

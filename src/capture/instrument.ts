@@ -237,18 +237,27 @@ export const PROVENANCE_INIT_SCRIPT = `(() => {
       wrapTimelineMethods(timeline.prototype, ["to", "from", "fromTo", "set", "call", "add"]);
     }
   };
-  var current;
-  try {
-    Object.defineProperty(globalThis, "gsap", {
-      configurable: true,
-      enumerable: true,
-      get: function () { return current; },
-      set: function (value) {
-        var script = document.currentScript;
-        if (script && script.src && libraries.indexOf(script.src) < 0) libraries.push(script.src);
-        current = value;
-        adopt(value);
-      }
-    });
-  } catch (error) {}
+  var watchGlobal = function (name, arrive) {
+    var current;
+    try {
+      Object.defineProperty(globalThis, name, {
+        configurable: true,
+        enumerable: true,
+        get: function () { return current; },
+        set: function (value) { current = value; arrive(value); }
+      });
+    } catch (error) {}
+  };
+  watchGlobal("gsap", function (value) {
+    var script = document.currentScript;
+    if (script && script.src && libraries.indexOf(script.src) < 0) libraries.push(script.src);
+    adopt(value);
+  });
+  // A trigger made with \`ScrollTrigger.create()\` drives no tween, so it has no citation to
+  // inherit and is tagged at its own call. Measured on labs.chaingpt.org: all eight of its triggers.
+  watchGlobal("ScrollTrigger", function (value) {
+    if (typeof value !== "function" || wrapped.has(value)) return;
+    wrapped.add(value);
+    wrapCreators(value, ["create"]);
+  });
 })();`;
