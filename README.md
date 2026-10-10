@@ -159,6 +159,18 @@ original  /npm/three@0.151.2/build/three.module.js:18723:5
 **Nothing is fetched here.** A map the capture did not take cannot be obtained, and the report says
 so rather than reaching for the network.
 
+**Every node cites where its motion was created** (#215). A GSAP tween cites the `.to()`/`.from()`
+call that made it, a ScrollTrigger the tween it drives or its own `ScrollTrigger.create()`, a WAAPI
+animation its `element.animate()`,
+and a CSS animation its `@keyframes` rule — so *"what makes the hero move?"* is answered with a line:
+
+```
+gsap-timeline  [data-fixture-id='gsap-hero']  power3.out  generated-source  /gsap-scene.js:19
+```
+
+`original-source` when an archived map resolved it, `generated-source` otherwise, and **no `source`
+at all** rather than a guess when nothing readable was recorded.
+
 ## Serve — `src/serve/`
 
 Four tools over stdio, a CLI harness that reaches the same functions with no transport, and **a
@@ -272,7 +284,7 @@ One directory, all files written `0600`:
 
 | Mechanism | Scale | What it is |
 |---|---|---|
-| **Mutation corpus** — `bun run mutate` | **153 entries** | Re-applies a defect that actually happened and requires a named test to go red. A guard no test can fail against is indistinguishable from one that works |
+| **Mutation corpus** — `bun run mutate` | **168 entries** | Re-applies a defect that actually happened and requires a named test to go red. A guard no test can fail against is indistinguishable from one that works |
 | **Fixture sites** — `bun run fixture:serve` | **3 origins** | Controlled ground truth: motion, capability flags, and a cross-origin surface. Exit criteria are checked here, never on a live site |
 | **ADRs** — [`docs/adr/`](docs/adr/README.md) | **9 records** | One per hard-to-reverse decision, including the alternatives rejected |
 | **Metamorphic check** — `bun run metamorphic` | a **metric** | Deliberately outside every gate. Correct code still loses matches in some cases, so reporting it as pass/fail would manufacture false confidence in both directions |

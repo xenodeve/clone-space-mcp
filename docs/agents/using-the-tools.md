@@ -78,6 +78,47 @@ later, and going to the network would make an offline artifact quietly depend on
 being up. An absent citation is the honest answer; a fabricated one is not checkable, which defeats
 the point of citing at all.
 
+**Every behaviour node carries the same kind of citation, as `source`** (#215) — where the motion
+was *created*. On the fixture, network off:
+
+```
+gsap-timeline   [data-fixture-id='gsap-hero']   power3.out   generated-source  /gsap-scene.js:19
+gsap-scrolltrigger  [data-fixture-id='gsap-scroll-panel']    generated-source  /gsap-scene.js:33
+waapi           [data-fixture-id='waapi-slide']              generated-source  /motion.js:11
+css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /style.css:49
+```
+
+| Mechanism | What is cited |
+|---|---|
+| GSAP tween | the `gsap.to/from/fromTo/set` or timeline `.to/.from/...` call that created it — a chained call cites its own line |
+| ScrollTrigger | the call that created the tween it drives, or its own `ScrollTrigger.create()` when it drives none |
+| WAAPI | the `element.animate(...)` call |
+| CSS `@keyframes` | the rule's position in an archived stylesheet or inline `<style>` |
+
+`provenance` is `original-source` only when an archived map resolved the frame, with `original` and
+an excerpt beside the kept `generated` position; otherwise `generated-source`. **`source` is absent**
+when the creation stack named no readable frame, when GSAP never assigned its global (the hook
+watches `window.gsap` arrive), or when a `@keyframes` name is declared in more than one place —
+which rule wins is a cascade question this does not answer.
+
+Measured on `https://labs.chaingpt.org/`, through the stdio server: **275 of 276 nodes cite a line**
+in the page's own code — `itemTl.from(` at `/:1642`, `ScrollTrigger.create({` at `/:1668` for all
+eight triggers, `@keyframes move {` at `/:397`. The one left is #219: a running CSS transition the
+graph mislabels as WAAPI, correctly found to have no `animate()` call.
+
+Two limits of the GSAP half, each measured or traced rather than guessed:
+
+- **A tween a library creates internally cites the page call that led to it, or nothing.** The
+  scripts that assign `window.gsap` and `window.ScrollTrigger` are skipped as libraries, so on
+  `labs.chaingpt.org` ScrollTrigger's internal delayedCalls cite the page's `ScrollTrigger.create({`
+  at `/:1668`, and on the fixture — where no page frame is on the stack — they carry no `source`.
+  Only a classic script is recognised: an ES module has no `document.currentScript`, and inside one
+  bundle a URL cannot separate library from page.
+- **The extract replay is not byte-identical to the page.** Watching the global arrive means
+  `"gsap" in window` is `true` before GSAP loads. A loader that decides whether to fetch GSAP with
+  `in` would skip it — in `extract_behaviour` only; `replay_page` and the equivalence gate do not
+  install this hook.
+
 ## The limits, measured
 
 **A CSS transition is not in the behaviour graph.** The graph reports what
@@ -205,6 +246,42 @@ original  /npm/three@0.151.2/build/three.module.js:18723:5
 **`original` จะไม่มีเมื่อ archive ไม่มี map ที่ใช้ได้สำหรับ script นั้น และกรณีนั้นพบบ่อย** · ไม่มีการ fetch อะไรมาอุดช่องว่าง:
 map ที่ตอน capture ไม่ได้เก็บไว้ก็หามาทีหลังไม่ได้ และการไปดึงจากเน็ตจะทำให้ artifact ออฟไลน์แอบไปขึ้นกับว่าเว็บนั้นยังอยู่
 หรือเปล่า · การไม่มีการอ้างอิงคือคำตอบที่ตรงไปตรงมา ส่วนการอ้างอิงที่แต่งขึ้นตรวจสอบไม่ได้ ซึ่งทำลายเหตุผลของการอ้างอิงทั้งหมด
+
+**behaviour node ทุกตัวมีการอ้างอิงแบบเดียวกันในชื่อ `source`** (#215) — จุดที่ motion ถูก*สร้าง* · บน fixture แบบปิด network:
+
+```
+gsap-timeline   [data-fixture-id='gsap-hero']   power3.out   generated-source  /gsap-scene.js:19
+gsap-scrolltrigger  [data-fixture-id='gsap-scroll-panel']    generated-source  /gsap-scene.js:33
+waapi           [data-fixture-id='waapi-slide']              generated-source  /motion.js:11
+css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /style.css:49
+```
+
+| Mechanism | สิ่งที่ถูกอ้าง |
+|---|---|
+| GSAP tween | การเรียก `gsap.to/from/fromTo/set` หรือ `.to/.from/...` ของ timeline ที่สร้างมัน — การเรียกแบบต่อ chain อ้างบรรทัดของตัวเอง |
+| ScrollTrigger | การเรียกที่สร้าง tween ที่มันขับ หรือ `ScrollTrigger.create()` ของตัวมันเองเมื่อไม่ได้ขับ tween ไหน |
+| WAAPI | การเรียก `element.animate(...)` |
+| CSS `@keyframes` | ตำแหน่งของ rule ใน stylesheet ที่อยู่ใน archive หรือใน `<style>` ของเอกสาร |
+
+`provenance` เป็น `original-source` ก็ต่อเมื่อ map ใน archive resolve frame ได้ โดยมี `original` และ excerpt
+อยู่ข้างตำแหน่ง `generated` ที่ยังเก็บไว้ · ไม่งั้นเป็น `generated-source` · **`source` จะไม่มี** เมื่อ stack ตอนสร้างไม่มี frame
+ที่อ่านได้ เมื่อ GSAP ไม่เคยตั้ง global ของมัน (hook ดักตอน `window.gsap` ถูกตั้ง) หรือเมื่อชื่อ `@keyframes` ถูกประกาศมากกว่าหนึ่งที่
+— rule ไหนชนะเป็นเรื่องของ cascade ซึ่งตรงนี้ไม่ได้ตอบ
+
+วัดบน `https://labs.chaingpt.org/` ผ่าน stdio server: **node 275 จาก 276 ตัวอ้างบรรทัดในโค้ดของหน้าเว็บเองได้** —
+`itemTl.from(` ที่ `/:1642`, `ScrollTrigger.create({` ที่ `/:1668` สำหรับ trigger ทั้งแปดตัว, `@keyframes move {` ที่ `/:397`
+ตัวที่เหลือคือ #219: CSS transition ที่กำลังทำงานซึ่ง graph ติดป้ายผิดเป็น WAAPI และหาการเรียก `animate()` ของมันไม่เจออย่างถูกต้อง
+
+ข้อจำกัดสองข้อของฝั่ง GSAP แต่ละข้อวัดหรือไล่โค้ดมาแล้ว ไม่ได้เดา:
+
+- **tween ที่ library สร้างเองภายในจะอ้างการเรียกของหน้าเว็บที่นำไปสู่มัน หรือไม่อ้างอะไรเลย** script ที่ตั้ง
+  `window.gsap` และ `window.ScrollTrigger` ถูกข้ามในฐานะ library ดังนั้นบน `labs.chaingpt.org` delayedCall ภายในของ
+  ScrollTrigger จะอ้าง `ScrollTrigger.create({` ของหน้าที่ `/:1668` และบน fixture — ซึ่งไม่มี frame ของหน้าอยู่บน stack —
+  จะไม่มี `source` รู้จักเฉพาะ classic script: ES module ไม่มี `document.currentScript` และภายใน bundle เดียว URL
+  แยก library ออกจากโค้ดของหน้าไม่ได้
+- **replay ของ extract ไม่ได้เหมือนหน้าเดิมทุก byte** การดักตอน global ถูกตั้งทำให้ `"gsap" in window` เป็น
+  `true` ตั้งแต่ก่อน GSAP โหลด loader ที่ใช้ `in` ตัดสินว่าจะโหลด GSAP ไหมจะข้ามมันไป — เฉพาะใน
+  `extract_behaviour`; `replay_page` และ equivalence gate ไม่ได้ติดตั้ง hook นี้
 
 ## ข้อจำกัด ที่วัดมาแล้ว
 

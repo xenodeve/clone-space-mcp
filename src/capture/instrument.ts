@@ -166,3 +166,107 @@ export const INSTRUMENT_DRAIN_SCRIPT = `(() => {
   s.observations = [];
   return out;
 })();`;
+
+export const PROVENANCE_GLOBAL = "__wap";
+
+/**
+ * Where each animation was created (#215), recorded for `src/extract/provenance.ts`. Installed by
+ * `replayArchive({ instrument: true })` before any page script.
+ *
+ * **Kept out of `INSTRUMENT_INIT_SCRIPT` on purpose.** The equivalence gate installs that script on
+ * the live page to measure whether instrumentation perturbs it (`src/equivalence/run.ts`), and
+ * wrapping GSAP there would change what that control measures without anything saying so.
+ *
+ * GSAP is not there yet when this runs, so it watches `gsap` **arrive** on the global rather than
+ * assuming it exists. GSAP 3 assigns that global even when loaded as an ES module
+ * (`gsap-core.js` installs onto `window` when `window.gsap` is unset), which is why a getter that
+ * reports `undefined` until the assignment is enough. The script that performs the assignment is
+ * recorded as a library, so its own frames are skipped and the citation lands on the page's call.
+ *
+ * A tween created by a timeline method is not that method's return value — the timeline is. So a
+ * timeline method tags every direct child not already tagged, which is exactly the one it added.
+ */
+export const PROVENANCE_INIT_SCRIPT = `(() => {
+  var stacks = new WeakMap();
+  var libraries = [];
+  globalThis.${PROVENANCE_GLOBAL} = { stacks: stacks, libraries: libraries };
+  var tag = function (object, stack) {
+    if (object !== null && typeof object === "object" && !stacks.has(object)) stacks.set(object, stack);
+  };
+  var animate = Element.prototype.animate;
+  if (typeof animate === "function") {
+    Element.prototype.animate = function () {
+      var animation = animate.apply(this, arguments);
+      tag(animation, (new Error()).stack || "");
+      return animation;
+    };
+  }
+  var wrapped = new WeakSet();
+  var wrapCreators = function (owner, names) {
+    names.forEach(function (name) {
+      var original = owner[name];
+      if (typeof original !== "function") return;
+      owner[name] = function () {
+        var stack = (new Error()).stack || "";
+        var result = original.apply(this, arguments);
+        tag(result, stack);
+        return result;
+      };
+    });
+  };
+  var wrapTimelineMethods = function (proto, names) {
+    names.forEach(function (name) {
+      var original = proto[name];
+      if (typeof original !== "function") return;
+      proto[name] = function () {
+        var stack = (new Error()).stack || "";
+        var result = original.apply(this, arguments);
+        if (typeof this.getChildren === "function") {
+          this.getChildren(false, true, true).forEach(function (child) { tag(child, stack); });
+        }
+        return result;
+      };
+    });
+  };
+  var adopt = function (gsap) {
+    if (gsap === null || typeof gsap !== "object" || wrapped.has(gsap)) return;
+    wrapped.add(gsap);
+    wrapCreators(gsap, ["to", "from", "fromTo", "set", "delayedCall", "timeline"]);
+    var timeline = gsap.core && gsap.core.Timeline;
+    if (timeline && timeline.prototype) {
+      wrapTimelineMethods(timeline.prototype, ["to", "from", "fromTo", "set", "call", "add"]);
+    }
+  };
+  var watchGlobal = function (name, arrive) {
+    var current;
+    try {
+      Object.defineProperty(globalThis, name, {
+        configurable: true,
+        enumerable: true,
+        get: function () { return current; },
+        set: function (value) {
+          // The script making the **first** assignment is the library defining itself, so its
+          // frames are not the page's call — ScrollTrigger.batch() calls create() from inside its
+          // own file. Only the first: gsap.registerPlugin(ScrollTrigger) re-assigns the global
+          // from whatever page script calls it, and recording that would skip the page itself.
+          var script = document.currentScript;
+          if (current === undefined && script && script.src && libraries.indexOf(script.src) < 0) {
+            libraries.push(script.src);
+          }
+          current = value;
+          arrive(value);
+        }
+      });
+    } catch (error) {}
+  };
+  watchGlobal("gsap", function (value) {
+    adopt(value);
+  });
+  // A trigger made with \`ScrollTrigger.create()\` drives no tween, so it has no citation to
+  // inherit and is tagged at its own call. Measured on labs.chaingpt.org: all eight of its triggers.
+  watchGlobal("ScrollTrigger", function (value) {
+    if (typeof value !== "function" || wrapped.has(value)) return;
+    wrapped.add(value);
+    wrapCreators(value, ["create"]);
+  });
+})();`;

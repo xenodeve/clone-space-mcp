@@ -6,6 +6,24 @@
 
 ---
 
+## Every behaviour node cites the line that created it (2026-10-10, #215)
+
+**The pipeline was measured end to end before anything was written**, because the goal was "make it usable" and the gap had to be found rather than assumed. On the fixture, through a real SDK client over stdio: capture 2.2 s, replay `aborted: []`, all five declared animations extracted, tool manifest **4,213 bytes** against P5's 50 KB. P3, P4 and P5 all held. **The one sentence of the definition of done that did not was "citing file and line"** — animation nodes said `gsap-timeline · 800 ms · power3.out` and nothing about where that was written. The slice 6 citation chain was wired to shaders only.
+
+**A registry remembers what exists, not who made it**, so the creation call is observed as it happens: `PROVENANCE_INIT_SCRIPT` runs before page scripts, wraps `Element.prototype.animate`, and watches `window.gsap` **arrive** — GSAP 3 assigns that global even from an ES module — to wrap its creation API. A timeline method returns the timeline, not the tween, so it tags the one direct child not yet tagged. CSS keyframes are cited from the `@keyframes` rule in an archived stylesheet, and only when the name is declared once.
+
+Measured through the stdio server: the hero's three tweens cite `gsap-scene.js:19`, `:20`, `:21` — the exact lines of `.from()`, `.to()`, `.to()`. Two `<non-element>` delayedCalls ScrollTrigger creates internally first cited `ScrollTrigger.min.js:10`; once ScrollTrigger's script was also treated as a library (below) they carry no source on the fixture and cite the page's `ScrollTrigger.create({` on a real site.
+
+**Kept out of `INSTRUMENT_INIT_SCRIPT` deliberately**: the equivalence gate installs that on the live page for its perturbation control, and wrapping GSAP there would change what the control measures.
+
+**A TDD slip, recorded rather than smoothed over:** cycle 1's implementation covered every mechanism at once, so the nested, ScrollTrigger and WAAPI tests and the unit tests were green on first run and never seen red. Their capacity to fail rests on the corpus entries, not on the loop.
+
+**What the review gates changed.** `/scrutinize` traced the in-page → Node seam and found the registry read without a shape check: one `window.__wap = …` in a page made `extract_behaviour` throw where `main` extracted fine — `a-page-global-is-untrusted-input`. The standards review found `replay/` importing from `extract/`; the in-page script moved beside `INSTRUMENT_INIT_SCRIPT` as its own constant. The spec review found `original-source` exercised only against a stub; `instrumented-case.html` now starts an animation inside the minified module and the citation resolves through the archived map to the `marker.animate(` line. `@keyframes "quoted name"` now matches. Fifteen corpus entries; a sixteenth, reversing the ScrollTrigger citation order, SURVIVED and was deleted — the order is stated as unproven at the call site.
+
+**Then the north-star on a real page, which changed the work.** Through the stdio server on `https://labs.chaingpt.org/`: 267 of 276 nodes cited, but **all 8 ScrollTriggers cited nothing** — every one was made with `ScrollTrigger.create()`, the case the first version had documented away as a limit. On that site it was the only shape used. Wrapping `create` when `window.ScrollTrigger` arrives took it to **272 of 273**, all eight citing `ScrollTrigger.create({` at `/:1668`, and 275 of 276 after the batch fix below. The one left is a running `CSSTransition` the graph labels `waapi` — filed as #219. A delegated review then found that `ScrollTrigger.batch()` calls `create()` from inside ScrollTrigger's own file, so a batched trigger cited `/vendor/ScrollTrigger.min.js:10` — confirmed by a red test. The suggested fix, recording ScrollTrigger's script as a library, **erased every citation on the fixture** when applied naively: `gsap.registerPlugin(ScrollTrigger)` re-assigns the global from the page's own script, which then got recorded as a library. Only the first assignment marks one now; a corpus entry holds each half. **A limit written down from the fixture was the common case on the first real page measured.**
+
+**Two pre-existing corpus anchors that cannot apply, found by checking every anchor statically, not fixed here:** `shader-origin-invented-when-the-stack-is-unreadable` matches 0 times (rewritten in `1dac2e5`) and `fallback-continues-to-the-live-network` matches twice in `src/replay/replay.ts`, on `main` as well. Filed as #216.
+
 ## `Closes #171's acceptance criteria 5 and 7` closed #171 (2026-08-17, #171, PR #210)
 
 PR #207's body opened with that sentence. It says *two of the criteria*; **GitHub read `Closes #171` and closed the issue** when the PR merged, at `2026-08-16T18:25:28Z`. The clause that narrows it is invisible to the parser — `closes part of`, `closes the first half of` and `closes #171's criterion 5` all close #171.

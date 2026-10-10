@@ -174,6 +174,24 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           { headers: { "content-type": CONTENT_TYPES[".html"]! } },
         );
       }
+      // #215. A ScrollTrigger made with `ScrollTrigger.create()` and no tween — the only shape a real
+      // page (`labs.chaingpt.org`, 8 of 8) used. With nothing to inherit a citation from, it has to
+      // be cited at its own creation call.
+      if (pathname === "/scrolltrigger-create.html") {
+        return new Response(
+          `<!doctype html><title>scrolltrigger create</title>
+           <style>body{margin:0} .tall{height:3000px}</style>
+           <body><div class="tall"></div><section id="lazy">lazy</section><p class="batched">batched</p>
+           <script src="/vendor/gsap.min.js"></script>
+           <script src="/vendor/ScrollTrigger.min.js"></script>
+           <script>
+             gsap.registerPlugin(ScrollTrigger);
+             ScrollTrigger.create({ trigger: "#lazy", start: "top 90%", toggleActions: "play none none none", onEnter: () => {} });
+             ScrollTrigger.batch(".batched", { onEnter: () => {} });
+           </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
       // #173 + #178. The three things the observation layer hooks — a WebGL context, a compiled
       // shader, a listener registration — with the shader compiled from `/build/instrumented.js`,
       // the minified module that carries a real published sourcemap. That is the point: the stack
@@ -182,10 +200,12 @@ export async function startFixtureServers(): Promise<FixtureServers> {
       if (pathname === "/instrumented-case.html") {
         return new Response(
           `<!doctype html><title>instrumented</title><body><canvas id="c" width="32" height="32"></canvas>
+           <div id="m">marker</div>
            <script type="module">
-             import { compileFixtureShader } from "/build/instrumented.js";
+             import { animateFixtureMarker, compileFixtureShader } from "/build/instrumented.js";
              document.getElementById("c").addEventListener("pointerdown", () => {});
              compileFixtureShader(document.getElementById("c"));
+             animateFixtureMarker(document.getElementById("m"));
            </script>`,
           { headers: { "content-type": CONTENT_TYPES[".html"]! } },
         );
