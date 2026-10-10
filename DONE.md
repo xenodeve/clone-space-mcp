@@ -6,6 +6,12 @@
 
 ---
 
+## A running CSS transition is no longer reported as WAAPI (2026-10-10, #219)
+
+Found by the north-star run on `https://labs.chaingpt.org/`: the one node #215 could not cite was a 500 ms `waapi` animation on `#cookie-consent-banner`. A probe of the replayed page read `CSSTransition cookie-consent-banner opacity` — `collectInPage` labelled everything that was not a `CSSAnimation` as WAAPI, so an agent would have been told a script called `element.animate()`.
+
+**Excluded rather than given its own mechanism.** A transition is in `getAnimations()` only while it runs, so a node for it would come and go with when extraction landed — a sampled phase, the same reason a transformed-element count was removed from `unrepresented`. It stays counted under `unrepresented.cssTransitionElements`, which is a static computed style. The real site now reads **274 of 274 nodes cited**. Fixture case `/running-transition.html` checks its own precondition — that a `CSSTransition` really is running — before asserting, so it cannot pass vacuously.
+
 ## Every behaviour node cites the line that created it (2026-10-10, #215)
 
 **The pipeline was measured end to end before anything was written**, because the goal was "make it usable" and the gap had to be found rather than assumed. On the fixture, through a real SDK client over stdio: capture 2.2 s, replay `aborted: []`, all five declared animations extracted, tool manifest **4,213 bytes** against P5's 50 KB. P3, P4 and P5 all held. **The one sentence of the definition of done that did not was "citing file and line"** — animation nodes said `gsap-timeline · 800 ms · power3.out` and nothing about where that was written. The slice 6 citation chain was wired to shaders only.

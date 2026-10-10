@@ -101,10 +101,10 @@ when the creation stack named no readable frame, when GSAP never assigned its gl
 watches `window.gsap` arrive), or when a `@keyframes` name is declared in more than one place —
 which rule wins is a cascade question this does not answer.
 
-Measured on `https://labs.chaingpt.org/`, through the stdio server: **275 of 276 nodes cite a line**
-in the page's own code — `itemTl.from(` at `/:1642`, `ScrollTrigger.create({` at `/:1668` for all
-eight triggers, `@keyframes move {` at `/:397`. The one left is #219: a running CSS transition the
-graph mislabels as WAAPI, correctly found to have no `animate()` call.
+Measured on `https://labs.chaingpt.org/`, through the stdio server: **all 274 nodes cite a line** in
+the page's own code — `itemTl.from(` at `/:1642`, `ScrollTrigger.create({` at `/:1668` for all
+eight triggers, `@keyframes move {` at `/:397`. Before #219 one more node appeared: a running CSS
+transition mislabelled as WAAPI, which is now counted under `unrepresented` instead.
 
 Two limits of the GSAP half, each measured or traced rather than guessed:
 
@@ -131,7 +131,7 @@ Two limits of the GSAP half, each measured or traced rather than guessed:
 | `document.getAnimations()` | 12 | 12 |
 | elements with a CSS transition | **318** | **1,028** |
 
-The first two rows match exactly — the extractor misses nothing the browser tracks. The third is the
+The first two rows matched exactly when measured — the extractor misses nothing the browser tracks, except that a transition running at that instant is now left out of the nodes on purpose (#219): it is in `getAnimations()` only while it runs, so a node for it would depend on when extraction landed. The third is the
 limit, and it is why every graph carries `unrepresented.cssTransitionElements`. **Read it.** A page
 animated with Tailwind or Framer transitions will report a small node count and not be a still page.
 
@@ -268,9 +268,9 @@ css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /
 ที่อ่านได้ เมื่อ GSAP ไม่เคยตั้ง global ของมัน (hook ดักตอน `window.gsap` ถูกตั้ง) หรือเมื่อชื่อ `@keyframes` ถูกประกาศมากกว่าหนึ่งที่
 — rule ไหนชนะเป็นเรื่องของ cascade ซึ่งตรงนี้ไม่ได้ตอบ
 
-วัดบน `https://labs.chaingpt.org/` ผ่าน stdio server: **node 275 จาก 276 ตัวอ้างบรรทัดในโค้ดของหน้าเว็บเองได้** —
+วัดบน `https://labs.chaingpt.org/` ผ่าน stdio server: **node ทั้ง 274 ตัวอ้างบรรทัดในโค้ดของหน้าเว็บเองได้** —
 `itemTl.from(` ที่ `/:1642`, `ScrollTrigger.create({` ที่ `/:1668` สำหรับ trigger ทั้งแปดตัว, `@keyframes move {` ที่ `/:397`
-ตัวที่เหลือคือ #219: CSS transition ที่กำลังทำงานซึ่ง graph ติดป้ายผิดเป็น WAAPI และหาการเรียก `animate()` ของมันไม่เจออย่างถูกต้อง
+ก่อน #219 มี node เกินมาอีกหนึ่งตัว: CSS transition ที่กำลังทำงานแต่ถูกติดป้ายผิดเป็น WAAPI ซึ่งตอนนี้ไปนับอยู่ใน `unrepresented` แทน
 
 ข้อจำกัดสองข้อของฝั่ง GSAP แต่ละข้อวัดหรือไล่โค้ดมาแล้ว ไม่ได้เดา:
 
@@ -294,7 +294,7 @@ css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /
 | `document.getAnimations()` | 12 | 12 |
 | element ที่มี CSS transition | **318** | **1,028** |
 
-สองแถวแรกตรงกันเป๊ะ — ตัวสกัดไม่พลาดอะไรที่เบราว์เซอร์ติดตามอยู่ · แถวที่สามคือข้อจำกัด และเป็นเหตุผลที่ทุกกราฟพก
+สองแถวแรกตรงกันเป๊ะตอนที่วัด — ตัวสกัดไม่พลาดอะไรที่เบราว์เซอร์ติดตามอยู่ ยกเว้น transition ที่กำลังทำงานในขณะนั้น ซึ่งตอนนี้ถูกตัดออกจาก node โดยตั้งใจ (#219): มันอยู่ใน `getAnimations()` เฉพาะตอนที่กำลังทำงาน node ของมันจึงจะขึ้นกับว่าการ extract เกิดตอนไหน · แถวที่สามคือข้อจำกัด และเป็นเหตุผลที่ทุกกราฟพก
 `unrepresented.cssTransitionElements` ไปด้วย · **อ่านมันด้วย** · หน้าที่ animate ด้วย transition ของ Tailwind หรือ
 Framer จะรายงาน node จำนวนน้อยโดยที่ไม่ได้เป็นหน้านิ่ง
 
