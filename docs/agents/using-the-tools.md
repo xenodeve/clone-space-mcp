@@ -101,6 +101,19 @@ when the creation stack named no readable frame, when GSAP never assigned its gl
 watches `window.gsap` arrive), or when a `@keyframes` name is declared in more than one place —
 which rule wins is a cascade question this does not answer.
 
+Three limits of the GSAP half, each measured or traced rather than guessed:
+
+- **A `ScrollTrigger.create()` with no tween has no `source`.** A trigger is cited through the
+  tween it drives, and that one drives none.
+- **A tween a library creates internally cites the library**, which is true and not useful: on the
+  fixture, two `<non-element>` delayedCalls cite `ScrollTrigger.min.js:10`. Only the script that
+  assigned `window.gsap` is skipped as a library, and only when it is a classic script — an ES module
+  has no `document.currentScript`, and inside one bundle a URL cannot separate library from page.
+- **The extract replay is not byte-identical to the page.** Watching the global arrive means
+  `"gsap" in window` is `true` before GSAP loads. A loader that decides whether to fetch GSAP with
+  `in` would skip it — in `extract_behaviour` only; `replay_page` and the equivalence gate do not
+  install this hook.
+
 ## The limits, measured
 
 **A CSS transition is not in the behaviour graph.** The graph reports what
@@ -249,6 +262,18 @@ css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /
 อยู่ข้างตำแหน่ง `generated` ที่ยังเก็บไว้ · ไม่งั้นเป็น `generated-source` · **`source` จะไม่มี** เมื่อ stack ตอนสร้างไม่มี frame
 ที่อ่านได้ เมื่อ GSAP ไม่เคยตั้ง global ของมัน (hook ดักตอน `window.gsap` ถูกตั้ง) หรือเมื่อชื่อ `@keyframes` ถูกประกาศมากกว่าหนึ่งที่
 — rule ไหนชนะเป็นเรื่องของ cascade ซึ่งตรงนี้ไม่ได้ตอบ
+
+ข้อจำกัดสามข้อของฝั่ง GSAP แต่ละข้อวัดหรือไล่โค้ดมาแล้ว ไม่ได้เดา:
+
+- **`ScrollTrigger.create()` ที่ไม่มี tween จะไม่มี `source`** trigger ถูกอ้างผ่าน tween ที่มันขับ
+  และตัวนี้ไม่ได้ขับอะไร
+- **tween ที่ library สร้างเองภายในจะอ้างไปที่ library** ซึ่งเป็นความจริงแต่ไม่มีประโยชน์: บน fixture
+  delayedCall ที่เป็น `<non-element>` สองตัวอ้าง `ScrollTrigger.min.js:10` มีแค่ script ที่ตั้ง `window.gsap`
+  ที่ถูกข้ามในฐานะ library และเฉพาะเมื่อเป็น classic script — ES module ไม่มี `document.currentScript`
+  และภายใน bundle เดียว URL แยก library ออกจากโค้ดของหน้าไม่ได้
+- **replay ของ extract ไม่ได้เหมือนหน้าเดิมทุก byte** การดักตอน global ถูกตั้งทำให้ `"gsap" in window` เป็น
+  `true` ตั้งแต่ก่อน GSAP โหลด loader ที่ใช้ `in` ตัดสินว่าจะโหลด GSAP ไหมจะข้ามมันไป — เฉพาะใน
+  `extract_behaviour`; `replay_page` และ equivalence gate ไม่ได้ติดตั้ง hook นี้
 
 ## ข้อจำกัด ที่วัดมาแล้ว
 

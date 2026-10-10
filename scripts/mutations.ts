@@ -1446,7 +1446,7 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "timeline-children-never-tagged",
     why: "#215 - a tween created by a timeline method is not that method's return value, so without tagging the new child every chained .to()/.from() - the way GSAP is actually written - cites nothing.",
-    file: "src/extract/provenance.ts",
+    file: "src/capture/instrument.ts",
     find: "          this.getChildren(false, true, true).forEach(function (child) { tag(child, stack); });",
     replace: "          void 0;",
     suite: "browser",
@@ -1455,7 +1455,7 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "gsap-arrival-not-adopted",
     why: "#215 - GSAP does not exist when the init script runs, so its creation API is wrapped only when the global arrives. Dropping that leaves every GSAP node uncited while WAAPI still passes.",
-    file: "src/extract/provenance.ts",
+    file: "src/capture/instrument.ts",
     find: "        adopt(value);",
     replace: "        void value;",
     suite: "browser",
@@ -1464,7 +1464,7 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "waapi-animate-not-recorded",
     why: "#215 - Element.animate is the browser API every WAAPI animation passes through; not recording its stack leaves the WAAPI node uncited.",
-    file: "src/extract/provenance.ts",
+    file: "src/capture/instrument.ts",
     find: "      tag(animation, (new Error()).stack || \"\");",
     replace: "      void animation;",
     suite: "browser",
@@ -1487,5 +1487,23 @@ export const MUTATIONS: Mutation[] = [
     replace: "      const graph = await extractBehaviour(replay);",
     suite: "browser",
     expect: "a CSS animation cites its @keyframes rule in the archived stylesheet",
+  },
+  {
+    id: "provenance-registry-read-trusts-the-page",
+    why: "#215 - the registry is a global the page can overwrite. Reading it without a shape check turned a page that happens to assign window.__wap into an extract_behaviour that throws, where main extracted the page fine; the existing __i drain already reads defensively for the same reason.",
+    file: "src/extract/behaviour.ts",
+    find: "  const stacks = registry?.stacks instanceof WeakMap ? (registry.stacks as WeakMap<object, unknown>) : undefined;",
+    replace: "  const stacks = registry?.stacks as WeakMap<object, unknown> | undefined;",
+    suite: "browser",
+    expect: "a page that clobbers the provenance registry still extracts",
+  },
+  {
+    id: "keyframes-quoted-name-unmatched",
+    why: "#215 - CSS allows @keyframes \"fade in\", and animation-name reports the name unquoted. Matching only the bare identifier leaves such a node uncited while every bare-name test passes.",
+    file: "src/extract/archive-sources.ts",
+    find: "    `@(?:-webkit-)?keyframes\\\\s+(?:${escaped}(?=[\\\\s{])|\"${escaped}\"|'${escaped}')`,",
+    replace: "    `@(?:-webkit-)?keyframes\\\\s+(?:${escaped}(?=[\\\\s{]))`,",
+    suite: "bun",
+    expect: "matches a name written as a CSS string, which animation-name reports unquoted",
   },
 ];

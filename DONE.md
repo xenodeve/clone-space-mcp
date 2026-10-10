@@ -16,7 +16,11 @@ Measured through the stdio server: the hero's three tweens cite `gsap-scene.js:1
 
 **Kept out of `INSTRUMENT_INIT_SCRIPT` deliberately**: the equivalence gate installs that on the live page for its perturbation control, and wrapping GSAP there would change what the control measures.
 
-**A TDD slip, recorded rather than smoothed over:** cycle 1's implementation covered every mechanism at once, so the nested, ScrollTrigger and WAAPI tests and the unit tests were green on first run and never seen red. Their capacity to fail rests on the ten corpus entries, not on the loop.
+**A TDD slip, recorded rather than smoothed over:** cycle 1's implementation covered every mechanism at once, so the nested, ScrollTrigger and WAAPI tests and the unit tests were green on first run and never seen red. Their capacity to fail rests on the corpus entries, not on the loop.
+
+**What the review gates changed.** `/scrutinize` traced the in-page → Node seam and found the registry read without a shape check: one `window.__wap = …` in a page made `extract_behaviour` throw where `main` extracted fine — `a-page-global-is-untrusted-input`. The standards review found `replay/` importing from `extract/`; the in-page script moved beside `INSTRUMENT_INIT_SCRIPT` as its own constant. The spec review found `original-source` exercised only against a stub; `instrumented-case.html` now starts an animation inside the minified module and the citation resolves through the archived map to the `marker.animate(` line. `@keyframes "quoted name"` now matches. Twelve corpus entries, all CAUGHT.
+
+**Two pre-existing corpus anchors that cannot apply, found by checking every anchor statically, not fixed here:** `shader-origin-invented-when-the-stack-is-unreadable` matches 0 times (rewritten in `1dac2e5`) and `fallback-continues-to-the-live-network` matches twice in `src/replay/replay.ts`, on `main` as well. Filed as #216.
 
 ## `Closes #171's acceptance criteria 5 and 7` closed #171 (2026-08-17, #171, PR #210)
 

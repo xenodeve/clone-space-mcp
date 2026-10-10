@@ -24,6 +24,7 @@
 - [[a-closing-keyword-fires-on-its-prefix]] — `Closes #171's acceptance criteria 5 and 7` closed #171; the narrowing clause is invisible to the parser, and the session then posted "deliberately staying open" onto an issue its own PR had closed
 - [[the-corpus-reach-ends-at-the-process-boundary]] — a defect applied in memory reaches only what the test process loads; a spawned CLI or the Bun fixture server reports `MUTATION NOT APPLIED`, which reads like a hiccup and measures nothing
 - [[a-rule-keyed-on-a-tracker-state-inherits-that-state]] — *"do not call the gate complete until #2 closes"* returned the wrong answer for two days after #2 was wrongly closed; key a completeness rule on a command, and resolve a recorded contradiction instead of recording it
+- [[a-page-global-is-untrusted-input]] — anything an init script leaves on `globalThis` is writable by the page; on #215 one assignment to a new registry made `extract_behaviour` throw, beside a reader of `__i` that was already defensive
 
 ## project — ongoing goals / constraints not derivable from the code
 - [[replay-reexecutes-original-js]] — the architectural commitment the whole project rests on, and the approach it rejects

@@ -254,6 +254,18 @@ describe("keyframes (#215)", () => {
     expect(index.keyframes("spin")).toEqual({ url: "https://x.test/", line: 1, column: 8 });
   });
 
+  test("matches a name written as a CSS string, which animation-name reports unquoted", async () => {
+    writeFileSync(
+      join(root, "network.har"),
+      har([entry("https://x.test/s.css", { text: "@keyframes 'fade in' {}" }, "text/css")]),
+    );
+    expect((await indexArchiveSources(root)).keyframes("fade in")).toEqual({
+      url: "https://x.test/s.css",
+      line: 1,
+      column: 1,
+    });
+  });
+
   test("returns nothing when the name is declared twice, rather than picking one", async () => {
     writeFileSync(
       join(root, "network.har"),

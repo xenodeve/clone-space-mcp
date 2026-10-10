@@ -182,10 +182,12 @@ export async function startFixtureServers(): Promise<FixtureServers> {
       if (pathname === "/instrumented-case.html") {
         return new Response(
           `<!doctype html><title>instrumented</title><body><canvas id="c" width="32" height="32"></canvas>
+           <div id="m">marker</div>
            <script type="module">
-             import { compileFixtureShader } from "/build/instrumented.js";
+             import { animateFixtureMarker, compileFixtureShader } from "/build/instrumented.js";
              document.getElementById("c").addEventListener("pointerdown", () => {});
              compileFixtureShader(document.getElementById("c"));
+             animateFixtureMarker(document.getElementById("m"));
            </script>`,
           { headers: { "content-type": CONTENT_TYPES[".html"]! } },
         );

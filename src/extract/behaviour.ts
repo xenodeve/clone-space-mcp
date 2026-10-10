@@ -117,7 +117,7 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> & {
 } {
   const win = globalThis as unknown as {
     /** `PROVENANCE_GLOBAL` — written out because nothing this function closes over survives CDP. */
-    __wap?: { stacks: WeakMap<object, string>; libraries: string[] };
+    __wap?: unknown;
     gsap?: { globalTimeline: { getChildren(): unknown[] } };
     ScrollTrigger?: { getAll(): unknown[] };
     document: Document;
@@ -185,14 +185,20 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> & {
   };
 
   const nodes: BehaviourNode[] = [];
+  // The registry lives on a global the page can overwrite, by accident or not. Read defensively,
+  // the way `drainedObservations` reads `__i`: a clobbered registry costs the citations, never the
+  // extraction.
+  const registry: { stacks?: unknown; libraries?: unknown } | undefined =
+    typeof win.__wap === "object" && win.__wap !== null ? win.__wap : undefined;
+  const stacks = registry?.stacks instanceof WeakMap ? (registry.stacks as WeakMap<object, unknown>) : undefined;
+
   // Parallel to `nodes`: the stack recorded when each one's object was created, if it was seen.
   // Only `add` writes either array, so the two cannot fall out of step.
   const creationStacks: (string | undefined)[] = [];
   const add = (node: BehaviourNode, createdBy: unknown): void => {
     nodes.push(node);
-    creationStacks.push(
-      createdBy !== null && typeof createdBy === "object" ? win.__wap?.stacks.get(createdBy) : undefined,
-    );
+    const stack = createdBy !== null && typeof createdBy === "object" ? stacks?.get(createdBy) : undefined;
+    creationStacks.push(typeof stack === "string" ? stack : undefined);
   };
 
   for (const animation of win.document.getAnimations()) {
@@ -308,7 +314,9 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> & {
     mechanisms,
     unrepresented: { cssTransitionElements },
     creationStacks,
-    libraries: win.__wap?.libraries ?? [],
+    libraries: Array.isArray(registry?.libraries)
+      ? registry.libraries.filter((url): url is string => typeof url === "string")
+      : [],
   };
 }
 /* eslint-enable */

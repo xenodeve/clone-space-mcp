@@ -217,7 +217,12 @@ export async function indexArchiveSources(archiveRoot: string): Promise<SourceIn
  */
 function keyframesPositions(text: string, name: string): Omit<StackFrame, "url">[] {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`@(?:-webkit-)?keyframes\\s+${escaped}(?=[\\s{])`, "g");
+  // The name may be written as a CSS string (`@keyframes "fade in"`); `animation-name` reports it
+  // unquoted either way.
+  const pattern = new RegExp(
+    `@(?:-webkit-)?keyframes\\s+(?:${escaped}(?=[\\s{])|"${escaped}"|'${escaped}')`,
+    "g",
+  );
   const positions: Omit<StackFrame, "url">[] = [];
   for (const match of text.matchAll(pattern)) {
     const before = text.slice(0, match.index);
