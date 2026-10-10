@@ -21,6 +21,7 @@ import {
   INSTRUMENT_INIT_SCRIPT,
   type Observation,
 } from "../capture/instrument.ts";
+import { PROVENANCE_INIT_SCRIPT } from "../extract/provenance.ts";
 import { arrivalScheduleFrom, delayBefore, scheduleKey } from "./arrival-schedule.ts";
 
 export interface ReplayArchiveOptions {
@@ -176,6 +177,9 @@ export async function replayArchive(options: ReplayArchiveOptions): Promise<Repl
 
   if (options.instrument === true) {
     await context.addInitScript({ content: INSTRUMENT_INIT_SCRIPT });
+    // Where each animation was created (#215). Installed here and not folded into the script
+    // above, which the equivalence gate also installs on the live page — see `provenance.ts`.
+    await context.addInitScript({ content: PROVENANCE_INIT_SCRIPT });
   }
 
   // Registered between `routeFromHAR` and the unservable handler, which puts it **second** in the

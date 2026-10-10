@@ -16,6 +16,7 @@
 
 import { lstat, readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve as resolvePath } from "node:path";
+import type { StackFrame } from "../capture/instrument.ts";
 import { parseSourceMap, resolveFrame, type ResolvedFrame, type SourceMap } from "./sourcemap.ts";
 
 /** Lines of original source shown either side of a cited line. */
@@ -29,6 +30,12 @@ export interface SourceIndex {
   resolve(url: string, line: number, column: number): ResolvedFrame | undefined;
   /** Script URLs that got a usable map. A miss is visible here rather than silently absent. */
   mapped: string[];
+  /**
+   * Where `@keyframes <name>` is declared, across the archive's stylesheets and documents (#215).
+   * **Only a unique declaration is returned**: two rules with one name cannot be told apart from
+   * here — which one wins is a cascade question — and picking one would be a guess.
+   */
+  keyframes(name: string): StackFrame | undefined;
 }
 
 interface HarEntry {
@@ -50,6 +57,11 @@ const UNREADABLE_PREFIXES = ["image/", "video/", "audio/", "font/", "application
 
 /** Redirect hops followed before giving up, so a cycle in a captured HAR cannot spin. */
 const MAX_REDIRECT_HOPS = 10;
+
+function mimeTypeOf(entry: HarEntry): string {
+  const mimeType = entry.response?.content?.mimeType;
+  return typeof mimeType === "string" ? mimeType.toLowerCase() : "";
+}
 
 function entriesOf(har: unknown): HarEntry[] {
   const log = (har as { log?: { entries?: unknown } } | undefined)?.log;
@@ -82,7 +94,7 @@ function entriesOf(har: unknown): HarEntry[] {
  */
 async function bodyOf(root: string, entry: HarEntry): Promise<string | undefined> {
   const content = entry.response?.content;
-  const mimeType = typeof content?.mimeType === "string" ? content.mimeType.toLowerCase() : "";
+  const mimeType = mimeTypeOf(entry);
   if (UNREADABLE_PREFIXES.some((prefix) => mimeType.startsWith(prefix))) return undefined;
   if (typeof content?.text === "string") return content.text;
   if (typeof content?._file !== "string" || content._file.length === 0) return undefined;
@@ -127,10 +139,13 @@ export async function indexArchiveSources(archiveRoot: string): Promise<SourceIn
   try {
     har = JSON.parse(await readFile(resolvePath(archiveRoot, "network.har"), "utf8"));
   } catch {
-    return { resolve: () => undefined, mapped: [] };
+    return { resolve: () => undefined, mapped: [], keyframes: () => undefined };
   }
 
   const bodies = new Map<string, string>();
+  // Bodies a `@keyframes` rule can be declared in. A map's `sourcesContent` repeats its stylesheet,
+  // so searching every body would find each rule twice and cite neither.
+  const styleBodies = new Map<string, string>();
   const redirects = new Map<string, string>();
   for (const entry of entriesOf(har)) {
     const url = entry.request?.url;
@@ -138,7 +153,10 @@ export async function indexArchiveSources(archiveRoot: string): Promise<SourceIn
     const target = entry.response?.redirectURL;
     if (typeof target === "string" && target !== "") redirects.set(url, target);
     const body = await bodyOf(archiveRoot, entry);
-    if (body !== undefined) bodies.set(url, body);
+    if (body === undefined) continue;
+    bodies.set(url, body);
+    const mimeType = mimeTypeOf(entry);
+    if (mimeType.startsWith("text/css") || mimeType.startsWith("text/html")) styleBodies.set(url, body);
   }
 
   const maps = new Map<string, SourceMap>();
@@ -172,11 +190,41 @@ export async function indexArchiveSources(archiveRoot: string): Promise<SourceIn
     }
   }
 
+  const keyframesByName = new Map<string, StackFrame | undefined>();
   return {
     mapped: [...maps.keys()],
+    keyframes: (name) => {
+      // Many elements share one animation name, and each is a node asking the same question.
+      if (keyframesByName.has(name)) return keyframesByName.get(name);
+      const found: StackFrame[] = [];
+      for (const [url, body] of styleBodies) {
+        for (const at of keyframesPositions(body, name)) found.push({ url, ...at });
+      }
+      const cited = found.length === 1 ? found[0] : undefined;
+      keyframesByName.set(name, cited);
+      return cited;
+    },
     resolve: (url, line, column) => {
       const map = maps.get(url);
       return map === undefined ? undefined : resolveFrame(map, { line, column }, EXCERPT_CONTEXT);
     },
   };
+}
+
+/**
+ * 1-based positions of every `@keyframes <name>` (and `-webkit-` prefixed) rule in `text`. The name
+ * must end where the rule's name ends, so `pulse` does not match `@keyframes pulse-slow`.
+ */
+function keyframesPositions(text: string, name: string): Omit<StackFrame, "url">[] {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`@(?:-webkit-)?keyframes\\s+${escaped}(?=[\\s{])`, "g");
+  const positions: Omit<StackFrame, "url">[] = [];
+  for (const match of text.matchAll(pattern)) {
+    const before = text.slice(0, match.index);
+    positions.push({
+      line: before.split("\n").length,
+      column: match.index - before.lastIndexOf("\n"),
+    });
+  }
+  return positions;
 }

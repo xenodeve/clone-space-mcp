@@ -159,6 +159,17 @@ original  /npm/three@0.151.2/build/three.module.js:18723:5
 **Nothing is fetched here.** A map the capture did not take cannot be obtained, and the report says
 so rather than reaching for the network.
 
+**Every node cites where its motion was created** (#215). A GSAP tween cites the `.to()`/`.from()`
+call that made it, a ScrollTrigger the tween it drives, a WAAPI animation its `element.animate()`,
+and a CSS animation its `@keyframes` rule — so *"what makes the hero move?"* is answered with a line:
+
+```
+gsap-timeline  [data-fixture-id='gsap-hero']  power3.out  generated-source  /gsap-scene.js:19
+```
+
+`original-source` when an archived map resolved it, `generated-source` otherwise, and **no `source`
+at all** rather than a guess when nothing readable was recorded.
+
 ## Serve — `src/serve/`
 
 Four tools over stdio, a CLI harness that reaches the same functions with no transport, and **a

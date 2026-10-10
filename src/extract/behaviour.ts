@@ -10,8 +10,10 @@
  */
 
 import type { ReplayHandle } from "../replay/replay.ts";
+import type { SourceIndex } from "./archive-sources.ts";
+import { citeFrame, creationFrame, type NodeSource } from "./provenance.ts";
 
-export const BEHAVIOUR_SCHEMA_VERSION = 2;
+export const BEHAVIOUR_SCHEMA_VERSION = 3;
 
 export type BehaviourMechanism =
   | "css-keyframes"
@@ -53,6 +55,16 @@ export interface BehaviourNode {
     /** The element that triggers it, which is frequently not the element that animates. */
     triggerTarget: string;
   };
+  /**
+   * Where this motion was **created** (#215) — the line an agent cites when asked what makes an
+   * element move. A ScrollTrigger carries the source of the tween it drives; a CSS animation, the
+   * position of its `@keyframes` rule in an archived stylesheet.
+   *
+   * **Absent** when the replay was not instrumented, when the creation stack named no readable
+   * frame, or when a `@keyframes` name is declared in more than one place. Each of those is
+   * "unknown", and a placeholder would be a citation nobody can check.
+   */
+  source?: NodeSource;
 }
 
 export interface BehaviourGraph {
@@ -99,8 +111,13 @@ export interface BehaviourGraph {
  * anything it closes over is not available on the other side.
  */
 /* eslint-disable */
-function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
+function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> & {
+  creationStacks: (string | undefined)[];
+  libraries: string[];
+} {
   const win = globalThis as unknown as {
+    /** `PROVENANCE_GLOBAL` — written out because nothing this function closes over survives CDP. */
+    __wap?: { stacks: WeakMap<object, string>; libraries: string[] };
     gsap?: { globalTimeline: { getChildren(): unknown[] } };
     ScrollTrigger?: { getAll(): unknown[] };
     document: Document;
@@ -168,12 +185,21 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
   };
 
   const nodes: BehaviourNode[] = [];
+  // Parallel to `nodes`: the stack recorded when each one's object was created, if it was seen.
+  // Only `add` writes either array, so the two cannot fall out of step.
+  const creationStacks: (string | undefined)[] = [];
+  const add = (node: BehaviourNode, createdBy: unknown): void => {
+    nodes.push(node);
+    creationStacks.push(
+      createdBy !== null && typeof createdBy === "object" ? win.__wap?.stacks.get(createdBy) : undefined,
+    );
+  };
 
   for (const animation of win.document.getAnimations()) {
     const effect = animation.effect as KeyframeEffect | null;
     const timing = effect?.getComputedTiming?.();
     const isCss = animation.constructor.name === "CSSAnimation";
-    nodes.push({
+    add({
       mechanism: isCss ? "css-keyframes" : "waapi",
       target: selectorFor(effect?.target ?? null),
       name: (animation as { animationName?: string }).animationName ?? animation.id ?? "",
@@ -187,7 +213,7 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
       },
       easing: timing?.easing ?? null,
       library: "browser",
-    });
+    }, animation);
   }
 
   // `getChildren()` already flattens: its `nested` parameter defaults to true, so descendants of a
@@ -212,7 +238,7 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
       const targets = typeof node.targets === "function" ? node.targets() : [];
       if (targets.length === 0) continue;
       for (const target of targets) {
-        nodes.push({
+        add({
           mechanism: "gsap-timeline",
           target: selectorFor(target),
           name: "",
@@ -223,7 +249,7 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
           },
           easing: typeof node.vars?.ease === "string" ? node.vars.ease : null,
           library: "gsap",
-        });
+        }, child);
       }
     }
   };
@@ -246,7 +272,7 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
     // and the relationship between them is the point. Falling back to the trigger keeps `target`
     // meaning "the element this node is about" rather than sometimes meaning nothing.
     const animated = typeof trigger.animation?.targets === "function" ? trigger.animation.targets()[0] : undefined;
-    nodes.push({
+    add({
       mechanism: "gsap-scrolltrigger",
       target: selectorFor(animated ?? trigger.trigger),
       name: `${String(vars.start ?? "")} → ${String(vars.end ?? "")}`,
@@ -263,7 +289,7 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
         toggleActions: typeof vars.toggleActions === "string" ? vars.toggleActions : null,
         triggerTarget: selectorFor(trigger.trigger),
       },
-    });
+    }, trigger.animation);
   }
 
   // One pass, one getComputedStyle per element: what the graph cannot represent, counted so a
@@ -277,11 +303,32 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> {
   }
 
   const mechanisms = [...new Set(nodes.map((node) => node.mechanism))];
-  return { nodes, mechanisms, unrepresented: { cssTransitionElements } };
+  return {
+    nodes,
+    mechanisms,
+    unrepresented: { cssTransitionElements },
+    creationStacks,
+    libraries: win.__wap?.libraries ?? [],
+  };
 }
 /* eslint-enable */
 
-export async function extractBehaviour(replay: ReplayHandle): Promise<BehaviourGraph> {
-  const collected = await replay.page.evaluate(collectInPage);
+/**
+ * `sources` is what makes a node citable. Without it no node carries `source`: whether a frame is
+ * `generated-source` is a claim that no archived map covers it, and that cannot be made unread.
+ */
+export async function extractBehaviour(replay: ReplayHandle, sources?: SourceIndex): Promise<BehaviourGraph> {
+  const { creationStacks, libraries, ...collected } = await replay.page.evaluate(collectInPage);
+  if (sources !== undefined) {
+    collected.nodes.forEach((node, index) => {
+      // A CSS animation is created by the cascade, not by a call, so its citation is the rule.
+      const frame =
+        node.mechanism === "css-keyframes"
+          ? sources.keyframes(node.name)
+          : creationFrame(creationStacks[index], libraries);
+      const source = citeFrame(frame, sources.resolve);
+      if (source !== undefined) node.source = source;
+    });
+  }
   return { schemaVersion: BEHAVIOUR_SCHEMA_VERSION, url: replay.url, ...collected };
 }

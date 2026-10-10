@@ -78,6 +78,29 @@ later, and going to the network would make an offline artifact quietly depend on
 being up. An absent citation is the honest answer; a fabricated one is not checkable, which defeats
 the point of citing at all.
 
+**Every behaviour node carries the same kind of citation, as `source`** (#215) — where the motion
+was *created*. On the fixture, network off:
+
+```
+gsap-timeline   [data-fixture-id='gsap-hero']   power3.out   generated-source  /gsap-scene.js:19
+gsap-scrolltrigger  [data-fixture-id='gsap-scroll-panel']    generated-source  /gsap-scene.js:33
+waapi           [data-fixture-id='waapi-slide']              generated-source  /motion.js:11
+css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /style.css:49
+```
+
+| Mechanism | What is cited |
+|---|---|
+| GSAP tween | the `gsap.to/from/fromTo/set` or timeline `.to/.from/...` call that created it — a chained call cites its own line |
+| ScrollTrigger | the call that created the tween it drives |
+| WAAPI | the `element.animate(...)` call |
+| CSS `@keyframes` | the rule's position in an archived stylesheet or inline `<style>` |
+
+`provenance` is `original-source` only when an archived map resolved the frame, with `original` and
+an excerpt beside the kept `generated` position; otherwise `generated-source`. **`source` is absent**
+when the creation stack named no readable frame, when GSAP never assigned its global (the hook
+watches `window.gsap` arrive), or when a `@keyframes` name is declared in more than one place —
+which rule wins is a cascade question this does not answer.
+
 ## The limits, measured
 
 **A CSS transition is not in the behaviour graph.** The graph reports what
@@ -205,6 +228,27 @@ original  /npm/three@0.151.2/build/three.module.js:18723:5
 **`original` จะไม่มีเมื่อ archive ไม่มี map ที่ใช้ได้สำหรับ script นั้น และกรณีนั้นพบบ่อย** · ไม่มีการ fetch อะไรมาอุดช่องว่าง:
 map ที่ตอน capture ไม่ได้เก็บไว้ก็หามาทีหลังไม่ได้ และการไปดึงจากเน็ตจะทำให้ artifact ออฟไลน์แอบไปขึ้นกับว่าเว็บนั้นยังอยู่
 หรือเปล่า · การไม่มีการอ้างอิงคือคำตอบที่ตรงไปตรงมา ส่วนการอ้างอิงที่แต่งขึ้นตรวจสอบไม่ได้ ซึ่งทำลายเหตุผลของการอ้างอิงทั้งหมด
+
+**behaviour node ทุกตัวมีการอ้างอิงแบบเดียวกันในชื่อ `source`** (#215) — จุดที่ motion ถูก*สร้าง* · บน fixture แบบปิด network:
+
+```
+gsap-timeline   [data-fixture-id='gsap-hero']   power3.out   generated-source  /gsap-scene.js:19
+gsap-scrolltrigger  [data-fixture-id='gsap-scroll-panel']    generated-source  /gsap-scene.js:33
+waapi           [data-fixture-id='waapi-slide']              generated-source  /motion.js:11
+css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /style.css:49
+```
+
+| Mechanism | สิ่งที่ถูกอ้าง |
+|---|---|
+| GSAP tween | การเรียก `gsap.to/from/fromTo/set` หรือ `.to/.from/...` ของ timeline ที่สร้างมัน — การเรียกแบบต่อ chain อ้างบรรทัดของตัวเอง |
+| ScrollTrigger | การเรียกที่สร้าง tween ที่มันขับ |
+| WAAPI | การเรียก `element.animate(...)` |
+| CSS `@keyframes` | ตำแหน่งของ rule ใน stylesheet ที่อยู่ใน archive หรือใน `<style>` ของเอกสาร |
+
+`provenance` เป็น `original-source` ก็ต่อเมื่อ map ใน archive resolve frame ได้ โดยมี `original` และ excerpt
+อยู่ข้างตำแหน่ง `generated` ที่ยังเก็บไว้ · ไม่งั้นเป็น `generated-source` · **`source` จะไม่มี** เมื่อ stack ตอนสร้างไม่มี frame
+ที่อ่านได้ เมื่อ GSAP ไม่เคยตั้ง global ของมัน (hook ดักตอน `window.gsap` ถูกตั้ง) หรือเมื่อชื่อ `@keyframes` ถูกประกาศมากกว่าหนึ่งที่
+— rule ไหนชนะเป็นเรื่องของ cascade ซึ่งตรงนี้ไม่ได้ตอบ
 
 ## ข้อจำกัด ที่วัดมาแล้ว
 

@@ -66,13 +66,13 @@ export async function extractBehaviourFromArchive(
     // surface it registered. Neither is reachable from the other.
     const replay = await replayArchive({ archive: params.archive, browser, instrument: true });
     try {
-      const graph = await extractBehaviour(replay);
-      const drained = await replay.drainObservations();
-      const canvasContexts: Record<string, number> = {};
-      const listeners: Record<string, number> = {};
       // Read from the archive, never fetched. A map the capture did not take cannot be obtained
       // later, and reaching for the network would make an offline artifact depend on the site.
       const sources = await indexArchiveSources(params.archive);
+      const graph = await extractBehaviour(replay, sources);
+      const drained = await replay.drainObservations();
+      const canvasContexts: Record<string, number> = {};
+      const listeners: Record<string, number> = {};
       const shaders: ObservedSummary["shaders"] = [];
       for (const observation of drained.observations) {
         if (observation.type === "canvas-context") {

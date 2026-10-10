@@ -6,6 +6,18 @@
 
 ---
 
+## Every behaviour node cites the line that created it (2026-10-10, #215)
+
+**The pipeline was measured end to end before anything was written**, because the goal was "make it usable" and the gap had to be found rather than assumed. On the fixture, through a real SDK client over stdio: capture 2.2 s, replay `aborted: []`, all five declared animations extracted, tool manifest **4,213 bytes** against P5's 50 KB. P3, P4 and P5 all held. **The one sentence of the definition of done that did not was "citing file and line"** — animation nodes said `gsap-timeline · 800 ms · power3.out` and nothing about where that was written. The slice 6 citation chain was wired to shaders only.
+
+**A registry remembers what exists, not who made it**, so the creation call is observed as it happens: `PROVENANCE_INIT_SCRIPT` runs before page scripts, wraps `Element.prototype.animate`, and watches `window.gsap` **arrive** — GSAP 3 assigns that global even from an ES module — to wrap its creation API. A timeline method returns the timeline, not the tween, so it tags the one direct child not yet tagged. CSS keyframes are cited from the `@keyframes` rule in an archived stylesheet, and only when the name is declared once.
+
+Measured through the stdio server: the hero's three tweens cite `gsap-scene.js:19`, `:20`, `:21` — the exact lines of `.from()`, `.to()`, `.to()`. Two `<non-element>` delayedCalls cite `ScrollTrigger.min.js:10`, which is true: ScrollTrigger creates them internally.
+
+**Kept out of `INSTRUMENT_INIT_SCRIPT` deliberately**: the equivalence gate installs that on the live page for its perturbation control, and wrapping GSAP there would change what the control measures.
+
+**A TDD slip, recorded rather than smoothed over:** cycle 1's implementation covered every mechanism at once, so the nested, ScrollTrigger and WAAPI tests and the unit tests were green on first run and never seen red. Their capacity to fail rests on the ten corpus entries, not on the loop.
+
 ## `Closes #171's acceptance criteria 5 and 7` closed #171 (2026-08-17, #171, PR #210)
 
 PR #207's body opened with that sentence. It says *two of the criteria*; **GitHub read `Closes #171` and closed the issue** when the PR merged, at `2026-08-16T18:25:28Z`. The clause that narrows it is invisible to the parser — `closes part of`, `closes the first half of` and `closes #171's criterion 5` all close #171.
