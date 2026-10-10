@@ -181,12 +181,13 @@ export async function startFixtureServers(): Promise<FixtureServers> {
         return new Response(
           `<!doctype html><title>scrolltrigger create</title>
            <style>body{margin:0} .tall{height:3000px}</style>
-           <body><div class="tall"></div><section id="lazy">lazy</section>
+           <body><div class="tall"></div><section id="lazy">lazy</section><p class="batched">batched</p>
            <script src="/vendor/gsap.min.js"></script>
            <script src="/vendor/ScrollTrigger.min.js"></script>
            <script>
              gsap.registerPlugin(ScrollTrigger);
              ScrollTrigger.create({ trigger: "#lazy", start: "top 90%", toggleActions: "play none none none", onEnter: () => {} });
+             ScrollTrigger.batch(".batched", { onEnter: () => {} });
            </script>`,
           { headers: { "content-type": CONTENT_TYPES[".html"]! } },
         );

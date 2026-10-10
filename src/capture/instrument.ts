@@ -244,13 +244,22 @@ export const PROVENANCE_INIT_SCRIPT = `(() => {
         configurable: true,
         enumerable: true,
         get: function () { return current; },
-        set: function (value) { current = value; arrive(value); }
+        set: function (value) {
+          // The script making the **first** assignment is the library defining itself, so its
+          // frames are not the page's call — ScrollTrigger.batch() calls create() from inside its
+          // own file. Only the first: gsap.registerPlugin(ScrollTrigger) re-assigns the global
+          // from whatever page script calls it, and recording that would skip the page itself.
+          var script = document.currentScript;
+          if (current === undefined && script && script.src && libraries.indexOf(script.src) < 0) {
+            libraries.push(script.src);
+          }
+          current = value;
+          arrive(value);
+        }
       });
     } catch (error) {}
   };
   watchGlobal("gsap", function (value) {
-    var script = document.currentScript;
-    if (script && script.src && libraries.indexOf(script.src) < 0) libraries.push(script.src);
     adopt(value);
   });
   // A trigger made with \`ScrollTrigger.create()\` drives no tween, so it has no citation to

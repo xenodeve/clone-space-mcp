@@ -101,17 +101,19 @@ when the creation stack named no readable frame, when GSAP never assigned its gl
 watches `window.gsap` arrive), or when a `@keyframes` name is declared in more than one place —
 which rule wins is a cascade question this does not answer.
 
-Measured on `https://labs.chaingpt.org/`, through the stdio server: **272 of 273 nodes cite a line**
+Measured on `https://labs.chaingpt.org/`, through the stdio server: **275 of 276 nodes cite a line**
 in the page's own code — `itemTl.from(` at `/:1642`, `ScrollTrigger.create({` at `/:1668` for all
 eight triggers, `@keyframes move {` at `/:397`. The one left is #219: a running CSS transition the
 graph mislabels as WAAPI, correctly found to have no `animate()` call.
 
 Two limits of the GSAP half, each measured or traced rather than guessed:
 
-- **A tween a library creates internally cites the library**, which is true and not useful: on the
-  fixture, two `<non-element>` delayedCalls cite `ScrollTrigger.min.js:10`. Only the script that
-  assigned `window.gsap` is skipped as a library, and only when it is a classic script — an ES module
-  has no `document.currentScript`, and inside one bundle a URL cannot separate library from page.
+- **A tween a library creates internally cites the page call that led to it, or nothing.** The
+  scripts that assign `window.gsap` and `window.ScrollTrigger` are skipped as libraries, so on
+  `labs.chaingpt.org` ScrollTrigger's internal delayedCalls cite the page's `ScrollTrigger.create({`
+  at `/:1668`, and on the fixture — where no page frame is on the stack — they carry no `source`.
+  Only a classic script is recognised: an ES module has no `document.currentScript`, and inside one
+  bundle a URL cannot separate library from page.
 - **The extract replay is not byte-identical to the page.** Watching the global arrive means
   `"gsap" in window` is `true` before GSAP loads. A loader that decides whether to fetch GSAP with
   `in` would skip it — in `extract_behaviour` only; `replay_page` and the equivalence gate do not
@@ -266,16 +268,17 @@ css-keyframes   [data-fixture-id='css-keyframes-pulse']      generated-source  /
 ที่อ่านได้ เมื่อ GSAP ไม่เคยตั้ง global ของมัน (hook ดักตอน `window.gsap` ถูกตั้ง) หรือเมื่อชื่อ `@keyframes` ถูกประกาศมากกว่าหนึ่งที่
 — rule ไหนชนะเป็นเรื่องของ cascade ซึ่งตรงนี้ไม่ได้ตอบ
 
-วัดบน `https://labs.chaingpt.org/` ผ่าน stdio server: **node 272 จาก 273 ตัวอ้างบรรทัดในโค้ดของหน้าเว็บเองได้** —
+วัดบน `https://labs.chaingpt.org/` ผ่าน stdio server: **node 275 จาก 276 ตัวอ้างบรรทัดในโค้ดของหน้าเว็บเองได้** —
 `itemTl.from(` ที่ `/:1642`, `ScrollTrigger.create({` ที่ `/:1668` สำหรับ trigger ทั้งแปดตัว, `@keyframes move {` ที่ `/:397`
 ตัวที่เหลือคือ #219: CSS transition ที่กำลังทำงานซึ่ง graph ติดป้ายผิดเป็น WAAPI และหาการเรียก `animate()` ของมันไม่เจออย่างถูกต้อง
 
 ข้อจำกัดสองข้อของฝั่ง GSAP แต่ละข้อวัดหรือไล่โค้ดมาแล้ว ไม่ได้เดา:
 
-- **tween ที่ library สร้างเองภายในจะอ้างไปที่ library** ซึ่งเป็นความจริงแต่ไม่มีประโยชน์: บน fixture
-  delayedCall ที่เป็น `<non-element>` สองตัวอ้าง `ScrollTrigger.min.js:10` มีแค่ script ที่ตั้ง `window.gsap`
-  ที่ถูกข้ามในฐานะ library และเฉพาะเมื่อเป็น classic script — ES module ไม่มี `document.currentScript`
-  และภายใน bundle เดียว URL แยก library ออกจากโค้ดของหน้าไม่ได้
+- **tween ที่ library สร้างเองภายในจะอ้างการเรียกของหน้าเว็บที่นำไปสู่มัน หรือไม่อ้างอะไรเลย** script ที่ตั้ง
+  `window.gsap` และ `window.ScrollTrigger` ถูกข้ามในฐานะ library ดังนั้นบน `labs.chaingpt.org` delayedCall ภายในของ
+  ScrollTrigger จะอ้าง `ScrollTrigger.create({` ของหน้าที่ `/:1668` และบน fixture — ซึ่งไม่มี frame ของหน้าอยู่บน stack —
+  จะไม่มี `source` รู้จักเฉพาะ classic script: ES module ไม่มี `document.currentScript` และภายใน bundle เดียว URL
+  แยก library ออกจากโค้ดของหน้าไม่ได้
 - **replay ของ extract ไม่ได้เหมือนหน้าเดิมทุก byte** การดักตอน global ถูกตั้งทำให้ `"gsap" in window` เป็น
   `true` ตั้งแต่ก่อน GSAP โหลด loader ที่ใช้ `in` ตัดสินว่าจะโหลด GSAP ไหมจะข้ามมันไป — เฉพาะใน
   `extract_behaviour`; `replay_page` และ equivalence gate ไม่ได้ติดตั้ง hook นี้

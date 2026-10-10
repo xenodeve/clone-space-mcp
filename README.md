@@ -284,7 +284,7 @@ One directory, all files written `0600`:
 
 | Mechanism | Scale | What it is |
 |---|---|---|
-| **Mutation corpus** — `bun run mutate` | **166 entries** | Re-applies a defect that actually happened and requires a named test to go red. A guard no test can fail against is indistinguishable from one that works |
+| **Mutation corpus** — `bun run mutate` | **168 entries** | Re-applies a defect that actually happened and requires a named test to go red. A guard no test can fail against is indistinguishable from one that works |
 | **Fixture sites** — `bun run fixture:serve` | **3 origins** | Controlled ground truth: motion, capability flags, and a cross-origin surface. Exit criteria are checked here, never on a live site |
 | **ADRs** — [`docs/adr/`](docs/adr/README.md) | **9 records** | One per hard-to-reverse decision, including the alternatives rejected |
 | **Metamorphic check** — `bun run metamorphic` | a **metric** | Deliberately outside every gate. Correct code still loses matches in some cases, so reporting it as pass/fail would manufacture false confidence in both directions |

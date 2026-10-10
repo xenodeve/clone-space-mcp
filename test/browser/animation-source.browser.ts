@@ -170,7 +170,7 @@ test("an animation created inside a mapped bundle cites the original source line
  * `ScrollTrigger.create()` — the only way `labs.chaingpt.org` made its eight triggers, every one of
  * which reported no source before this.
  */
-test("a ScrollTrigger made with ScrollTrigger.create() cites that call", async () => {
+test("a ScrollTrigger made with ScrollTrigger.create() or batch() cites that call", async () => {
   const { readFileSync } = await import("node:fs");
   const launcher = {
     launch: async () =>
@@ -199,9 +199,16 @@ test("a ScrollTrigger made with ScrollTrigger.create() cites that call", async (
   };
   const doc = har.log.entries.find((entry) => entry.request.url === url)!.response.content;
   const body = doc.text ?? readFileSync(join(archive, doc._file!), "utf8");
-  const expected = body.split("\n").findIndex((line) => line.includes("ScrollTrigger.create(")) + 1;
-  assert.ok(expected > 0);
+  const lines = body.split("\n");
+  const created = lines.findIndex((line) => line.includes("ScrollTrigger.create(")) + 1;
+  // `batch()` calls `create()` from inside ScrollTrigger's own file, so without that file skipped as
+  // a library the citation would land in `ScrollTrigger.min.js` — confidently, and wrongly.
+  const batched = lines.findIndex((line) => line.includes("ScrollTrigger.batch(")) + 1;
+  assert.ok(created > 0 && batched > 0);
 
   const triggers = graph.nodes.filter((node) => node.mechanism === "gsap-scrolltrigger");
-  assert.deepEqual(triggers.map(cited), [`/scrolltrigger-create.html:${expected}`]);
+  assert.deepEqual(
+    triggers.map(cited).sort(),
+    [`/scrolltrigger-create.html:${created}`, `/scrolltrigger-create.html:${batched}`].sort(),
+  );
 });
