@@ -1533,4 +1533,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "browser",
     expect: "the hero's tweens cite the lines of gsap-scene.js that created them",
   },
+  {
+    id: "running-transition-reported-as-waapi",
+    why: "#219 - a CSSTransition running at extraction was reported as mechanism waapi, telling an agent a script called element.animate() when a stylesheet's transition did. Measured on labs.chaingpt.org: #cookie-consent-banner, the only uncited node of 273.",
+    file: "src/extract/behaviour.ts",
+    find: "    if (animation.constructor.name === \"CSSTransition\") continue;",
+    replace: "    void 0;",
+    suite: "browser",
+    expect: "a running CSS transition is not reported as a WAAPI animation",
+  },
 ];

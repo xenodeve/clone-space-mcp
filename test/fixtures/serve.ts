@@ -174,6 +174,19 @@ export async function startFixtureServers(): Promise<FixtureServers> {
           { headers: { "content-type": CONTENT_TYPES[".html"]! } },
         );
       }
+      // #219. A CSS transition still running when the graph is read. It enters
+      // `document.getAnimations()` only while running, as a `CSSTransition`, and was reported as WAAPI.
+      if (pathname === "/running-transition.html") {
+        return new Response(
+          `<!doctype html><title>running transition</title>
+           <style>#fade { transition: opacity 60s linear; }</style>
+           <body><p id="fade">fading</p>
+           <script>
+             requestAnimationFrame(() => requestAnimationFrame(() => { document.getElementById("fade").style.opacity = "0"; }));
+           </script>`,
+          { headers: { "content-type": CONTENT_TYPES[".html"]! } },
+        );
+      }
       // #215. A ScrollTrigger made with `ScrollTrigger.create()` and no tween — the only shape a real
       // page (`labs.chaingpt.org`, 8 of 8) used. With nothing to inherit a citation from, it has to
       // be cited at its own creation call.

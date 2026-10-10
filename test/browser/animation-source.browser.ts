@@ -212,3 +212,57 @@ test("a ScrollTrigger made with ScrollTrigger.create() or batch() cites that cal
     [`/scrolltrigger-create.html:${created}`, `/scrolltrigger-create.html:${batched}`].sort(),
   );
 });
+
+/**
+ * #219. A transition is in `getAnimations()` only while it runs, so a node for it would exist or
+ * not depending on when extraction landed. It is counted under `unrepresented`, never reported as a
+ * script calling `element.animate()`, which is what `waapi` asserts.
+ */
+test("a running CSS transition is not reported as a WAAPI animation", async () => {
+  const { replayArchive } = await import("../../src/replay/replay.ts");
+  const { extractBehaviour } = await import("../../src/extract/behaviour.ts");
+  const servers: FixtureServers = await startFixtureServers();
+  let archive: string;
+  try {
+    archive = (
+      await capturePage(
+        {
+          url: new URL("/running-transition.html", servers.primary.url).href,
+          outDir: join(tempDir, "transition"),
+          allowPrivateNetwork: true,
+        },
+        {
+          launch: async () =>
+            ({
+              newContext: (o: unknown) => (browser as never as { newContext(o: unknown): unknown }).newContext(o),
+              version: () => browser.version(),
+              newBrowserCDPSession: () => (browser as never as { newBrowserCDPSession(): unknown }).newBrowserCDPSession(),
+              close: async () => {},
+            }) as never,
+        } as never,
+      )
+    ).archive;
+  } finally {
+    await servers.stop();
+  }
+  const replay = await replayArchive({ archive, browser: browser as never });
+  try {
+    // The precondition, checked rather than assumed: the transition really is running. The page
+    // starts it two animation frames after load, and under a loaded suite a single read raced that
+    // and saw nothing — measured — so wait for the state, bounded, before reading it.
+    let running: string[] = [];
+    for (let attempt = 0; attempt < 50 && !running.includes("CSSTransition"); attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 200));
+      running = await replay.page.evaluate(() =>
+        document.getAnimations().map((animation) => animation.constructor.name),
+      );
+    }
+    assert.ok(running.includes("CSSTransition"), `no transition was running: ${JSON.stringify(running)}`);
+
+    const graph = await extractBehaviour(replay);
+    assert.deepEqual(graph.nodes.filter((node) => node.mechanism === "waapi"), []);
+    assert.ok(graph.unrepresented.cssTransitionElements >= 1);
+  } finally {
+    await replay.close();
+  }
+});

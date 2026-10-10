@@ -90,7 +90,9 @@ export interface BehaviourGraph {
    * | `getAnimations()` | 12 | 12 |
    * | elements with a transition | **318** | **1,028** |
    *
-   * The extractor is not missing anything the browser tracks — the first two rows match exactly.
+   * The extractor is not missing anything the browser tracks — the first two rows matched exactly.
+   * A transition running at that instant is the one deliberate exception (#219): it is skipped as a
+   * node, because whether it is running is a phase of the moment rather than a property of the page.
    * The third row is the honest limit, and a caller that cannot see it would read "12 nodes" as
    * "this page barely animates", which is false.
    *
@@ -210,6 +212,10 @@ function collectInPage(): Omit<BehaviourGraph, "schemaVersion" | "url"> & {
   for (const animation of win.document.getAnimations()) {
     const effect = animation.effect as KeyframeEffect | null;
     const timing = effect?.getComputedTiming?.();
+    // A running transition is in this list only while it runs, so a node for it would come and
+    // go with when extraction landed — a sampled phase, not a property of the page. It is counted
+    // under `unrepresented.cssTransitionElements` instead, and it is not a WAAPI call (#219).
+    if (animation.constructor.name === "CSSTransition") continue;
     const isCss = animation.constructor.name === "CSSAnimation";
     add({
       mechanism: isCss ? "css-keyframes" : "waapi",
