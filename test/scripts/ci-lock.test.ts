@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ciLockVerdict } from "../../scripts/ci-lock.ts";
+import { ciLockVerdict, latestOwnRun } from "../../scripts/ci-lock.ts";
 
 /**
  * #2. GitHub Actions is locked account-wide for billing, so every job of every run fails in
@@ -64,5 +64,29 @@ describe("ciLockVerdict", () => {
       locked: undefined,
       reason: "jobs ran no steps but nothing said it was billing — read the run before assuming",
     });
+  });
+});
+
+/**
+ * #218. The exemption is about this repository's own workflow. Measured 2026-10-10: the newest run
+ * was **Dependabot Updates**, a GitHub-managed workflow that executes while the billing lock holds,
+ * so the command printed `UNLOCKED` and told the reader to arm five required checks — the same hour
+ * PR #217's `T4 verify` jobs all ran 0 steps.
+ */
+describe("latestOwnRun (#218)", () => {
+  test("skips a newer run of another workflow", () => {
+    expect(
+      latestOwnRun([
+        { databaseId: 3, displayTitle: "github_actions in /. - Update", workflowName: "Dependabot Updates" },
+        { databaseId: 2, displayTitle: "feat(extract): …", workflowName: "T4 verify" },
+        { databaseId: 1, displayTitle: "older", workflowName: "T4 verify" },
+      ])?.databaseId,
+    ).toBe(2);
+  });
+
+  test("is undefined when this repository's workflow never ran, rather than reading another one", () => {
+    expect(
+      latestOwnRun([{ databaseId: 3, displayTitle: "update", workflowName: "Dependabot Updates" }]),
+    ).toBeUndefined();
   });
 });

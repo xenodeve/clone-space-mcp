@@ -1398,4 +1398,13 @@ export const MUTATIONS: Mutation[] = [
     suite: "bun",
     expect: "an entry with no usable timing is left out rather than given a zero",
   },
+  {
+    id: "ci-lock-reads-any-workflow",
+    why: "#218 - the exemption is about this repository's own workflow. Taking the newest run of any workflow read a Dependabot run, which executes while the billing lock holds, and printed UNLOCKED with an instruction to arm five required checks that could never report.",
+    file: "scripts/ci-lock.ts",
+    find: "  return runs.find((run) => run.workflowName === OWN_WORKFLOW);",
+    replace: "  return runs[0];",
+    suite: "bun",
+    expect: "skips a newer run of another workflow",
+  },
 ];
