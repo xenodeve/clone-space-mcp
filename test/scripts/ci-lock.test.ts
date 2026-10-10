@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ciLockVerdict, latestOwnRun } from "../../scripts/ci-lock.ts";
+import { readFileSync } from "node:fs";
+import { ciLockVerdict, latestOwnRun, OWN_WORKFLOW } from "../../scripts/ci-lock.ts";
 
 /**
  * #2. GitHub Actions is locked account-wide for billing, so every job of every run fails in
@@ -82,6 +83,11 @@ describe("latestOwnRun (#218)", () => {
         { databaseId: 1, displayTitle: "older", workflowName: "T4 verify" },
       ])?.databaseId,
     ).toBe(2);
+  });
+
+  test("names the workflow the YAML actually declares, so a rename cannot go unnoticed", () => {
+    const yaml = readFileSync(new URL("../../.github/workflows/t4-verify.yml", import.meta.url), "utf8");
+    expect(/^name:\s*(.+)$/m.exec(yaml)?.[1]?.trim()).toBe(OWN_WORKFLOW);
   });
 
   test("is undefined when this repository's workflow never ran, rather than reading another one", () => {
